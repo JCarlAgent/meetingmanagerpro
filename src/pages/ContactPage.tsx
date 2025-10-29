@@ -95,6 +95,14 @@ export const ContactPage: React.FC = () => {
                   >
                     {content.contact.email}
                   </a>
+                  {content.contact.phone && (
+                    <div className="mt-4">
+                      <h4 className="font-semibold text-gray-900 mb-1">Phone</h4>
+                      <a href={`tel:${content.contact.phone}`} className="text-gray-700 hover:text-gray-900">
+                        {content.contact.phone}
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
