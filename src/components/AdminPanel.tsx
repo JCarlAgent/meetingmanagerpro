@@ -112,6 +112,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isStandalone = false }) 
                 rows={4}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+              <input
+                type="email"
+                value={content.contact.email}
+                onChange={(e) => updateContent('contact.email', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>
+              <input
+                type="text"
+                value={content.contact.phone || ''}
+                onChange={(e) => updateContent('contact.phone', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded"
+              />
+            </div>
           </div>
         )}
 

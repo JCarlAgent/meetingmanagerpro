@@ -17,7 +17,7 @@ export interface ContentData {
       description: string;
     }>;
   };
-  contact: PageContent & { email: string };
+  contact: PageContent & { email: string; phone?: string };
   mission: PageContent;
   financialPlanners: PageContent;
   medicare: PageContent;
