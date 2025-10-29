@@ -37,13 +37,10 @@ export const ContactPage: React.FC = () => {
 
       if (dbError) throw dbError;
 
-      // Open mailto link
-      const mailtoLink = `mailto:meetingmanagerpro@gmail.com?subject=Contact Form: ${encodeURIComponent(formData.name)}&body=${encodeURIComponent(`Name: ${formData.name}\nEmail: ${formData.email}\nPhone: ${formData.phone}\nSpecialty Interest: ${formData.specialty_interest}\n\nMessage:\n${formData.message}`)}`;
-      window.location.href = mailtoLink;
-
-      setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 5000);
-      setFormData({ name: '', email: '', phone: '', specialty_interest: '', message: '' });
+  // Mark submitted and clear form (no mailto redirect — data saved to Supabase)
+  setSubmitted(true);
+  setTimeout(() => setSubmitted(false), 5000);
+  setFormData({ name: '', email: '', phone: '', specialty_interest: '', message: '' });
     } catch (err: any) {
       setError(err.message || 'Failed to submit. Please try again.');
     } finally {
@@ -107,7 +104,7 @@ export const ContactPage: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h2>
                 {submitted && (
                   <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-md">
-                    Thank you! Your message has been saved and your email client will open.
+                    Thank you! Your message has been saved.
                   </div>
                 )}
                 {error && (
