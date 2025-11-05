@@ -21,11 +21,18 @@ export function AuthUrlHandler() {
 
     (async () => {
       try {
-        // Parse session from URL (works for hash or query-based tokens)
-        // supabase-js typing may not expose getSessionFromUrl; cast to any to be resilient.
+        // If supabase-js provides getSessionFromUrl, call it; otherwise skip to navigation.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result: any = await (supabase.auth as any).getSessionFromUrl();
-        // Regardless of whether parsing succeeded, navigate to the reset page so the UI can show status.
+        const authAny: any = supabase.auth;
+        if (authAny && typeof authAny.getSessionFromUrl === 'function') {
+          try {
+            await authAny.getSessionFromUrl();
+          } catch (e) {
+            // ignore parse errors — we'll still navigate to the reset page
+          }
+        }
+
+        // Navigate to the reset page so the UI can show status or let the ResetPasswordPage handle tokens.
         navigate('/reset-password', { replace: true });
       } catch (err) {
         navigate('/reset-password', { replace: true });
