@@ -18,6 +18,37 @@ export const AdminPanelPage: React.FC = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         navigate('/admin-login');
+        return;
+      }
+
+      // Verify the signed-in user's email is listed in the admins table
+      const userEmail = session.user?.email;
+      if (!userEmail) {
+        await supabase.auth.signOut();
+        navigate('/admin-login');
+        return;
+      }
+
+      const { data: adminData, error: adminError } = await supabase
+        .from('admins')
+        .select('email')
+        .eq('email', userEmail)
+        .limit(1)
+        .maybeSingle();
+
+      if (adminError) {
+        console.error('Error checking admin list:', adminError);
+        // Fail closed: sign out and redirect
+        await supabase.auth.signOut();
+        navigate('/admin-login');
+        return;
+      }
+
+      if (!adminData) {
+        // Not in admins list
+        await supabase.auth.signOut();
+        navigate('/admin-login');
+        return;
       }
     } catch (error) {
       console.error('Auth check error:', error);
