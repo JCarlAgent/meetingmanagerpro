@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 
+// read Vite site URL env if present; `import.meta.env` may not be typed in some TS configs, so access safely
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const DEFAULT_SITE = ((import.meta as any).env?.VITE_SITE_URL as string) || 'https://meetingmanagerpro.com';
+
 export const AdminLoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +34,40 @@ export const AdminLoginPage: React.FC = () => {
       setPassword('');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  const handleSendReset = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setResetMessage(null);
+    setResetLoading(true);
+    try {
+      const emailToSend = resetEmail || email;
+      if (!emailToSend) {
+        setResetMessage('Enter an email to send the reset link.');
+        return;
+      }
+
+      // Use redirectTo so the recovery link lands on our /reset-password page
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await (supabase.auth as any).resetPasswordForEmail(emailToSend, {
+        redirectTo: `${DEFAULT_SITE}/reset-password`,
+      });
+
+      if (res?.error) {
+        setResetMessage(res.error.message || 'Unable to send reset email');
+      } else {
+        setResetMessage('Reset email sent — check your inbox.');
+      }
+    } catch (err: any) {
+      setResetMessage(err?.message || String(err));
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -84,10 +122,50 @@ export const AdminLoginPage: React.FC = () => {
           </button>
         </form>
 
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-          <p className="text-xs text-blue-800">
-            <strong>Note:</strong> Create an admin account in Supabase Authentication dashboard
-          </p>
+        <div className="mt-4 text-center">
+          {!forgotMode ? (
+            <button
+              type="button"
+              onClick={() => setForgotMode(true)}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Forgot password?
+            </button>
+          ) : (
+            <form onSubmit={handleSendReset} className="mt-4 space-y-3">
+              <p className="text-sm text-gray-600">Enter your admin email and we'll send a reset link.</p>
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="admin@example.com"
+                className="w-full px-3 py-2 border rounded"
+              />
+              {resetMessage && (<div className="text-sm text-gray-700">{resetMessage}</div>)}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded"
+                >
+                  {resetLoading ? 'Sending…' : 'Send reset email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setForgotMode(false); setResetMessage(null); }}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-xs text-blue-800">
+              <strong>Note:</strong> Create an admin account in Supabase Authentication dashboard
+            </p>
+          </div>
         </div>
       </div>
     </div>

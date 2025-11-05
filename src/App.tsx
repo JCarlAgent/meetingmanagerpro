@@ -13,6 +13,8 @@ import { MissionPage } from "./pages/MissionPage";
 import { SpecialtyPage } from "./pages/SpecialtyPage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPanelPage } from "./pages/AdminPanelPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import AuthUrlHandler from "./lib/AuthUrlHandler";
 
 
 const queryClient = new QueryClient();
@@ -25,6 +27,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <AuthUrlHandler />
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/contact" element={<ContactPage />} />
@@ -34,6 +37,7 @@ const App = () => (
               <Route path="/stem-cell" element={<SpecialtyPage contentKey="stemCell" />} />
               <Route path="/reverse-mortgage" element={<SpecialtyPage contentKey="reverseMortgage" />} />
               <Route path="/admin-login" element={<AdminLoginPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/admin-panel" element={<AdminPanelPage />} />
               <Route path="*" element={<NotFound />} />
 
