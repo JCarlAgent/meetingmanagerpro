@@ -194,7 +194,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isStandalone = false }) 
             </div>
             
             <div className="border-b pb-4">
-              <h3 className="font-semibold text-lg mb-3">Medicare Specialists</h3>
+                <h3 className="font-semibold text-lg mb-3">Medicare</h3>
               <div className="space-y-3">
                 <input 
                   type="text"
@@ -218,7 +218,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isStandalone = false }) 
             </div>
             
             <div className="border-b pb-4">
-              <h3 className="font-semibold text-lg mb-3">Stem Cell Practitioners</h3>
+                <h3 className="font-semibold text-lg mb-3">Stem Cell</h3>
               <div className="space-y-3">
                 <input 
                   type="text"
@@ -242,7 +242,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isStandalone = false }) 
             </div>
             
             <div className="pb-4">
-              <h3 className="font-semibold text-lg mb-3">Reverse Mortgage Lenders</h3>
+              <h3 className="font-semibold text-lg mb-3">Reverse Mortgage</h3>
               <div className="space-y-3">
                 <input 
                   type="text"

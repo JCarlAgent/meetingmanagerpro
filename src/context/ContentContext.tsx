@@ -36,19 +36,19 @@ const defaultContent: ContentData = {
     image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761373673776_fce89b8d.webp'
   },
   medicare: {
-    title: 'Medicare Specialists',
+    title: 'Medicare',
     subtitle: 'Find Clients at the Right Time',
     body: 'Finding those at the right time to get them properly signed up for Medicare (turning 65 meetings) and to help others that may want to change their plan during open enrollment. Target prospects when they need you most.',
     image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761373675634_b2de2458.webp'
   },
   stemCell: {
-    title: 'Stem Cell Practitioners',
+    title: 'Stem Cell',
     subtitle: 'Educate High-Value Prospects',
     body: 'Targeting certain age and income/net worth individuals to educate them on the benefits of a pain free life. Connect with prospects who are seeking innovative health solutions.',
     image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761373677625_6f8d7d9b.webp'
   },
   reverseMortgage: {
-    title: 'Reverse Mortgage Lenders',
+    title: 'Reverse Mortgage',
     subtitle: 'Help Seniors Live Stress-Free',
     body: 'Helping those 62+ who want to live stress free in their later years and have equity in their home they have earned and want to enjoy without worrying about payments. Find qualified homeowners ready to explore their options.',
     image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761373679424_fb50575a.webp'
