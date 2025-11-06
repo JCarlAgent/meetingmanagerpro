@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useContent } from '../context/ContentContext';
+import { useContent, defaultContent } from '../context/ContentContext';
 
 interface AdminPanelProps {
   isStandalone?: boolean;
@@ -114,12 +114,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isStandalone = false }) 
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
-              <input
-                type="email"
-                value={content.contact.email}
-                onChange={(e) => updateContent('contact.email', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={content.contact.email}
+                  onChange={(e) => updateContent('contact.email', e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded"
+                />
+                <button
+                  type="button"
+                  onClick={() => updateContent('contact.email', defaultContent.contact.email)}
+                  className="px-3 py-2 rounded bg-gray-100 text-sm hover:bg-gray-200"
+                  title="Reset to default"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>

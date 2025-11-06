@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { ContentData } from '../types/content';
 import { supabase } from '@/lib/supabase';
 
-const defaultContent: ContentData = {
+export const defaultContent: ContentData = {
   home: {
     hero: {
       title: 'Empower Your Client Acquisition',
