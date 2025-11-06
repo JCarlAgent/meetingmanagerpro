@@ -158,12 +158,10 @@ export const ContactPage: React.FC = () => {
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-600 focus:border-transparent"
                     >
                       <option value="">Select a specialty...</option>
-                      <option value="Cardiology">Cardiology</option>
-                      <option value="Orthopedics">Orthopedics</option>
-                      <option value="Neurology">Neurology</option>
-                      <option value="Pediatrics">Pediatrics</option>
-                      <option value="General Practice">General Practice</option>
-                      <option value="Other">Other</option>
+                      <option value="Financial Planners">Financial Planners</option>
+                      <option value="Medicare">Medicare</option>
+                      <option value="Stem Cell">Stem Cell</option>
+                      <option value="Reverse Mortgage">Reverse Mortgage</option>
                     </select>
                   </div>
                   <div>

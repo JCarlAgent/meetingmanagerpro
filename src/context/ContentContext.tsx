@@ -19,7 +19,7 @@ const defaultContent: ContentData = {
     title: 'Contact Us',
     subtitle: 'We\'re here to help you succeed',
     body: 'Have questions? Our customer service team is ready to assist you.',
-    email: 'support@meetingmarketerpro.com',
+  email: 'support@meetingmanagerpro.com',
     phone: '' ,
     image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761372645973_371dea05.webp'
   },
