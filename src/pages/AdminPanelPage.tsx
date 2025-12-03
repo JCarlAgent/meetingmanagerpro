@@ -32,7 +32,8 @@ export const AdminPanelPage: React.FC = () => {
       const { data: adminData, error: adminError } = await supabase
         .from('admins')
         .select('email')
-        .eq('email', userEmail)
+        // use case-insensitive match to avoid capitalization mismatches
+        .ilike('email', userEmail || '')
         .limit(1)
         .maybeSingle();
 
@@ -46,6 +47,7 @@ export const AdminPanelPage: React.FC = () => {
 
       if (!adminData) {
         // Not in admins list
+        console.warn('Signed-in user email not found in admins table:', userEmail);
         await supabase.auth.signOut();
         navigate('/admin-login');
         return;
