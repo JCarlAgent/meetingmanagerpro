@@ -7,7 +7,13 @@ const ResetPasswordPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [ready, setReady] = useState(false);
+  const [resendEmail, setResendEmail] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
   const navigate = useNavigate();
+  // read Vite site URL env if present
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SITE_URL = ((import.meta as any).env?.VITE_SITE_URL as string) || 'https://meetingmanagerpro.com';
 
   useEffect(() => {
     // Process the URL that Supabase sends for recovery links.
@@ -15,6 +21,20 @@ const ResetPasswordPage: React.FC = () => {
     (async () => {
       setLoading(true);
       setError(null);
+      // parse query + hash early so we can detect error params like otp_expired
+      const { hash: initialHash, search: initialSearch } = window.location;
+      const earlyParams = new URLSearchParams(initialSearch);
+      if (initialHash) {
+        const raw = initialHash.startsWith('#') ? initialHash.slice(1) : initialHash;
+        new URLSearchParams(raw).forEach((v, k) => earlyParams.set(k, v));
+      }
+      if (earlyParams.get('error')) {
+        const desc = earlyParams.get('error_description') || earlyParams.get('error');
+        setError(decodeURIComponent(String(desc)) || 'Recovery link is invalid or expired.');
+        setReady(false);
+        setLoading(false);
+        return;
+      }
       try {
         // Prefer built-in helper if available
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +57,14 @@ const ResetPasswordPage: React.FC = () => {
           const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
           for (const [k, v] of new URLSearchParams(search)) {
             if (!params.has(k)) params.set(k, v);
+          }
+
+          // If Supabase set an error in the URL (verify endpoint), surface that message
+          if (params.get('error')) {
+            const desc = params.get('error_description') || params.get('error');
+            setError(decodeURIComponent(String(desc)) || 'Recovery link is invalid or expired.');
+            setReady(false);
+            return;
           }
 
           const access_token = params.get('access_token') || params.get('token');
@@ -136,6 +164,53 @@ const ResetPasswordPage: React.FC = () => {
           <div className="mt-4 text-sm text-gray-700">
             <p>If you followed a password recovery link, it may have expired or be malformed.</p>
             <p className="mt-2">Request another password reset from the Supabase dashboard or re-initiate password recovery from the admin login screen.</p>
+
+            <div className="mt-4 p-4 bg-gray-50 border rounded">
+              <p className="text-sm font-medium mb-2">Send a new reset email</p>
+              <div className="space-y-2">
+                <input
+                  type="email"
+                  value={resendEmail}
+                  onChange={(e) => setResendEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded"
+                />
+                {resendMessage && (<div className="text-sm text-gray-700">{resendMessage}</div>)}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setResendMessage(null);
+                      setResendLoading(true);
+                      try {
+                        const emailToSend = resendEmail || '';
+                        if (!emailToSend) {
+                          setResendMessage('Enter an email address to send the reset link.');
+                          return;
+                        }
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const res: any = await (supabase.auth as any).resetPasswordForEmail(emailToSend, {
+                          redirectTo: `${SITE_URL}/reset-password`,
+                        });
+                        if (res?.error) {
+                          setResendMessage(res.error.message || 'Unable to send reset email');
+                        } else {
+                          setResendMessage('Reset email sent — check your inbox.');
+                        }
+                      } catch (err: any) {
+                        setResendMessage(err?.message || String(err));
+                      } finally {
+                        setResendLoading(false);
+                      }
+                    }}
+                    disabled={resendLoading}
+                    className="bg-blue-600 text-white px-4 py-2 rounded"
+                  >
+                    {resendLoading ? 'Sending…' : 'Resend reset email'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
