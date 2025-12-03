@@ -15,6 +15,7 @@ import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPanelPage } from "./pages/AdminPanelPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AuthUrlHandler from "./lib/AuthUrlHandler";
+import DebugAuthPage from "./pages/DebugAuthPage";
 
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
               <Route path="/reverse-mortgage" element={<SpecialtyPage contentKey="reverseMortgage" />} />
               <Route path="/admin-login" element={<AdminLoginPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/_debug_auth" element={<DebugAuthPage />} />
               <Route path="/admin-panel" element={<AdminPanelPage />} />
               <Route path="*" element={<NotFound />} />
 
