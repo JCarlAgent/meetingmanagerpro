@@ -16,21 +16,52 @@ const ResetPasswordPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        // supabase-js v2: getSessionFromUrl parses the URL and stores the session
-        const { data, error } = await supabase.auth.getSessionFromUrl();
-        if (error) {
-          // No session created from the URL (maybe missing token or expired)
-          setError(error.message || 'Unable to process the recovery link.');
-          setReady(false);
-        } else if (data?.session) {
-          // Session present — allow the user to set a new password
-          setReady(true);
+        // Prefer built-in helper if available
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const authAny: any = supabase.auth;
+        if (authAny && typeof authAny.getSessionFromUrl === 'function') {
+          const { data, error } = await authAny.getSessionFromUrl();
+          if (error) {
+            setError(error.message || 'Unable to process the recovery link.');
+            setReady(false);
+          } else if (data?.session) {
+            setReady(true);
+          } else {
+            setError('No recovery token found in the URL.');
+            setReady(false);
+          }
         } else {
-          setError('No recovery token found in the URL.');
-          setReady(false);
+          // Fallback: manually parse token from hash or query and set session
+          const { hash, search } = window.location;
+          // hash may contain #access_token=...&refresh_token=...
+          const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+          for (const [k, v] of new URLSearchParams(search)) {
+            if (!params.has(k)) params.set(k, v);
+          }
+
+          const access_token = params.get('access_token') || params.get('token');
+          const refresh_token = params.get('refresh_token') || params.get('refreshToken');
+
+          if (access_token) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const setRes: any = await (supabase.auth as any).setSession({ access_token, refresh_token });
+            if (setRes?.error) {
+              setError(setRes.error.message || 'Unable to set session from recovery token.');
+              setReady(false);
+            } else {
+              setReady(true);
+            }
+          } else {
+            setError('No recovery token found in the URL.');
+            setReady(false);
+          }
         }
       } catch (err: any) {
-        setError(err?.message || String(err));
+        // Avoid showing low-level runtime messages (like "getSessionFromUrl is not a function") to users.
+        // Log the detailed error for debugging and show a friendly message in the UI.
+        // eslint-disable-next-line no-console
+        console.error('Error processing recovery link:', err);
+        setError('Unable to process the recovery link. It may be expired or malformed.');
         setReady(false);
       } finally {
         setLoading(false);
