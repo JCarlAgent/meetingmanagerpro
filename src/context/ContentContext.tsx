@@ -23,6 +23,13 @@ export const defaultContent: ContentData = {
     phone: '' ,
     image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761372645973_371dea05.webp'
   },
+
+  // Footer-specific content (admin can override footer email independent of contact page)
+  footer: {
+    email: 'support@meetingmanagerpro.com',
+    phone: '',
+    copyright: `© ${new Date().getFullYear()} Meeting Manager Pro. All rights reserved.`
+  },
   mission: {
     title: 'Our Mission',
     subtitle: 'Empowering Professionals in the AI Era',

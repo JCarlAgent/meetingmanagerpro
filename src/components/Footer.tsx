@@ -1,7 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useContent } from '../context/ContentContext';
+
+// Footer will display the configured contact email from content; falls back to default in context provider
 
 export const Footer: React.FC = () => {
+  const { content } = useContent();
+
+  const email = content?.contact?.email || '';
+  const footerEmail = content?.footer?.email || email;
+  const [localPart, domain] = email.includes('@') ? email.split('@') : [email, ''];
+
   return (
     <footer className="bg-gray-900 text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -42,10 +51,25 @@ export const Footer: React.FC = () => {
           <div>
             <h3 className="text-lg font-semibold mb-4">Contact</h3>
             <p className="text-gray-400 text-sm mb-2">Email:</p>
-            <a href="mailto:support@meetingmarketerpro.com" className="text-red-500 hover:text-red-400 transition-colors block">
-              <span className="block">support</span>
-              <span className="block">@meetingmarketerpro.com</span>
-            </a>
+            {footerEmail ? (
+              <a href={`mailto:${footerEmail}`} className="text-red-500 hover:text-red-400 transition-colors block">
+                {footerEmail.includes('@') ? (
+                  (() => {
+                    const [lp, dm] = footerEmail.split('@');
+                    return (
+                      <>
+                        <span className="block">{lp}</span>
+                        <span className="block">@{dm}</span>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <span className="block">{footerEmail}</span>
+                )}
+              </a>
+            ) : (
+              <p className="text-gray-500 text-sm">No contact email set</p>
+            )}
           </div>
         </div>
 

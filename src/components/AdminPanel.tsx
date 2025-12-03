@@ -140,6 +140,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isStandalone = false }) 
                 className="w-full px-3 py-2 border border-gray-300 rounded"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Footer Email (displayed in site footer)</label>
+              <input
+                type="email"
+                value={(content.footer && content.footer.email) || ''}
+                onChange={(e) => updateContent('footer.email', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded"
+              />
+            </div>
           </div>
         )}
 

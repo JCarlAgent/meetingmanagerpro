@@ -23,4 +23,9 @@ export interface ContentData {
   medicare: PageContent;
   stemCell: PageContent;
   reverseMortgage: PageContent;
+  footer: {
+    email: string;
+    phone?: string;
+    copyright?: string;
+  };
 }
