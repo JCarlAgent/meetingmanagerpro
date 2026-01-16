@@ -7,6 +7,8 @@ import { useContent } from '../context/ContentContext';
 export const Footer: React.FC = () => {
   const { content } = useContent();
 
+  const portalUrl = ((import.meta as any).env?.VITE_PORTAL_URL as string | undefined) ?? undefined;
+
   const email = content?.contact?.email || '';
   const footerEmail = content?.footer?.email || email;
   const [localPart, domain] = email.includes('@') ? email.split('@') : [email, ''];
@@ -33,6 +35,18 @@ export const Footer: React.FC = () => {
               <li><Link to="/" className="text-gray-400 hover:text-red-500 transition-colors">Home</Link></li>
               <li><Link to="/mission" className="text-gray-400 hover:text-red-500 transition-colors">Our Mission</Link></li>
               <li><Link to="/contact" className="text-gray-400 hover:text-red-500 transition-colors">Contact</Link></li>
+              {portalUrl && (
+                <li>
+                  <a
+                    href={portalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    Client Access
+                  </a>
+                </li>
+              )}
               <li><Link to="/admin-login" className="text-gray-400 hover:text-red-500 transition-colors">Admin</Link></li>
 
             </ul>

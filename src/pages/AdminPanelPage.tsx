@@ -9,6 +9,8 @@ export const AdminPanelPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'content' | 'submissions'>('content');
 
+  const portalUrl = ((import.meta as any).env?.VITE_PORTAL_URL as string | undefined) ?? undefined;
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -82,12 +84,24 @@ export const AdminPanelPage: React.FC = () => {
       <div className="bg-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition-colors"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+            {portalUrl && (
+              <a
+                href={portalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-white text-gray-900 border border-gray-300 px-6 py-2 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Open Client Portal
+              </a>
+            )}
+            <button
+              onClick={handleLogout}
+              className="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
