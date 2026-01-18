@@ -1,10 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
+// IMPORTANT: This runs in the browser. Only use the public anon key.
+// Configure via Vercel env vars / local .env:
+// - VITE_SUPABASE_URL
+// - VITE_SUPABASE_ANON_KEY
+const env = (import.meta as any).env as Record<string, string | undefined> | undefined;
+const supabaseUrl = env?.VITE_SUPABASE_URL;
+const supabaseAnonKey = env?.VITE_SUPABASE_ANON_KEY;
 
-// Initialize database client
-const supabaseUrl = 'https://infzzbklfrvgpexcappi.databasepad.com';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjUyMzBlNzBjLTBmZTMtNGM2ZS1iNTVhLTc3Mjk0NjM4Y2FjMCJ9.eyJwcm9qZWN0SWQiOiJpbmZ6emJrbGZydmdwZXhjYXBwaSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY2OTU5NTc2LCJleHAiOjIwODIzMTk1NzYsImlzcyI6ImZhbW91cy5kYXRhYmFzZXBhZCIsImF1ZCI6ImZhbW91cy5jbGllbnRzIn0.vh8vmGJyfR4Mt-jTo74m2Pfd2A_ZZ4vGsGrnEeDFNGg';
-const supabase = createClient(supabaseUrl, supabaseKey);
+if (!supabaseUrl || !supabaseAnonKey) {
+	// Fail fast so misconfigured deploys are obvious.
+	throw new Error(
+		'Missing Supabase env vars. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+	);
+}
 
-
-export { supabase };
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);

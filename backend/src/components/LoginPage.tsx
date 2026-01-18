@@ -3,16 +3,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const { login, loginWithMagicLink } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setMagicLinkSent(false);
     setIsLoading(true);
 
     const result = await login(email, password);
@@ -21,6 +23,27 @@ const LoginPage: React.FC = () => {
       setError(result.error || 'Login failed');
     }
     
+    setIsLoading(false);
+  };
+
+  const handleMagicLink = async () => {
+    setError('');
+    setMagicLinkSent(false);
+    setIsLoading(true);
+
+    if (!email) {
+      setError('Enter your email first');
+      setIsLoading(false);
+      return;
+    }
+
+    const result = await loginWithMagicLink(email);
+    if (!result.success) {
+      setError(result.error || 'Failed to send magic link');
+    } else {
+      setMagicLinkSent(true);
+    }
+
     setIsLoading(false);
   };
 
@@ -53,6 +76,12 @@ const LoginPage: React.FC = () => {
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
               <span className="text-sm">{error}</span>
+            </div>
+          )}
+
+          {magicLinkSent && (
+            <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center gap-2 text-emerald-300">
+              <span className="text-sm">Magic link sent. Check your email and open the link on this device.</span>
             </div>
           )}
 
@@ -99,8 +128,12 @@ const LoginPage: React.FC = () => {
                 <input type="checkbox" className="w-4 h-4 rounded border-white/20 bg-white/5 text-red-600 focus:ring-red-500/50" />
                 <span className="text-sm text-slate-400">Remember me</span>
               </label>
-              <button type="button" className="text-sm text-red-400 hover:text-red-300 transition-colors">
-                Forgot password?
+              <button
+                type="button"
+                onClick={handleMagicLink}
+                className="text-sm text-red-400 hover:text-red-300 transition-colors"
+              >
+                Email me a magic link
               </button>
             </div>
 
