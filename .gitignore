@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local business docs / assets (keep out of deploy repo)
+/Meeting Marketer Pro/
+/Pitch Deck/
+/Dreamhost Invoices/
+/MMPRO_logo.jpg
+/MMPRO_logo_small.png

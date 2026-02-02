@@ -5,14 +5,14 @@ import { supabase } from '@/lib/supabase';
 export const defaultContent: ContentData = {
   home: {
     hero: {
-      title: 'Empower Your Client Acquisition',
-      subtitle: 'Leverage AI and data intelligence to find and connect with your ideal clients efficiently',
-      ctaText: 'Get Started Today'
+      title: 'Run Scalable Seminar Marketing for Your FMO',
+      subtitle: 'One system to launch events, manage multiple advisors, track delivery, capture RSVPs, and report performance across the entire organization.',
+      ctaText: 'Request a Demo'
     },
     features: [
-      { title: 'Data-Driven Insights', description: 'Utilize advanced analytics to identify high-value prospects' },
-      { title: 'Targeted Outreach', description: 'Connect with the right clients at the right time' },
-      { title: 'Maximize ROI', description: 'Optimize your meeting strategy for maximum profitability' }
+      { title: 'Multi-Advisor + Multi-Branch', description: 'Support dozens of planners with consistent workflows and branding.' },
+      { title: 'End-to-End Event Setup', description: 'From list upload → templates → print/mail → RSVP tracking in one place.' },
+      { title: 'FMO Reporting', description: 'Roll-up reporting by advisor, branch, and campaign with audit-friendly exports.' }
     ]
   },
   contact: {

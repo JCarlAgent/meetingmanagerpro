@@ -3,23 +3,23 @@ import React from 'react';
 export const Testimonials: React.FC = () => {
   const testimonials = [
     {
-      name: 'Sarah Johnson',
-      role: 'Financial Planner',
-      content: 'Meeting Manager Pro has transformed how I connect with high net worth clients. My conversion rate has increased by 40%!',
+      name: 'Operations Director',
+      role: 'National FMO',
+      content: 'We standardized our seminar workflow across dozens of advisors and finally got consistent reporting in one place.',
       rating: 5,
       image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761376196602_2ee1a35e.webp'
     },
     {
-      name: 'Michael Chen',
-      role: 'Medicare Specialist',
-      content: 'The targeting tools are incredible. I can now reach people exactly when they need Medicare guidance. Game changer!',
+      name: 'Field Marketing Manager',
+      role: 'Advisor Support Team',
+      content: 'From list upload to delivery tracking to RSVPs, our team runs faster—and we can see what each branch is doing.',
       rating: 5,
       image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761376197392_5ad09e81.webp'
     },
     {
-      name: 'Dr. Emily Rodriguez',
-      role: 'Stem Cell Practitioner',
-      content: 'Finding qualified prospects used to take weeks. Now it takes days. The ROI has been phenomenal.',
+      name: 'Branch Leader',
+      role: 'Financial Planning Group',
+      content: 'The setup phases are clear for my advisors. We run more events with fewer mistakes—and reporting is automatic.',
       rating: 5,
       image: 'https://d64gsuwffb70l.cloudfront.net/68fc69ac6e6835e7f96893e9_1761376198122_7e171a8b.webp'
     }
@@ -30,7 +30,7 @@ export const Testimonials: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">What Our Clients Say</h2>
-          <p className="text-xl text-gray-600">Join thousands of satisfied professionals</p>
+          <p className="text-xl text-gray-600">Built for scale: FMOs, branches, and advisor teams</p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8">

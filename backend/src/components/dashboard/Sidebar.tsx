@@ -26,7 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
   const { user } = useAuth();
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
     { id: 'campaigns', label: 'Campaigns', icon: FolderKanban },
     { id: 'responders', label: 'Responders', icon: Users },
     { id: 'events', label: 'Events', icon: Calendar },

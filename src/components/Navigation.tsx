@@ -34,7 +34,7 @@ export const Navigation: React.FC = () => {
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 className="text-gray-700 hover:text-red-600 transition-colors font-medium flex items-center"
               >
-                Meeting Specialties
+                Solutions
                 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -42,10 +42,9 @@ export const Navigation: React.FC = () => {
               
               {isDropdownOpen && (
                 <div className="absolute left-0 mt-2 w-56 bg-white rounded-md shadow-lg py-2 z-50">
-                  <Link to="/financial-planners" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>Financial Planners</Link>
-                  <Link to="/medicare" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>Medicare</Link>
-                  <Link to="/stem-cell" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>Stem Cell</Link>
-                  <Link to="/reverse-mortgage" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>Reverse Mortgage</Link>
+                  <Link to="/financial-planners" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>For FMOs & Advisor Teams</Link>
+                  <Link to="/medicare" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>Medicare Events</Link>
+                  <Link to="/reverse-mortgage" className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600" onClick={() => setIsDropdownOpen(false)}>Retirement Events</Link>
                 </div>
               )}
             </div>
@@ -68,11 +67,10 @@ export const Navigation: React.FC = () => {
           <div className="md:hidden pb-4">
             <Link to="/" className="block py-2 text-gray-700 hover:text-red-600">Home</Link>
             <div className="pl-4">
-              <p className="py-2 text-gray-500 text-sm font-semibold">Meeting Specialties</p>
-              <Link to="/financial-planners" className="block py-2 text-gray-700 hover:text-red-600">Financial Planners</Link>
-              <Link to="/medicare" className="block py-2 text-gray-700 hover:text-red-600">Medicare</Link>
-              <Link to="/stem-cell" className="block py-2 text-gray-700 hover:text-red-600">Stem Cell</Link>
-              <Link to="/reverse-mortgage" className="block py-2 text-gray-700 hover:text-red-600">Reverse Mortgage</Link>
+              <p className="py-2 text-gray-500 text-sm font-semibold">Solutions</p>
+              <Link to="/financial-planners" className="block py-2 text-gray-700 hover:text-red-600">For FMOs & Advisor Teams</Link>
+              <Link to="/medicare" className="block py-2 text-gray-700 hover:text-red-600">Medicare Events</Link>
+              <Link to="/reverse-mortgage" className="block py-2 text-gray-700 hover:text-red-600">Retirement Events</Link>
             </div>
             <Link to="/mission" className="block py-2 text-gray-700 hover:text-red-600">Our Mission</Link>
             <Link to="/contact" className="block py-2 text-gray-700 hover:text-red-600">Contact</Link>

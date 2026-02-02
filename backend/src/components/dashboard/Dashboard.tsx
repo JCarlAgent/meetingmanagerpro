@@ -14,12 +14,13 @@ import EventsView from './EventsView';
 import RespondersView from './RespondersView';
 import AdminUsersView from './AdminUsersView';
 import TemplateManagerView from './TemplateManagerView';
+import MeetingSetupView from './MeetingSetupView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState('setup');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [responders, setResponders] = useState<Responder[]>([]);
@@ -89,6 +90,13 @@ const Dashboard: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
+      case 'setup':
+        return (
+          <MeetingSetupView
+            onNewCampaign={() => setShowNewCampaign(true)}
+            onNavigate={(view) => setActiveView(view)}
+          />
+        );
       case 'uploads':
         return <div className="max-w-2xl mx-auto"><CSVUpload campaigns={campaigns} events={events} onUploadComplete={fetchData} /></div>;
       case 'reports':
@@ -97,6 +105,8 @@ const Dashboard: React.FC = () => {
         return <EventsView events={events} campaigns={campaigns} responders={responders} onUpdateResponder={handleUpdateResponder} />;
       case 'responders':
         return <RespondersView responders={responders} campaigns={campaigns} events={events} onUpdateResponder={handleUpdateResponder} />;
+      case 'campaigns':
+        return renderDashboard();
       case 'admin-users':
         // Only render admin view if user is admin
         if (user?.is_admin) {
@@ -110,6 +120,9 @@ const Dashboard: React.FC = () => {
           return <TemplateManagerView />;
         }
         // Fallback to dashboard if not admin
+        return renderDashboard();
+      case 'templates':
+        // For now, reuse dashboard view; template manager is admin-only.
         return renderDashboard();
       default:
         return renderDashboard();
