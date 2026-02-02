@@ -25,14 +25,29 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewChange }) => {
   const { user } = useAuth();
 
-  const menuItems = [
-    { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
-    { id: 'campaigns', label: 'Campaigns', icon: FolderKanban },
-    { id: 'responders', label: 'Responders', icon: Users },
-    { id: 'events', label: 'Events', icon: Calendar },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
-    { id: 'uploads', label: 'CSV Uploads', icon: Upload },
-    { id: 'templates', label: 'Templates', icon: FileText },
+  const menuSections = [
+    {
+      title: 'Plan',
+      items: [
+        { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
+        { id: 'templates', label: 'Templates', icon: FileText },
+        { id: 'uploads', label: 'CSV Uploads', icon: Upload },
+      ],
+    },
+    {
+      title: 'Launch',
+      items: [
+        { id: 'campaigns', label: 'Campaigns', icon: FolderKanban },
+        { id: 'events', label: 'Events', icon: Calendar },
+      ],
+    },
+    {
+      title: 'Track + Report',
+      items: [
+        { id: 'responders', label: 'Responders', icon: Users },
+        { id: 'reports', label: 'Reports', icon: BarChart3 },
+      ],
+    },
   ];
 
   // Admin-only menu items
@@ -93,33 +108,42 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-2 overflow-y-auto">
-          <ul className="space-y-1">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeView === item.id;
-              
-              return (
-                <li key={item.id}>
-                  <button
-                    onClick={() => {
-                      onViewChange(item.id);
-                      onClose();
-                    }}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
-                      ${isActive 
-                        ? 'bg-red-600/20 text-red-400 border-l-2 border-red-500' 
-                        : 'text-slate-400 hover:text-white hover:bg-white/5'
-                      }
-                    `}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="font-medium">{item.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          {menuSections.map((section) => (
+            <div key={section.title} className="mb-4">
+              <div className="mt-2 mb-2 px-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  {section.title}
+                </p>
+              </div>
+              <ul className="space-y-1">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeView === item.id;
+
+                  return (
+                    <li key={item.id}>
+                      <button
+                        onClick={() => {
+                          onViewChange(item.id);
+                          onClose();
+                        }}
+                        className={`
+                          w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
+                          ${isActive
+                            ? 'bg-red-600/20 text-red-400 border-l-2 border-red-500'
+                            : 'text-slate-400 hover:text-white hover:bg-white/5'
+                          }
+                        `}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="font-medium">{item.label}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
 
           {/* Admin Section - Only visible to admins */}
           {user?.is_admin && (
