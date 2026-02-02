@@ -15,6 +15,7 @@ import RespondersView from './RespondersView';
 import AdminUsersView from './AdminUsersView';
 import TemplateManagerView from './TemplateManagerView';
 import MeetingSetupView from './MeetingSetupView';
+import SettingsView from './SettingsView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -124,6 +125,8 @@ const Dashboard: React.FC = () => {
       case 'templates':
         // For now, reuse dashboard view; template manager is admin-only.
         return renderDashboard();
+      case 'settings':
+        return <SettingsView />;
       default:
         return renderDashboard();
     }
