@@ -13,6 +13,7 @@ import EventsView from './EventsView';
 import RespondersView from './RespondersView';
 import AdminUsersView from './AdminUsersView';
 import TemplateManagerView from './TemplateManagerView';
+import TemplatesView from './TemplatesView';
 import MeetingSetupView from './MeetingSetupView';
 import SettingsView from './SettingsView';
 import DemographicsUploadView from './DemographicsUploadView';
@@ -138,8 +139,7 @@ const Dashboard: React.FC = () => {
         // Fallback to dashboard if not admin
         return renderDashboard();
       case 'templates':
-        // For now, reuse dashboard view; template manager is admin-only.
-        return renderDashboard();
+        return <TemplatesView />;
       case 'settings':
         return <SettingsView />;
       default:
