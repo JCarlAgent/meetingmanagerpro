@@ -28,6 +28,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
   const { user } = useAuth();
 
   const menuSections = [
+    ...(user?.is_master_admin
+      ? [
+          {
+            title: 'Master',
+            items: [{ id: 'master-clients', label: 'Clients', icon: Shield }],
+          },
+        ]
+      : []),
     {
       title: 'Plan',
       items: [

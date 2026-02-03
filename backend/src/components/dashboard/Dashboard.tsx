@@ -14,6 +14,7 @@ import RespondersView from './RespondersView';
 import AdminUsersView from './AdminUsersView';
 import TemplateManagerView from './TemplateManagerView';
 import TemplatesView from './TemplatesView';
+import MasterClientsView from './MasterClientsView';
 import MeetingSetupView from './MeetingSetupView';
 import SettingsView from './SettingsView';
 import DemographicsUploadView from './DemographicsUploadView';
@@ -35,6 +36,15 @@ const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => { fetchData(); }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    // Default master admins to the Clients view (onboarding workflow).
+    setActiveView((prev) => {
+      if (prev !== 'setup') return prev;
+      return user.is_master_admin ? 'master-clients' : 'setup';
+    });
+  }, [user]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -103,6 +113,8 @@ const Dashboard: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
+      case 'master-clients':
+        return <MasterClientsView onNavigate={(view) => setActiveView(view)} />;
       case 'setup':
         return (
           <MeetingSetupView

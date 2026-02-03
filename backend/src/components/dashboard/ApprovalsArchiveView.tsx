@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import { RefreshCw } from 'lucide-react';
 
 type JobRow = {
@@ -38,12 +39,14 @@ function formatJobLabel(job: JobRow) {
 
 const ApprovalsArchiveView: React.FC = () => {
   const { user } = useAuth();
+  const { actingOrg } = useActingOrg();
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [signoffs, setSignoffs] = useState<SignoffRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const canSee = Boolean(user?.is_admin || user?.is_master_admin);
+  const actingOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : null;
 
   const load = async () => {
     if (!canSee) return;
@@ -52,12 +55,18 @@ const ApprovalsArchiveView: React.FC = () => {
     setError(null);
 
     try {
+      let jobsQuery = supabase
+        .from('jobs')
+        .select('id, job_number, title, created_at')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (actingOrgId) {
+        jobsQuery = jobsQuery.eq('org_id', actingOrgId);
+      }
+
       const [{ data: jobsData, error: jobsErr }, { data: signData, error: signErr }] = await Promise.all([
-        supabase
-          .from('jobs')
-          .select('id, job_number, title, created_at')
-          .order('created_at', { ascending: false })
-          .limit(200),
+        jobsQuery,
         supabase
           .from('job_stage_signoffs')
           .select('id, job_id, stage, initials, signed_by_email, signed_by_user_id, updated_at, summary')
@@ -68,8 +77,16 @@ const ApprovalsArchiveView: React.FC = () => {
       if (jobsErr) throw jobsErr;
       if (signErr) throw signErr;
 
-      setJobs(((jobsData ?? []) as unknown as JobRow[]) || []);
-      setSignoffs(((signData ?? []) as unknown as SignoffRow[]) || []);
+      const nextJobs = (((jobsData ?? []) as unknown as JobRow[]) || []);
+      let nextSignoffs = (((signData ?? []) as unknown as SignoffRow[]) || []);
+
+      if (actingOrgId) {
+        const allowed = new Set(nextJobs.map((j) => j.id));
+        nextSignoffs = nextSignoffs.filter((s) => allowed.has(s.job_id));
+      }
+
+      setJobs(nextJobs);
+      setSignoffs(nextSignoffs);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load approvals');
     } finally {

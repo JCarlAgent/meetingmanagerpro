@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import { RefreshCw, Search } from 'lucide-react';
 
 type JobRow = {
@@ -35,6 +37,8 @@ function formatAddress(r: NonNullable<MailingRow['recipients']>) {
 }
 
 const MailingsReportView: React.FC = () => {
+  const { user } = useAuth();
+  const { actingOrg } = useActingOrg();
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [jobId, setJobId] = useState<string>('');
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
@@ -44,14 +48,33 @@ const MailingsReportView: React.FC = () => {
 
   const [search, setSearch] = useState('');
 
+  const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
+
+  if (user?.is_master_admin && !actingOrg?.id) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Mailings</h1>
+          <p className="text-slate-600 mt-2">Select a client first (Sidebar → Master → Clients).</p>
+        </div>
+      </div>
+    );
+  }
+
   const loadJobs = async () => {
     setIsLoadingJobs(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('jobs')
         .select('id, job_number, title, created_at')
         .order('created_at', { ascending: false })
         .limit(100);
+
+      if (effectiveOrgId) {
+        query = query.eq('org_id', effectiveOrgId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       setJobs(((data ?? []) as unknown as JobRow[]) || []);
       if (!jobId && data && data.length) {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import { 
   Menu, 
   Bell, 
@@ -19,6 +20,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { user, logout } = useAuth();
+  const { actingOrg, clearActingOrg } = useActingOrg();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -48,8 +50,24 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
           </button>
           
           <div className="hidden md:block">
-            <h1 className="text-lg font-semibold text-slate-900">{user?.company_name || 'Dashboard'}</h1>
+            <h1 className="text-lg font-semibold text-slate-900">
+              {(user?.is_master_admin && actingOrg?.id ? (actingOrg.name || 'Client Dashboard') : user?.company_name) || 'Dashboard'}
+            </h1>
             <p className="text-sm text-slate-600">{currentDate}</p>
+
+            {user?.is_master_admin && actingOrg?.id && (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900">
+                <span className="font-medium">Viewing as:</span>
+                <span className="truncate max-w-[240px]">{actingOrg.name || actingOrg.id}</span>
+                <button
+                  type="button"
+                  onClick={clearActingOrg}
+                  className="ml-1 rounded-md border border-amber-300 bg-white px-2 py-0.5 hover:bg-amber-100"
+                >
+                  Exit
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

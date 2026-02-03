@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import { Upload, FileText, Plus, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { patchSetupState } from '@/lib/setupState';
@@ -48,6 +49,7 @@ function formatJobLabel(job: JobRow) {
 
 const DemographicsUploadView: React.FC = () => {
   const { user } = useAuth();
+  const { actingOrg } = useActingOrg();
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState<string>('');
@@ -76,14 +78,33 @@ const DemographicsUploadView: React.FC = () => {
 
   const selectedJob = useMemo(() => jobs.find((j) => j.id === selectedJobId) || null, [jobs, selectedJobId]);
 
+  const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
+
+  if (user?.is_master_admin && !actingOrg?.id) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Demographics CSV</h1>
+          <p className="text-slate-600 mt-2">Select a client first (Sidebar → Master → Clients).</p>
+        </div>
+      </div>
+    );
+  }
+
   const loadJobs = async () => {
     setIsLoadingJobs(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('jobs')
         .select('id, job_number, title, status, created_at')
         .order('created_at', { ascending: false })
         .limit(50);
+
+      if (effectiveOrgId) {
+        query = query.eq('org_id', effectiveOrgId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setJobs(((data ?? []) as unknown as JobRow[]) || []);
@@ -128,7 +149,7 @@ const DemographicsUploadView: React.FC = () => {
   const createJob = async () => {
     setResult(null);
 
-    const orgId = user?.org_id;
+    const orgId = effectiveOrgId;
     if (!orgId) {
       setResult({ success: false, message: 'No org found for your user. Ask an admin to add you to an org.' });
       return;
@@ -187,7 +208,7 @@ const DemographicsUploadView: React.FC = () => {
       return;
     }
 
-    const orgId = user?.org_id;
+    const orgId = effectiveOrgId;
     if (!orgId) {
       setResult({ success: false, message: 'No org found for your user. Ask an admin to add you to an org.' });
       return;

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, FileText, Mail, MapPin, Phone, QrCode, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import FinalizeSummaryModal from './FinalizeSummaryModal';
 import {
   loadSetupState,
@@ -19,6 +20,7 @@ interface MeetingSetupViewProps {
 
 const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNavigate }) => {
   const { user } = useAuth();
+  const { actingOrg } = useActingOrg();
   const [jobs, setJobs] = useState<Array<{ id: string; job_number: string; title: string | null; status: string; org_id: string }>>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState('');
@@ -58,6 +60,25 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
   const [isSavingFinalize, setIsSavingFinalize] = useState(false);
 
   const isHydratedRef = useRef(false);
+
+  if (user?.is_master_admin && !actingOrg?.id) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Meeting Setup</h1>
+          <p className="text-slate-600 mt-2">Select a client first to continue onboarding.</p>
+          <button
+            type="button"
+            onClick={() => onNavigate('master-clients')}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
+          >
+            Go to Clients
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     try {
@@ -166,11 +187,19 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
   const loadJobs = async () => {
     setIsLoadingJobs(true);
     try {
-      const { data, error } = await supabase
+      const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
+
+      let query = supabase
         .from('jobs')
         .select('id, job_number, title, status, org_id')
         .order('created_at', { ascending: false })
         .limit(100);
+
+      if (effectiveOrgId) {
+        query = query.eq('org_id', effectiveOrgId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       const rows = ((data ?? []) as unknown as Array<{ id: string; job_number: string; title: string | null; status: string; org_id: string }>);
       setJobs(rows);
@@ -205,7 +234,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
   }, [user?.id]);
 
   const createJob = async () => {
-    const orgId = user?.org_id;
+    const orgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
     const title = newJobTitle.trim();
     if (!orgId) {
       alert('No org found for your user. Ask an admin to add you to an org.');

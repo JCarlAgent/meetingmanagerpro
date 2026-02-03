@@ -34,7 +34,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const orgId = (memberData as any)?.org_id ?? null;
       const isMaster = Boolean((masterData as any) ?? false);
 
-      const isAdmin = isMaster || orgRole === 'fmo_admin';
+      const isAdmin = isMaster || orgRole === 'fmo_admin' || orgRole === 'org_admin';
 
       return {
         ...baseUser,
