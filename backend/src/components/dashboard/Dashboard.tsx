@@ -55,6 +55,15 @@ const Dashboard: React.FC = () => {
     } catch (error) { console.error('Error:', error); }
   };
 
+  const handleUpdateCampaign = async (id: string, updates: Partial<Campaign>) => {
+    try {
+      await supabase.from('campaigns').update(updates).eq('id', id);
+      setCampaigns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
   const handleCreateCampaign = async (data: any) => {
     try {
       const projectId = Math.floor(50000 + Math.random() * 10000).toString();
@@ -192,7 +201,14 @@ const Dashboard: React.FC = () => {
         ) : (
           <div className="grid gap-4">
             {filteredCampaigns.map((campaign) => (
-              <CampaignCard key={campaign.id} campaign={campaign} events={getCampaignEvents(campaign.id)} responders={getCampaignResponders(campaign.id)} onUpdateResponder={handleUpdateResponder} />
+              <CampaignCard
+                key={campaign.id}
+                campaign={campaign}
+                events={getCampaignEvents(campaign.id)}
+                responders={getCampaignResponders(campaign.id)}
+                onUpdateResponder={handleUpdateResponder}
+                onUpdateCampaign={handleUpdateCampaign}
+              />
             ))}
           </div>
         )}

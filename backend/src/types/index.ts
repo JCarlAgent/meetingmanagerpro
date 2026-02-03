@@ -28,6 +28,7 @@ export interface Campaign {
   list_status: 'pending' | 'uploaded' | 'approved';
   prepped_status: boolean;
   produced_status: boolean;
+  paid_at?: string | null;
   created_at: string;
   updated_at: string;
   events?: Event[];

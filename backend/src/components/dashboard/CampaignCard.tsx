@@ -25,13 +25,15 @@ interface CampaignCardProps {
   events: Event[];
   responders: Responder[];
   onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void;
+  onUpdateCampaign: (campaignId: string, updates: Partial<Campaign>) => void;
 }
 
 const CampaignCard: React.FC<CampaignCardProps> = ({ 
   campaign, 
   events, 
   responders,
-  onUpdateResponder 
+  onUpdateResponder,
+  onUpdateCampaign,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -42,6 +44,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const totalReservations = totalResponders + totalGuests;
   const responseRate = ((totalResponders / campaign.mail_quantity) * 100).toFixed(2);
   const confirmedCount = responders.filter(r => r.confirmed).length;
+  const isPaid = Boolean(campaign.paid_at);
 
   const getStatusBgColor = (status: string) => {
     switch (status) {
@@ -88,6 +91,22 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border ${getStatusBgColor(campaign.status)}`}>
               {campaign.status}
             </span>
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateCampaign(campaign.id, {
+                  paid_at: isPaid ? null : new Date().toISOString(),
+                })
+              }
+              className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border transition-colors hover:opacity-90 ${
+                isPaid
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                  : 'bg-slate-500/10 text-slate-300 border-slate-500/30'
+              }`}
+              title={isPaid ? 'Click to mark unpaid' : 'Click to mark paid'}
+            >
+              {isPaid ? 'Paid' : 'Unpaid'}
+            </button>
             <span className="text-slate-400 text-sm hidden sm:inline">
               {new Date(campaign.created_at).toLocaleDateString()}
             </span>

@@ -2,8 +2,27 @@ export type RsvpMethod = 'call_center' | 'qr_code';
 
 export type DemographicsMode = 'printer' | 'upload';
 
+export type MeetingDraft = {
+  location_name: string;
+  address1: string;
+  city: string;
+  state: string;
+  date: string; // yyyy-mm-dd
+  time: string; // HH:mm
+};
+
 export type SetupState = {
   selectedJobId?: string;
+  selectedJobNumber?: string;
+  campaignTitle?: string;
+  mailQuantity?: number;
+
+  meetings?: MeetingDraft[];
+
+  templateId?: string;
+  templateName?: string;
+  templateThumbnailUrl?: string | null;
+
   rsvpMethods?: Record<RsvpMethod, boolean>;
   demographicsNotes?: string;
   demographicsMode?: DemographicsMode;
