@@ -17,6 +17,7 @@ import MeetingSetupView from './MeetingSetupView';
 import SettingsView from './SettingsView';
 import DemographicsUploadView from './DemographicsUploadView';
 import MailingsReportView from './MailingsReportView';
+import ApprovalsArchiveView from './ApprovalsArchiveView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -103,6 +104,8 @@ const Dashboard: React.FC = () => {
         return <DemographicsUploadView />;
       case 'mailings':
         return <MailingsReportView />;
+      case 'approvals':
+        return <ApprovalsArchiveView />;
       case 'reports':
         return <ReportsView campaigns={campaigns} events={events} responders={responders} />;
       case 'events':

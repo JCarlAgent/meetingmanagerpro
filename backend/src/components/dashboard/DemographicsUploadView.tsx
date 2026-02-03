@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Upload, FileText, Plus, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { patchSetupState } from '@/lib/setupState';
 
 type JobRow = {
   id: string;
@@ -101,6 +102,28 @@ const DemographicsUploadView: React.FC = () => {
     loadJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('mmp_selected_job_id');
+      if (stored && !selectedJobId) {
+        setSelectedJobId(stored);
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selectedJobId) return;
+    try {
+      window.localStorage.setItem('mmp_selected_job_id', selectedJobId);
+    } catch {
+      // ignore
+    }
+    patchSetupState({ selectedJobId });
+  }, [selectedJobId]);
 
   const createJob = async () => {
     setResult(null);
@@ -219,6 +242,7 @@ const DemographicsUploadView: React.FC = () => {
       const ingest = data as IngestResponse;
 
       setFile(null);
+      patchSetupState({ demographicsUploadedListName: file.name });
       setResult({
         success: true,
         message: `Ingested ${ingest.uniqueRecipients} unique recipients (${ingest.rowsParsed} rows parsed).`,

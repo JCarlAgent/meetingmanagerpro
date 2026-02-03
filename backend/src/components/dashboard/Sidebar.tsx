@@ -7,6 +7,7 @@ import {
   FileText, 
   Upload, 
   Mail,
+  ClipboardCheck,
   BarChart3, 
   Settings,
   Plus,
@@ -47,6 +48,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       items: [
         { id: 'responders', label: 'Responders', icon: Users },
         { id: 'mailings', label: 'Mailings', icon: Mail },
+        ...(user?.is_admin ? [{ id: 'approvals', label: 'Approvals', icon: ClipboardCheck }] : []),
         { id: 'reports', label: 'Reports', icon: BarChart3 },
       ],
     },
