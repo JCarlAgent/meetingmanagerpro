@@ -6,6 +6,11 @@ export interface User {
   phone: string;
   created_at: string;
   is_admin: boolean;
+
+  // Multi-tenant / RBAC (optional until schema is fully wired)
+  org_id?: string | null;
+  org_role?: 'advisor' | 'fmo_admin' | null;
+  is_master_admin?: boolean;
 }
 
 export interface Campaign {

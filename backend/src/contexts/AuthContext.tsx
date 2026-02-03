@@ -17,6 +17,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isLoading: true,
   });
 
+  const hydrateUserRbac = async (baseUser: User): Promise<User> => {
+    // Best-effort RBAC hydration. Safe to fail while the DB/schema is being migrated.
+    try {
+      const [{ data: memberData }, { data: masterData }] = await Promise.all([
+        supabase
+          .from('org_members')
+          .select('org_id, role')
+          .eq('user_id', baseUser.id)
+          .limit(1)
+          .maybeSingle(),
+        supabase.rpc('is_master_admin'),
+      ]);
+
+      const orgRole = (memberData as any)?.role ?? null;
+      const orgId = (memberData as any)?.org_id ?? null;
+      const isMaster = Boolean((masterData as any) ?? false);
+
+      const isAdmin = isMaster || orgRole === 'fmo_admin';
+
+      return {
+        ...baseUser,
+        org_id: orgId,
+        org_role: orgRole,
+        is_master_admin: isMaster,
+        is_admin: isAdmin,
+      };
+    } catch {
+      return baseUser;
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -28,7 +59,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (sessionUser) {
         // Map Supabase user -> our User type
-        const user: User = {
+        const userBase: User = {
           id: sessionUser.id,
           email: sessionUser.email ?? '',
           company_name: null,
@@ -37,6 +68,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           created_at: sessionUser.created_at,
           is_admin: false,
         };
+
+        const user = await hydrateUserRbac(userBase);
         localStorage.setItem('mmp_user', JSON.stringify(user));
         setAuthState({ user, isAuthenticated: true, isLoading: false });
         return;
@@ -65,7 +98,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!isMounted) return;
 
       if (sessionUser) {
-        const user: User = {
+        const userBase: User = {
           id: sessionUser.id,
           email: sessionUser.email ?? '',
           company_name: null,
@@ -74,8 +107,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           created_at: sessionUser.created_at,
           is_admin: false,
         };
-        localStorage.setItem('mmp_user', JSON.stringify(user));
-        setAuthState({ user, isAuthenticated: true, isLoading: false });
+        hydrateUserRbac(userBase).then((user) => {
+          if (!isMounted) return;
+          localStorage.setItem('mmp_user', JSON.stringify(user));
+          setAuthState({ user, isAuthenticated: true, isLoading: false });
+        });
       } else {
         localStorage.removeItem('mmp_user');
         setAuthState({ user: null, isAuthenticated: false, isLoading: false });
@@ -100,7 +136,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: false, error: 'No user returned from Supabase' };
       }
 
-      const user: User = {
+      const userBase: User = {
         id: sessionUser.id,
         email: sessionUser.email ?? email,
         company_name: null,
@@ -109,6 +145,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         created_at: sessionUser.created_at,
         is_admin: false,
       };
+
+      const user = await hydrateUserRbac(userBase);
 
       // onAuthStateChange will also update state, but we set immediately for snappy UI
       localStorage.setItem('mmp_user', JSON.stringify(user));
