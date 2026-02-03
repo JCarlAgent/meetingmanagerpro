@@ -91,15 +91,15 @@ const StatsOverview: React.FC<StatsOverviewProps> = ({ campaigns, events, respon
         return (
           <div 
             key={index}
-            className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-4 hover:border-white/20 transition-all"
+            className="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-300 transition-all shadow-sm"
           >
             <div className="flex items-center justify-between mb-3">
               <div className={`p-2 rounded-lg ${stat.bgColor}`}>
                 <Icon className={`w-5 h-5 ${stat.iconColor}`} />
               </div>
             </div>
-            <div className="text-2xl font-bold text-white mb-1">{stat.value}</div>
-            <div className="text-xs text-slate-400">{stat.label}</div>
+            <div className="text-2xl font-bold text-slate-900 mb-1">{stat.value}</div>
+            <div className="text-xs text-slate-700">{stat.label}</div>
             <div className="text-xs text-slate-500 mt-1">{stat.subValue}</div>
           </div>
         );

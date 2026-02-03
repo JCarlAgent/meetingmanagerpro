@@ -51,10 +51,7 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
   });
 
   const templates = [
-    { id: 'financial', name: 'Financial Planners', description: 'Retirement & wealth management seminars' },
-    { id: 'medicare', name: 'Medicare Specialists', description: 'Medicare enrollment meetings' },
-    { id: 'stem_cell', name: 'Stem Cell Practitioners', description: 'Regenerative medicine seminars' },
-    { id: 'reverse_mortgage', name: 'Reverse Mortgage', description: 'Home equity education events' },
+    { id: 'financial', name: 'Financial Planning', description: 'Retirement & wealth management seminars' },
   ];
 
   const addEvent = () => {
@@ -105,27 +102,27 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       
       {/* Modal */}
-      <div className="relative bg-slate-800 rounded-2xl border border-white/10 w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
+      <div className="relative bg-white rounded-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div>
-            <h2 className="text-xl font-semibold text-white">Create New Campaign</h2>
-            <p className="text-sm text-slate-400">Step {step} of 4</p>
+            <h2 className="text-xl font-semibold text-slate-900">Create New Campaign</h2>
+            <p className="text-sm text-slate-600">Step {step} of 4</p>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+            className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Progress Bar */}
-        <div className="px-6 py-3 bg-slate-900/50">
+        <div className="px-6 py-3 bg-slate-50">
           <div className="flex items-center gap-2">
             {[1, 2, 3, 4].map((s) => (
               <div key={s} className="flex-1">
-                <div className={`h-1.5 rounded-full transition-colors ${s <= step ? 'bg-red-500' : 'bg-slate-700'}`} />
+                <div className={`h-1.5 rounded-full transition-colors ${s <= step ? 'bg-red-500' : 'bg-slate-200'}`} />
               </div>
             ))}
           </div>
@@ -142,7 +139,8 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
           {/* Step 1: Template Selection */}
           {step === 1 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium text-white mb-4">Select Your Industry Template</h3>
+              <h3 className="text-lg font-medium text-slate-900 mb-1">Select your template</h3>
+              <p className="text-sm text-slate-600">v1 is financial-planner-first. Medicare templates are next.</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {templates.map((template) => (
                   <button
@@ -150,17 +148,17 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
                     onClick={() => setFormData({ ...formData, template_type: template.id })}
                     className={`p-4 rounded-xl border text-left transition-all ${
                       formData.template_type === template.id
-                        ? 'bg-red-500/20 border-red-500 text-white'
-                        : 'bg-slate-900/50 border-white/10 text-slate-300 hover:border-white/30'
+                        ? 'bg-red-50 border-red-200 text-slate-900'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-semibold">{template.name}</span>
                       {formData.template_type === template.id && (
-                        <Check className="w-5 h-5 text-red-400" />
+                        <Check className="w-5 h-5 text-red-500" />
                       )}
                     </div>
-                    <p className="text-sm text-slate-400">{template.description}</p>
+                    <p className="text-sm text-slate-600">{template.description}</p>
                   </button>
                 ))}
               </div>

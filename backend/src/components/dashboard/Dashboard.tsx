@@ -8,7 +8,6 @@ import StatsOverview from './StatsOverview';
 import CampaignCard from './CampaignCard';
 import NewCampaignModal from './NewCampaignModal';
 import AddResponderModal from './AddResponderModal';
-import CSVUpload from './CSVUpload';
 import ReportsView from './ReportsView';
 import EventsView from './EventsView';
 import RespondersView from './RespondersView';
@@ -16,6 +15,8 @@ import AdminUsersView from './AdminUsersView';
 import TemplateManagerView from './TemplateManagerView';
 import MeetingSetupView from './MeetingSetupView';
 import SettingsView from './SettingsView';
+import DemographicsUploadView from './DemographicsUploadView';
+import MailingsReportView from './MailingsReportView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -99,7 +100,9 @@ const Dashboard: React.FC = () => {
           />
         );
       case 'uploads':
-        return <div className="max-w-2xl mx-auto"><CSVUpload campaigns={campaigns} events={events} onUploadComplete={fetchData} /></div>;
+        return <DemographicsUploadView />;
+      case 'mailings':
+        return <MailingsReportView />;
       case 'reports':
         return <ReportsView campaigns={campaigns} events={events} responders={responders} />;
       case 'events':
@@ -140,25 +143,25 @@ const Dashboard: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
             <FolderKanban className="w-6 h-6 text-red-400" />
-            <h2 className="text-xl font-semibold text-white">Your Campaigns</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Your Campaigns</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-slate-800/50 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 w-40" />
+                className="bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/30 w-40" />
             </div>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="bg-slate-800/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/50">
+              className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30">
               <option value="all">All Status</option>
               <option value="active">Active</option>
               <option value="pending">Pending</option>
               <option value="closed">Closed</option>
             </select>
-            <button onClick={() => setShowAddResponder(true)} className="flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Add Responder">
+            <button onClick={() => setShowAddResponder(true)} className="flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors" title="Add Responder">
               <UserPlus className="w-5 h-5" />
             </button>
-            <button onClick={fetchData} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors" title="Refresh">
+            <button onClick={fetchData} className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors" title="Refresh">
               <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
             <button onClick={() => setShowNewCampaign(true)} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors">
@@ -195,7 +198,7 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen bg-slate-50">
       <div className="flex">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} activeView={activeView}
           onViewChange={(view) => { if (view === 'new-campaign') { setShowNewCampaign(true); } else { setActiveView(view); } setSidebarOpen(false); }} />

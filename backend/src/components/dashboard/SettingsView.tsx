@@ -78,18 +78,18 @@ const SettingsView: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-white">Settings</h1>
-        <p className="text-slate-400 mt-1">Configure integrations for your account.</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
+        <p className="text-slate-600 mt-1">Configure integrations for your account.</p>
       </div>
 
-      <div className="bg-slate-800/50 rounded-xl border border-white/10 p-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-red-600/20 rounded-lg flex items-center justify-center">
-            <Plug className="w-5 h-5 text-red-400" />
+          <div className="w-10 h-10 bg-red-600/10 rounded-lg flex items-center justify-center">
+            <Plug className="w-5 h-5 text-red-600" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-semibold text-white">Teledirect — Work The Lead</h2>
-            <p className="text-sm text-slate-400 mt-1">
+            <h2 className="text-lg font-semibold text-slate-900">Teledirect — Work The Lead</h2>
+            <p className="text-sm text-slate-600 mt-1">
               Enter your Teledirect API login. Stored securely server-side; never saved in the browser.
             </p>
 
@@ -102,7 +102,7 @@ const SettingsView: React.FC = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Your WorkTheLead UserName"
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900/40 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                 />
               </div>
               <div>
@@ -110,16 +110,16 @@ const SettingsView: React.FC = () => {
                   Password
                 </label>
                 <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password to save/update"
-                    className="mt-2 w-full rounded-lg border border-white/10 bg-slate-900/40 pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   />
                 </div>
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 text-xs text-slate-500">
                   For security, the password is not displayed once saved.
                 </p>
               </div>
@@ -138,7 +138,7 @@ const SettingsView: React.FC = () => {
                   type="button"
                   onClick={testConnection}
                   disabled={isTesting}
-                  className="inline-flex items-center gap-2 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-slate-200 font-medium px-4 py-2 rounded-lg transition-colors border border-white/10"
+                  className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 font-medium px-4 py-2 rounded-lg transition-colors border border-slate-200"
                 >
                   <TestTube2 className="w-4 h-4" />
                   {isTesting ? 'Testing…' : 'Test connection'}
@@ -146,7 +146,7 @@ const SettingsView: React.FC = () => {
               </div>
 
               {status && (
-                <div className="mt-3 text-sm text-slate-200 rounded-lg border border-white/10 bg-slate-900/30 px-3 py-2">
+                <div className="mt-3 text-sm text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   {status}
                 </div>
               )}

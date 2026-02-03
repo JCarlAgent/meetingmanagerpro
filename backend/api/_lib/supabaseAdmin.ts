@@ -35,3 +35,20 @@ export async function requireUserIdFromAuthHeader(req: any): Promise<string> {
 
   return data.user.id;
 }
+
+export async function requireUserFromAuthHeader(req: any): Promise<{ id: string; email: string | null }>{
+  const authHeader = req.headers?.authorization || req.headers?.Authorization;
+  if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Missing Authorization bearer token');
+  }
+
+  const token = authHeader.slice('Bearer '.length).trim();
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user?.id) {
+    throw new Error('Invalid auth token');
+  }
+
+  return { id: data.user.id, email: data.user.email ?? null };
+}

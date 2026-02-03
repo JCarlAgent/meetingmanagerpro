@@ -6,6 +6,7 @@ import {
   Calendar, 
   FileText, 
   Upload, 
+  Mail,
   BarChart3, 
   Settings,
   Plus,
@@ -31,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       items: [
         { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
         { id: 'templates', label: 'Templates', icon: FileText },
-        { id: 'uploads', label: 'CSV Uploads', icon: Upload },
+        { id: 'uploads', label: 'Demographics CSV', icon: Upload },
       ],
     },
     {
@@ -45,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       title: 'Track + Report',
       items: [
         { id: 'responders', label: 'Responders', icon: Users },
+        { id: 'mailings', label: 'Mailings', icon: Mail },
         { id: 'reports', label: 'Reports', icon: BarChart3 },
       ],
     },
@@ -69,13 +71,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       {/* Sidebar */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50
-        w-64 bg-slate-900 border-r border-white/10
+        w-64 bg-white border-r border-slate-200
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         flex flex-col
       `}>
         {/* Logo */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,13 +85,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
               </svg>
             </div>
             <div>
-              <span className="text-lg font-bold text-white">MMP</span>
-              <span className="text-xs text-slate-400 block">Dashboard</span>
+              <span className="text-lg font-bold text-slate-900">MMP</span>
+              <span className="text-xs text-slate-500 block">Dashboard</span>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="lg:hidden p-1 text-slate-400 hover:text-white transition-colors"
+            className="lg:hidden p-1 text-slate-500 hover:text-slate-900 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -131,7 +133,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
                           w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
                           ${isActive
                             ? 'bg-red-600/20 text-red-400 border-l-2 border-red-500'
-                            : 'text-slate-400 hover:text-white hover:bg-white/5'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                           }
                         `}
                       >
@@ -168,8 +170,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
                         className={`
                           w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
                           ${isActive 
-                            ? 'bg-red-600/20 text-red-400 border-l-2 border-red-500' 
-                            : 'text-slate-400 hover:text-white hover:bg-white/5'
+                            ? 'bg-red-600/10 text-red-700 border-l-2 border-red-500' 
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                           }
                         `}
                       >
@@ -185,14 +187,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
         </nav>
 
         {/* Settings */}
-        <div className="p-3 border-t border-white/10">
+        <div className="p-3 border-t border-slate-200">
           <button
             onClick={() => onViewChange('settings')}
             className={`
               w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
               ${activeView === 'settings' 
-                ? 'bg-red-600/20 text-red-400' 
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                ? 'bg-red-600/10 text-red-700' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }
             `}
           >
@@ -202,7 +204,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 border-t border-slate-200">
           <div className="flex items-center gap-2">
             <img 
               src="https://d64gsuwffb70l.cloudfront.net/6870115d9722f8859b7ed68f_1761371051469_dd208754.png" 
