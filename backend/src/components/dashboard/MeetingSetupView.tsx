@@ -347,6 +347,8 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       setIsFinalizeOpen(false);
       // For now, route to reports after finalize.
       onNavigate('reports');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to finalize');
     } finally {
       setIsSavingFinalize(false);
     }
@@ -525,38 +527,36 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
               <button
                 type="button"
                 onClick={async () => {
-                  const job = requireJob();
-                  if (!job) return;
-                  if (meetings.length === 0) {
-                    alert('Add at least one meeting.');
-                    return;
+                  try {
+                    const job = requireJob();
+                    if (!job) return;
+                    if (meetings.length === 0) {
+                      alert('Add at least one meeting.');
+                      return;
+                    }
+
+                    // Replace meetings for this job
+                    const { error: delErr } = await supabase.from('job_meetings').delete().eq('job_id', job.id);
+                    if (delErr) throw delErr;
+
+                    const payload = meetings.map((m) => ({
+                      job_id: job.id,
+                      location_name: m.location_name,
+                      address1: m.address1,
+                      city: m.city,
+                      state: m.state,
+                      starts_at: new Date(`${m.date}T${m.time}:00`).toISOString(),
+                    }));
+
+                    const { error: insErr } = await supabase.from('job_meetings').insert(payload);
+                    if (insErr) throw insErr;
+
+                    await patchJobNotes({ meetings });
+                    await upsertSignoff('locations', { meetings });
+                    alert('Locations confirmed.');
+                  } catch (err: unknown) {
+                    alert(err instanceof Error ? err.message : 'Failed to confirm locations');
                   }
-
-                  // Replace meetings for this job
-                  const { error: delErr } = await supabase.from('job_meetings').delete().eq('job_id', job.id);
-                  if (delErr) {
-                    alert(delErr.message);
-                    return;
-                  }
-
-                  const payload = meetings.map((m) => ({
-                    job_id: job.id,
-                    location_name: m.location_name,
-                    address1: m.address1,
-                    city: m.city,
-                    state: m.state,
-                    starts_at: new Date(`${m.date}T${m.time}:00`).toISOString(),
-                  }));
-
-                  const { error: insErr } = await supabase.from('job_meetings').insert(payload);
-                  if (insErr) {
-                    alert(insErr.message);
-                    return;
-                  }
-
-                  await patchJobNotes({ meetings });
-                  await upsertSignoff('locations', { meetings });
-                  alert('Locations confirmed.');
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
               >
@@ -618,16 +618,20 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
               <button
                 type="button"
                 onClick={async () => {
-                  const job = requireJob();
-                  if (!job) return;
-                  if (!selectedTemplate) {
-                    alert('Select a template first.');
-                    return;
+                  try {
+                    const job = requireJob();
+                    if (!job) return;
+                    if (!selectedTemplate) {
+                      alert('Select a template first.');
+                      return;
+                    }
+                    patchSetupState({ templateId: selectedTemplate.id, templateName: selectedTemplate.name, templateThumbnailUrl: selectedTemplate.thumbnail_url });
+                    await patchJobNotes({ templateId: selectedTemplate.id, templateName: selectedTemplate.name, templateThumbnailUrl: selectedTemplate.thumbnail_url });
+                    await upsertSignoff('template', { template: selectedTemplate });
+                    alert('Template confirmed.');
+                  } catch (err: unknown) {
+                    alert(err instanceof Error ? err.message : 'Failed to confirm template');
                   }
-                  patchSetupState({ templateId: selectedTemplate.id, templateName: selectedTemplate.name, templateThumbnailUrl: selectedTemplate.thumbnail_url });
-                  await patchJobNotes({ templateId: selectedTemplate.id, templateName: selectedTemplate.name, templateThumbnailUrl: selectedTemplate.thumbnail_url });
-                  await upsertSignoff('template', { template: selectedTemplate });
-                  alert('Template confirmed.');
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
               >
@@ -687,11 +691,15 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
               <button
                 type="button"
                 onClick={async () => {
-                  const job = requireJob();
-                  if (!job) return;
-                  await patchJobNotes({ rsvpMethods });
-                  await upsertSignoff('rsvp', { rsvpMethods });
-                  alert('Confirmation methods confirmed.');
+                  try {
+                    const job = requireJob();
+                    if (!job) return;
+                    await patchJobNotes({ rsvpMethods });
+                    await upsertSignoff('rsvp', { rsvpMethods });
+                    alert('Confirmation methods confirmed.');
+                  } catch (err: unknown) {
+                    alert(err instanceof Error ? err.message : 'Failed to confirm confirmation methods');
+                  }
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
               >
@@ -776,20 +784,24 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
               <button
                 type="button"
                 onClick={async () => {
-                  const job = requireJob();
-                  if (!job) return;
-                  const state = loadSetupState();
-                  if (demographicsMode === 'upload' && !state.demographicsUploadedListName) {
-                    alert('Upload a list (or switch to printer-provided demographics) before confirming.');
-                    return;
+                  try {
+                    const job = requireJob();
+                    if (!job) return;
+                    const state = loadSetupState();
+                    if (demographicsMode === 'upload' && !state.demographicsUploadedListName) {
+                      alert('Upload a list (or switch to printer-provided demographics) before confirming.');
+                      return;
+                    }
+                    await patchJobNotes({ demographicsMode, demographicsNotes, demographicsUploadedListName: state.demographicsUploadedListName ?? null });
+                    await upsertSignoff('demographics', {
+                      demographicsMode,
+                      demographicsNotes,
+                      demographicsUploadedListName: state.demographicsUploadedListName ?? null,
+                    });
+                    alert('Mailing list details confirmed.');
+                  } catch (err: unknown) {
+                    alert(err instanceof Error ? err.message : 'Failed to confirm mailing list details');
                   }
-                  await patchJobNotes({ demographicsMode, demographicsNotes, demographicsUploadedListName: state.demographicsUploadedListName ?? null });
-                  await upsertSignoff('demographics', {
-                    demographicsMode,
-                    demographicsNotes,
-                    demographicsUploadedListName: state.demographicsUploadedListName ?? null,
-                  });
-                  alert('Mailing list details confirmed.');
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
               >
