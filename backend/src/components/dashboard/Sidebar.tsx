@@ -13,6 +13,7 @@ import {
   Plus,
   X,
   Shield,
+  Building2,
   FileImage
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
