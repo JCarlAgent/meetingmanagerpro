@@ -18,6 +18,13 @@ type OrgMemberRow = {
   created_at: string;
 };
 
+type IndependentAdvisorRow = {
+  org: OrgRow;
+  userId: string;
+  role: string;
+  addedAt: string;
+};
+
 function isFmoRole(role: string | null | undefined) {
   return role === 'fmo_admin' || role === 'org_admin';
 }
@@ -73,6 +80,18 @@ function slugify(raw: string) {
     .slice(0, 64);
 }
 
+function displayAdvisorNameFromOrg(org: OrgRow): string {
+  const base = (org.name || org.slug || '').trim();
+  if (!base) return org.id;
+  return base.replace(/\s*\(\s*independent\s*\)\s*/gi, '').trim() || base;
+}
+
+function shortId(id: string): string {
+  if (!id) return '';
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 6)}…${id.slice(-6)}`;
+}
+
 interface MasterClientsViewProps {
   onNavigate: (view: string) => void;
 }
@@ -94,6 +113,11 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
   const [orgName, setOrgName] = useState('');
   const [openAfterCreate, setOpenAfterCreate] = useState(true);
   const [isSubmittingIndependent, setIsSubmittingIndependent] = useState(false);
+
+  const [isMovingAdvisor, setIsMovingAdvisor] = useState(false);
+  const [moveSource, setMoveSource] = useState<IndependentAdvisorRow | null>(null);
+  const [moveTargetOrgId, setMoveTargetOrgId] = useState<string>('');
+  const [isSubmittingMove, setIsSubmittingMove] = useState(false);
 
   const load = async () => {
     setIsLoading(true);
@@ -175,7 +199,35 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
   }, [orgs, members]);
 
   const fmos = rows.filter((r) => r.fmoAdmins > 0);
-  const independents = rows.filter((r) => r.fmoAdmins === 0 && r.advisors > 0);
+
+  const independentAdvisors = useMemo(() => {
+    const byOrgId = new Map(orgs.map((o) => [o.id, o] as const));
+    const fmoOrgIds = new Set(rows.filter((r) => r.fmoAdmins > 0).map((r) => r.org.id));
+
+    const list: IndependentAdvisorRow[] = [];
+    for (const m of members) {
+      if (!isAdvisorRole(m.role)) continue;
+      if (fmoOrgIds.has(m.org_id)) continue;
+      const org = byOrgId.get(m.org_id);
+      if (!org) continue;
+      list.push({ org, userId: m.user_id, role: m.role, addedAt: m.created_at });
+    }
+
+    list.sort((a, b) => {
+      const aName = displayAdvisorNameFromOrg(a.org).toLowerCase();
+      const bName = displayAdvisorNameFromOrg(b.org).toLowerCase();
+      if (aName !== bName) return aName.localeCompare(bName);
+      return a.userId.localeCompare(b.userId);
+    });
+
+    return list;
+  }, [members, orgs, rows]);
+
+  const fmoOptions = useMemo(() => {
+    return fmos
+      .map((r) => ({ id: r.org.id, name: (r.org.name || r.org.slug || r.org.id) as string }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [fmos]);
 
   const addIndependentAdvisor = async () => {
     setError(null);
@@ -188,11 +240,10 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
     }
 
     const namePart = advisorName.trim();
-    const defaultOrgName = namePart ? `${namePart} (Independent)` : `${email} (Independent)`;
-    const nextOrgName = (orgName.trim() || defaultOrgName).trim();
+    const nextOrgName = (orgName.trim() || namePart).trim();
 
     if (!nextOrgName) {
-      setError('Enter a valid organization name.');
+      setError('Enter the advisor full name.');
       return;
     }
 
@@ -247,13 +298,74 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
       await load();
 
       if (openAfterCreate) {
-        setActingOrg({ id: createdOrgId, name: createdOrgName });
+        setActingOrg({ id: createdOrgId, name: displayAdvisorNameFromOrg({ ...createData?.org, name: createdOrgName } as any) });
         onNavigate('setup');
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
       setIsSubmittingIndependent(false);
+    }
+  };
+
+  const beginMoveToFmo = (source: IndependentAdvisorRow) => {
+    setError(null);
+    setSuccess(null);
+    setMoveSource(source);
+    if (!moveTargetOrgId && fmoOptions.length) {
+      setMoveTargetOrgId(fmoOptions[0].id);
+    }
+    setIsMovingAdvisor(true);
+  };
+
+  const moveAdvisorToFmo = async () => {
+    setError(null);
+    setSuccess(null);
+
+    if (!moveSource) {
+      setError('No advisor selected to move.');
+      return;
+    }
+    if (!moveTargetOrgId) {
+      setError('Select a destination FMO.');
+      return;
+    }
+    if (moveSource.org.id === moveTargetOrgId) {
+      setError('Source and destination must be different.');
+      return;
+    }
+
+    setIsSubmittingMove(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/transferMember', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fromOrgId: moveSource.org.id,
+          toOrgId: moveTargetOrgId,
+          userId: moveSource.userId,
+          removeFromSource: true,
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(await readResponseError(resp));
+      }
+
+      setIsMovingAdvisor(false);
+      setMoveSource(null);
+      setSuccess('Advisor moved under the selected FMO.');
+      await load();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSubmittingMove(false);
     }
   };
 
@@ -354,14 +466,14 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Advisor name (optional)</label>
+                <label className="block text-sm font-medium text-slate-700">Advisor full name</label>
                 <input
                   value={advisorName}
                   onChange={(e) => {
                     setAdvisorName(e.target.value);
                     if (!orgName.trim()) {
                       const next = e.target.value.trim();
-                      if (next) setOrgName(`${next} (Independent)`);
+                      if (next) setOrgName(next);
                     }
                   }}
                   placeholder="A. Jones"
@@ -370,14 +482,14 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Org name (optional)</label>
+                <label className="block text-sm font-medium text-slate-700">Display name (optional override)</label>
                 <input
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
-                  placeholder="A. Jones (Independent)"
+                  placeholder="A. Jones"
                   className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                 />
-                <p className="mt-2 text-xs text-slate-500">If left blank, it auto-generates from name/email.</p>
+                <p className="mt-2 text-xs text-slate-500">This is what shows on the Clients list.</p>
               </div>
 
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -398,6 +510,58 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
               >
                 <UserPlus className="w-4 h-4" />
                 {isSubmittingIndependent ? 'Adding…' : 'Create and invite/add'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMovingAdvisor && moveSource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => (!isSubmittingMove ? setIsMovingAdvisor(false) : null)} />
+          <div className="relative w-full max-w-lg rounded-xl bg-white border border-slate-200 shadow-2xl p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold text-slate-900">Move advisor under an FMO</div>
+                <div className="mt-1 text-sm text-slate-600">
+                  {displayAdvisorNameFromOrg(moveSource.org)} • Advisor ID: <span className="font-mono">{shortId(moveSource.userId)}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMovingAdvisor(false)}
+                disabled={isSubmittingMove}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Destination FMO</label>
+                <select
+                  value={moveTargetOrgId}
+                  onChange={(e) => setMoveTargetOrgId(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                >
+                  <option value="">Select…</option>
+                  {fmoOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+                {fmoOptions.length === 0 && <div className="mt-2 text-xs text-amber-700">No FMOs found yet.</div>}
+              </div>
+
+              <button
+                type="button"
+                onClick={moveAdvisorToFmo}
+                disabled={isSubmittingMove || fmoOptions.length === 0}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                {isSubmittingMove ? 'Moving…' : 'Move to FMO'}
               </button>
             </div>
           </div>
@@ -459,43 +623,48 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
         <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <Users className="w-5 h-5 text-red-400" />
-            <h2 className="text-lg font-semibold text-slate-900">Independent Advisors</h2>
-            <span className="text-xs text-slate-500">({independents.length})</span>
+            <h2 className="text-lg font-semibold text-slate-900">Advisors</h2>
+            <span className="text-xs text-slate-500">({independentAdvisors.length})</span>
           </div>
 
           {isLoading ? (
             <div className="text-slate-500">Loading…</div>
-          ) : independents.length === 0 ? (
-            <div className="text-slate-500">No independent advisors found.</div>
+          ) : independentAdvisors.length === 0 ? (
+            <div className="text-slate-500">No advisors found.</div>
           ) : (
             <div className="space-y-3">
-              {independents.map((r) => (
-                <div key={r.org.id} className="rounded-xl border border-slate-200 p-4">
+              {independentAdvisors.map((r) => (
+                <div key={`${r.org.id}:${r.userId}`} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-slate-900">{r.org.name || r.org.slug || r.org.id}</div>
-                      <div className="mt-1 text-xs text-slate-500">Org ID: {r.org.id}</div>
+                      <div className="font-semibold text-slate-900">{displayAdvisorNameFromOrg(r.org)}</div>
+                      <div className="mt-1 text-xs text-slate-500">Advisor ID: {shortId(r.userId)}</div>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-700">
-                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1">
-                          Advisors: <span className="font-semibold">{r.advisors}</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1">
-                          Members: <span className="font-semibold">{r.membersTotal}</span>
-                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1">Role: <span className="font-semibold">{r.role}</span></span>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActingOrg({ id: r.org.id, name: r.org.name });
-                        onNavigate('setup');
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-sm font-semibold transition-colors"
-                    >
-                      Open dashboard
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActingOrg({ id: r.org.id, name: displayAdvisorNameFromOrg(r.org) });
+                          onNavigate('setup');
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-sm font-semibold transition-colors"
+                      >
+                        Open dashboard
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => beginMoveToFmo(r)}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 transition-colors"
+                      >
+                        Move to FMO
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

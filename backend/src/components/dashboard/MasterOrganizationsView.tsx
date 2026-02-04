@@ -105,6 +105,8 @@ const MasterOrganizationsView: React.FC = () => {
   const [newOrgSlug, setNewOrgSlug] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
+  const [showAllOrgs, setShowAllOrgs] = useState(false);
+
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'fmo_admin' | 'advisor'>('fmo_admin');
   const [isInviting, setIsInviting] = useState(false);
@@ -147,8 +149,9 @@ const MasterOrganizationsView: React.FC = () => {
         setTransferTargetOrgId(nextFmoOptions[0].id);
       }
 
-      if (!selectedOrgId && nextOrgs.length) {
-        setSelectedOrgId(nextOrgs[0].id);
+      const visibleOrgs = showAllOrgs ? nextOrgs : nextOrgs.filter((o) => fmoOrgIds.has(o.id));
+      if (!selectedOrgId && visibleOrgs.length) {
+        setSelectedOrgId(visibleOrgs[0].id);
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err) || 'Failed to load organizations');
@@ -173,7 +176,20 @@ const MasterOrganizationsView: React.FC = () => {
     }
   }, [success, error]);
 
-  const selectedOrg = useMemo(() => orgs.find((o) => o.id === selectedOrgId) || null, [orgs, selectedOrgId]);
+  const visibleOrgs = useMemo(() => {
+    if (showAllOrgs) return orgs;
+    const fmoIds = new Set(fmoOrgOptions.map((o) => o.id));
+    return orgs.filter((o) => fmoIds.has(o.id));
+  }, [orgs, showAllOrgs, fmoOrgOptions]);
+
+  const selectedOrg = useMemo(() => visibleOrgs.find((o) => o.id === selectedOrgId) || null, [visibleOrgs, selectedOrgId]);
+
+  useEffect(() => {
+    if (!selectedOrgId) return;
+    if (visibleOrgs.some((o) => o.id === selectedOrgId)) return;
+    if (visibleOrgs.length) setSelectedOrgId(visibleOrgs[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAllOrgs, visibleOrgs.length]);
 
   const selectedMembers = useMemo(() => {
     return members;
@@ -391,7 +407,7 @@ const MasterOrganizationsView: React.FC = () => {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Organizations</h1>
-          <p className="text-slate-600 mt-1">Create orgs and add advisors/FMO admins by email.</p>
+          <p className="text-slate-600 mt-1">Create FMOs and manage their members. (Independent advisors are managed under Clients.)</p>
           {actingOrg?.id && (
             <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-900">
               <span className="font-medium">Viewing as:</span>
@@ -417,6 +433,16 @@ const MasterOrganizationsView: React.FC = () => {
           Refresh
         </button>
       </div>
+
+      <label className="mb-5 inline-flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={showAllOrgs}
+          onChange={(e) => setShowAllOrgs(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300"
+        />
+        Show all orgs (including independent advisors)
+      </label>
 
       {(error || success) && (
         <div
@@ -480,7 +506,7 @@ const MasterOrganizationsView: React.FC = () => {
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
               >
                 <option value="">Select org…</option>
-                {orgs.map((o) => (
+                {visibleOrgs.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name || o.slug || o.id}
                   </option>
