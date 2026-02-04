@@ -1,5 +1,22 @@
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
 
+function toMessage(err: any): string {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message;
+  if (typeof err.message === 'string' && err.message) return err.message;
+  if (typeof err.error === 'string' && err.error) return err.error;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return 'Unknown error';
+  }
+}
+
+function toError(err: any): Error {
+  return err instanceof Error ? err : new Error(toMessage(err));
+}
+
 function slugify(raw: string) {
   return raw
     .toLowerCase()
@@ -77,11 +94,11 @@ export default async function handler(req: any, res: any) {
       ({ data, error } = await tryInsert(`${baseSlug}-${suffix}`));
     }
 
-    if (error) throw error;
+    if (error) throw toError(error);
 
     res.status(200).json({ ok: true, org: data });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
+    const message = toMessage(err);
     // eslint-disable-next-line no-console
     console.error('orgs/create failed', { message, err });
     res.status(500).json({ error: message });
