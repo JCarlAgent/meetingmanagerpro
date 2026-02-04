@@ -35,20 +35,25 @@ async function getAccessToken(): Promise<string | null> {
 
 async function readResponseError(resp: Response): Promise<string> {
   const statusPart = `HTTP ${resp.status}${resp.statusText ? ` ${resp.statusText}` : ''}`;
+  let text = '';
   try {
-    const data = (await resp.json()) as any;
-    const msg = data?.error || data?.message;
-    if (typeof msg === 'string' && msg.trim()) return `${msg} (${statusPart})`;
-    return `Request failed (${statusPart})`;
+    text = (await resp.text()).trim();
   } catch {
-    try {
-      const text = (await resp.text()).trim();
-      if (text) return `${text.slice(0, 400)} (${statusPart})`;
-    } catch {
-      // ignore
-    }
-    return `Request failed (${statusPart})`;
+    // ignore
   }
+
+  if (text) {
+    try {
+      const data = JSON.parse(text) as any;
+      const msg = data?.error || data?.message;
+      if (typeof msg === 'string' && msg.trim()) return `${msg} (${statusPart})`;
+      return `${text.slice(0, 400)} (${statusPart})`;
+    } catch {
+      return `${text.slice(0, 400)} (${statusPart})`;
+    }
+  }
+
+  return `Request failed (${statusPart})`;
 }
 
 function slugify(raw: string) {
