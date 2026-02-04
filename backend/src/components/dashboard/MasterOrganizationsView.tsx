@@ -29,6 +29,11 @@ type OrgMemberWithUser = OrgMemberRow & {
   } | null;
 };
 
+type OrgOption = {
+  id: string;
+  name: string;
+};
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
@@ -86,6 +91,12 @@ const MasterOrganizationsView: React.FC = () => {
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [selectedMember, setSelectedMember] = useState<OrgMemberWithUser | null>(null);
 
+  const [fmoOrgOptions, setFmoOrgOptions] = useState<OrgOption[]>([]);
+  const [transferTargetOrgId, setTransferTargetOrgId] = useState<string>('');
+  const [transferMemberUserId, setTransferMemberUserId] = useState<string>('');
+  const [removeFromSource, setRemoveFromSource] = useState(true);
+  const [isTransferring, setIsTransferring] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -102,14 +113,39 @@ const MasterOrganizationsView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [{ data: orgData, error: orgErr }] = await Promise.all([
+      const [{ data: orgData, error: orgErr }, { data: fmoMembers, error: fmoErr }] = await Promise.all([
         supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(500),
+        supabase
+          .from('org_members')
+          .select('org_id, role')
+          .in('role', ['fmo_admin', 'org_admin'])
+          .limit(5000),
       ]);
 
       if (orgErr) throw orgErr;
+      if (fmoErr) {
+        // Non-fatal: still let the page work without the FMO dropdown.
+        // eslint-disable-next-line no-console
+        console.warn('Failed to load FMO org members for options', fmoErr);
+      }
 
       const nextOrgs = ((orgData ?? []) as unknown as OrgRow[]) || [];
       setOrgs(nextOrgs);
+
+      const fmoOrgIds = new Set<string>(((fmoMembers ?? []) as any[]).map((m) => String(m.org_id)));
+      const nextFmoOptions: OrgOption[] = nextOrgs
+        .filter((o) => fmoOrgIds.has(o.id))
+        .map((o) => ({
+          id: o.id,
+          name: (o.name || o.slug || o.id) as string,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setFmoOrgOptions(nextFmoOptions);
+
+      if (nextFmoOptions.length && !transferTargetOrgId) {
+        setTransferTargetOrgId(nextFmoOptions[0].id);
+      }
 
       if (!selectedOrgId && nextOrgs.length) {
         setSelectedOrgId(nextOrgs[0].id);
@@ -176,11 +212,21 @@ const MasterOrganizationsView: React.FC = () => {
   useEffect(() => {
     if (!selectedOrgId) {
       setMembers([]);
+      setTransferMemberUserId('');
       return;
     }
     loadMembers(selectedOrgId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrgId]);
+
+  useEffect(() => {
+    if (!members.length) {
+      setTransferMemberUserId('');
+      return;
+    }
+    const advisor = members.find((m) => m.role === 'advisor' || m.role === 'member');
+    if (advisor?.user_id) setTransferMemberUserId(advisor.user_id);
+  }, [members]);
 
   if (!user?.is_master_admin) {
     return (
@@ -283,6 +329,60 @@ const MasterOrganizationsView: React.FC = () => {
       setError(getErrorMessage(err));
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  const transferAdvisorToFmo = async () => {
+    setError(null);
+    setSuccess(null);
+
+    if (!selectedOrgId) {
+      setError('Select a source organization first.');
+      return;
+    }
+    if (!transferMemberUserId) {
+      setError('Select an advisor to transfer.');
+      return;
+    }
+    if (!transferTargetOrgId) {
+      setError('Select a destination FMO organization.');
+      return;
+    }
+    if (selectedOrgId === transferTargetOrgId) {
+      setError('Source and destination org must be different.');
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/transferMember', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fromOrgId: selectedOrgId,
+          toOrgId: transferTargetOrgId,
+          userId: transferMemberUserId,
+          removeFromSource,
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(await readResponseError(resp));
+      }
+
+      const data = (await resp.json().catch(() => ({}))) as any;
+      setSuccess(data?.removed ? 'Transferred advisor to destination org.' : 'Added advisor to destination org (kept in source org).');
+      await loadMembers(selectedOrgId);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || 'Failed to transfer advisor');
+    } finally {
+      setIsTransferring(false);
     }
   };
 
@@ -495,6 +595,73 @@ const MasterOrganizationsView: React.FC = () => {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-900">Move independent advisor under an FMO</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  This moves the advisor membership from this org to a destination FMO org. (It does not migrate jobs/meetings data between orgs.)
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                  <div className="md:col-span-3">
+                    <label className="block text-sm font-medium text-slate-700">Advisor</label>
+                    <select
+                      value={transferMemberUserId}
+                      onChange={(e) => setTransferMemberUserId(e.target.value)}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    >
+                      <option value="">Select advisor…</option>
+                      {selectedMembers
+                        .filter((m) => m.role === 'advisor' || m.role === 'member')
+                        .map((m) => (
+                          <option key={m.user_id} value={m.user_id}>
+                            {(m.user?.email || m.user_id).slice(0, 80)}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700">Destination FMO org</label>
+                    <select
+                      value={transferTargetOrgId}
+                      onChange={(e) => setTransferTargetOrgId(e.target.value)}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    >
+                      <option value="">Select destination…</option>
+                      {(fmoOrgOptions.length ? fmoOrgOptions : orgs.map((o) => ({ id: o.id, name: (o.name || o.slug || o.id) as string })) ).map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                    {fmoOrgOptions.length === 0 && (
+                      <div className="mt-1 text-xs text-amber-700">FMO list unavailable; showing all orgs.</div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <button
+                      type="button"
+                      onClick={transferAdvisorToFmo}
+                      disabled={isTransferring}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {isTransferring ? 'Moving…' : 'Move'}
+                    </button>
+                  </div>
+                </div>
+
+                <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={removeFromSource}
+                    onChange={(e) => setRemoveFromSource(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Remove from source org
+                </label>
               </div>
 
               {selectedMember && (
