@@ -1,5 +1,11 @@
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
 
+function send(res: any, status: number, body: any) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
 function toMessage(err: any): string {
   if (!err) return 'Unknown error';
   if (typeof err === 'string') return err;
@@ -53,26 +59,33 @@ async function requireMasterAdmin(req: any) {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    send(res, 405, { error: 'Method not allowed' });
     return;
   }
   try {
     const access = await requireMasterAdmin(req);
     if (!access.ok) {
-      res.status(403).json({ error: 'Not authorized' });
+      send(res, 403, { error: 'Not authorized' });
       return;
     }
 
-    const body = (req.body || {}) as { name?: string; slug?: string };
-    const name = String(body.name ?? '').trim();
+    let body: any;
+    try {
+      body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    } catch {
+      send(res, 400, { error: 'Invalid JSON body' });
+      return;
+    }
+
+    const name = String(body?.name ?? '').trim();
     if (!name) {
-      res.status(400).json({ error: 'Missing name' });
+      send(res, 400, { error: 'Missing name' });
       return;
     }
 
-    const baseSlug = slugify(body.slug ? String(body.slug) : name);
+    const baseSlug = slugify(body?.slug ? String(body.slug) : name);
     if (!baseSlug) {
-      res.status(400).json({ error: 'Invalid slug' });
+      send(res, 400, { error: 'Invalid slug' });
       return;
     }
 
@@ -96,11 +109,11 @@ export default async function handler(req: any, res: any) {
 
     if (error) throw toError(error);
 
-    res.status(200).json({ ok: true, org: data });
+    send(res, 200, { ok: true, org: data });
   } catch (err: unknown) {
     const message = toMessage(err);
     // eslint-disable-next-line no-console
     console.error('orgs/create failed', { message, err });
-    res.status(500).json({ error: message });
+    send(res, 500, { error: message });
   }
 }

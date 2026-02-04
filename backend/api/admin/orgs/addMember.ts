@@ -1,5 +1,11 @@
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
 
+function send(res: any, status: number, body: any) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
 function toMessage(err: any): string {
   if (!err) return 'Unknown error';
   if (typeof err === 'string') return err;
@@ -73,32 +79,39 @@ async function inviteUser(email: string): Promise<string> {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    send(res, 405, { error: 'Method not allowed' });
     return;
   }
 
   try {
     const access = await requireMasterAdmin(req);
     if (!access.ok) {
-      res.status(403).json({ error: 'Not authorized' });
+      send(res, 403, { error: 'Not authorized' });
       return;
     }
 
-    const body = (req.body || {}) as { orgId?: string; email?: string; role?: string };
-    const orgId = String(body.orgId ?? '').trim();
-    const email = String(body.email ?? '').trim();
-    const role = String(body.role ?? '').trim();
+    let body: any;
+    try {
+      body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    } catch {
+      send(res, 400, { error: 'Invalid JSON body' });
+      return;
+    }
+
+    const orgId = String(body?.orgId ?? '').trim();
+    const email = String(body?.email ?? '').trim();
+    const role = String(body?.role ?? '').trim();
 
     if (!orgId) {
-      res.status(400).json({ error: 'Missing orgId' });
+      send(res, 400, { error: 'Missing orgId' });
       return;
     }
     if (!email || !email.includes('@')) {
-      res.status(400).json({ error: 'Missing/invalid email' });
+      send(res, 400, { error: 'Missing/invalid email' });
       return;
     }
     if (!ALLOWED_ROLES.has(role)) {
-      res.status(400).json({ error: `Invalid role. Use one of: ${Array.from(ALLOWED_ROLES).join(', ')}` });
+      send(res, 400, { error: `Invalid role. Use one of: ${Array.from(ALLOWED_ROLES).join(', ')}` });
       return;
     }
 
@@ -107,7 +120,7 @@ export default async function handler(req: any, res: any) {
     // Ensure org exists
     const { data: org } = await supabaseAdmin.from('orgs').select('id').eq('id', orgId).maybeSingle();
     if (!org?.id) {
-      res.status(404).json({ error: 'Org not found' });
+      send(res, 404, { error: 'Org not found' });
       return;
     }
 
@@ -137,11 +150,11 @@ export default async function handler(req: any, res: any) {
 
     if (upsertErr) throw toError(upsertErr);
 
-    res.status(200).json({ ok: true, invited, member });
+    send(res, 200, { ok: true, invited, member });
   } catch (err: unknown) {
     const message = toMessage(err);
     // eslint-disable-next-line no-console
     console.error('orgs/addMember failed', { message, err });
-    res.status(500).json({ error: message });
+    send(res, 500, { error: message });
   }
 }
