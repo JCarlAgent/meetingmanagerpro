@@ -1,4 +1,4 @@
-type SupabaseAdminModule = typeof import('../../_lib/supabaseAdmin');
+import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
@@ -26,10 +26,6 @@ function toError(err: any): Error {
 const ALLOWED_ROLES = new Set(['advisor', 'fmo_admin', 'member', 'org_admin']);
 
 async function requireMasterAdmin(req: any) {
-  const { getSupabaseAdmin, requireUserFromAuthHeader } = (await import(
-    '../../_lib/supabaseAdmin'
-  )) as SupabaseAdminModule;
-
   const user = await requireUserFromAuthHeader(req);
   const supabaseAdmin = getSupabaseAdmin();
 
@@ -55,7 +51,6 @@ async function requireMasterAdmin(req: any) {
 }
 
 async function findUserIdByEmail(email: string): Promise<string | null> {
-  const { getSupabaseAdmin } = (await import('../../_lib/supabaseAdmin')) as SupabaseAdminModule;
   const supabaseAdmin = getSupabaseAdmin();
 
   // Supabase JS v2 doesn't have a guaranteed getUserByEmail in all builds.
@@ -74,7 +69,6 @@ async function findUserIdByEmail(email: string): Promise<string | null> {
 }
 
 async function inviteUser(email: string): Promise<string> {
-  const { getSupabaseAdmin } = (await import('../../_lib/supabaseAdmin')) as SupabaseAdminModule;
   const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
   if (error || !data?.user?.id) {
@@ -126,7 +120,6 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const { getSupabaseAdmin } = (await import('../../_lib/supabaseAdmin')) as SupabaseAdminModule;
     const supabaseAdmin = getSupabaseAdmin();
 
     // Ensure org exists

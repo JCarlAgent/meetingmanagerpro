@@ -1,4 +1,4 @@
-type SupabaseAdminModule = typeof import('../../_lib/supabaseAdmin');
+import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
@@ -33,10 +33,6 @@ function slugify(raw: string) {
 }
 
 async function requireMasterAdmin(req: any) {
-  const { getSupabaseAdmin, requireUserFromAuthHeader } = (await import(
-    '../../_lib/supabaseAdmin'
-  )) as SupabaseAdminModule;
-
   const user = await requireUserFromAuthHeader(req);
   const supabaseAdmin = getSupabaseAdmin();
 
@@ -98,7 +94,6 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const { getSupabaseAdmin } = (await import('../../_lib/supabaseAdmin')) as SupabaseAdminModule;
     const supabaseAdmin = getSupabaseAdmin();
 
     // Try insert; on unique conflict, retry with suffix
