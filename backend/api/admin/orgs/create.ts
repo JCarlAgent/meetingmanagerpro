@@ -81,6 +81,9 @@ export default async function handler(req: any, res: any) {
 
     res.status(200).json({ ok: true, org: data });
   } catch (err: unknown) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    // eslint-disable-next-line no-console
+    console.error('orgs/create failed', { message, err });
+    res.status(500).json({ error: message });
   }
 }

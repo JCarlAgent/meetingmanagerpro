@@ -33,6 +33,24 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+async function readResponseError(resp: Response): Promise<string> {
+  const statusPart = `HTTP ${resp.status}${resp.statusText ? ` ${resp.statusText}` : ''}`;
+  try {
+    const data = (await resp.json()) as any;
+    const msg = data?.error || data?.message;
+    if (typeof msg === 'string' && msg.trim()) return `${msg} (${statusPart})`;
+    return `Request failed (${statusPart})`;
+  } catch {
+    try {
+      const text = (await resp.text()).trim();
+      if (text) return `${text.slice(0, 400)} (${statusPart})`;
+    } catch {
+      // ignore
+    }
+    return `Request failed (${statusPart})`;
+  }
+}
+
 function slugify(raw: string) {
   return raw
     .toLowerCase()
@@ -156,8 +174,11 @@ const MasterOrganizationsView: React.FC = () => {
         body: JSON.stringify({ name, slug }),
       });
 
+      if (!resp.ok) {
+        throw new Error(await readResponseError(resp));
+      }
+
       const data = (await resp.json().catch(() => ({}))) as any;
-      if (!resp.ok) throw new Error(data?.error || 'Failed to create org');
 
       setNewOrgName('');
       setNewOrgSlug('');
@@ -200,8 +221,11 @@ const MasterOrganizationsView: React.FC = () => {
         body: JSON.stringify({ orgId: selectedOrgId, email, role: inviteRole }),
       });
 
+      if (!resp.ok) {
+        throw new Error(await readResponseError(resp));
+      }
+
       const data = (await resp.json().catch(() => ({}))) as any;
-      if (!resp.ok) throw new Error(data?.error || 'Failed to add member');
 
       setInviteEmail('');
       setSuccess(data?.invited ? `Invited and added: ${email}` : `Added: ${email}`);
