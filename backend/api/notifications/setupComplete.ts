@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getSupabaseAdmin, requireUserFromAuthHeader } from '../_lib/supabaseAdmin';
+import { getSupabaseAdmin, requireUserFromAuthHeader } from '../_lib/supabaseAdmin.js';
 
 type Summary = Record<string, unknown>;
 

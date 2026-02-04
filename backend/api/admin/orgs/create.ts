@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
+import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;

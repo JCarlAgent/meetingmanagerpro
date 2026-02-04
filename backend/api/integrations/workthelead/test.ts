@@ -1,5 +1,5 @@
-import { decryptString } from '../../_lib/crypto';
-import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin';
+import { decryptString } from '../../_lib/crypto.js';
+import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;

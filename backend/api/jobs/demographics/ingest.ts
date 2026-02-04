@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'node:crypto';
 import Papa from 'papaparse';
-import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin';
+import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
 type CsvRow = Record<string, unknown>;
 
