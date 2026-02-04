@@ -10,6 +10,8 @@
 
 begin;
 
+create extension if not exists "pgcrypto";
+
 create table if not exists public.job_stage_signoffs (
   id uuid primary key default gen_random_uuid(),
   job_id uuid not null references public.jobs(id) on delete cascade,
