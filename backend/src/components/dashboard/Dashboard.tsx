@@ -15,6 +15,7 @@ import AdminUsersView from './AdminUsersView';
 import TemplateManagerView from './TemplateManagerView';
 import TemplatesView from './TemplatesView';
 import MasterClientsView from './MasterClientsView';
+import MasterOrganizationsView from './MasterOrganizationsView';
 import MeetingSetupView from './MeetingSetupView';
 import SettingsView from './SettingsView';
 import DemographicsUploadView from './DemographicsUploadView';
@@ -115,6 +116,8 @@ const Dashboard: React.FC = () => {
     switch (activeView) {
       case 'master-clients':
         return <MasterClientsView onNavigate={(view) => setActiveView(view)} />;
+      case 'master-orgs':
+        return <MasterOrganizationsView />;
       case 'setup':
         return (
           <MeetingSetupView

@@ -32,7 +32,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       ? [
           {
             title: 'Master',
-            items: [{ id: 'master-clients', label: 'Clients', icon: Shield }],
+            items: [
+              { id: 'master-clients', label: 'Clients', icon: Shield },
+              { id: 'master-orgs', label: 'Organizations', icon: Building2 },
+            ],
           },
         ]
       : []),
