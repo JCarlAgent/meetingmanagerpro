@@ -18,6 +18,17 @@ type OrgMemberRow = {
   created_at: string;
 };
 
+type OrgMemberWithUser = OrgMemberRow & {
+  user: {
+    id: string;
+    email: string | null;
+    created_at: string | null;
+    last_sign_in_at: string | null;
+    user_metadata: any;
+    app_metadata: any;
+  } | null;
+};
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
@@ -70,8 +81,10 @@ const MasterOrganizationsView: React.FC = () => {
   const { actingOrg, clearActingOrg } = useActingOrg();
 
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
-  const [members, setMembers] = useState<OrgMemberRow[]>([]);
+  const [members, setMembers] = useState<OrgMemberWithUser[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<OrgMemberWithUser | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,21 +102,14 @@ const MasterOrganizationsView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [{ data: orgData, error: orgErr }, { data: memberData, error: memErr }] = await Promise.all([
+      const [{ data: orgData, error: orgErr }] = await Promise.all([
         supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(500),
-        supabase
-          .from('org_members')
-          .select('org_id, user_id, role, created_at')
-          .order('created_at', { ascending: false })
-          .limit(5000),
       ]);
 
       if (orgErr) throw orgErr;
-      if (memErr) throw memErr;
 
       const nextOrgs = ((orgData ?? []) as unknown as OrgRow[]) || [];
       setOrgs(nextOrgs);
-      setMembers(((memberData ?? []) as unknown as OrgMemberRow[]) || []);
 
       if (!selectedOrgId && nextOrgs.length) {
         setSelectedOrgId(nextOrgs[0].id);
@@ -134,9 +140,47 @@ const MasterOrganizationsView: React.FC = () => {
   const selectedOrg = useMemo(() => orgs.find((o) => o.id === selectedOrgId) || null, [orgs, selectedOrgId]);
 
   const selectedMembers = useMemo(() => {
-    if (!selectedOrgId) return [];
-    return members.filter((m) => m.org_id === selectedOrgId);
-  }, [members, selectedOrgId]);
+    return members;
+  }, [members]);
+
+  const loadMembers = async (orgId: string) => {
+    setIsLoadingMembers(true);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orgId }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(await readResponseError(resp));
+      }
+
+      const data = (await resp.json().catch(() => ({}))) as any;
+      setMembers(((data?.members ?? []) as unknown as OrgMemberWithUser[]) || []);
+    } catch (err: unknown) {
+      setMembers([]);
+      setError(getErrorMessage(err) || 'Failed to load members');
+    } finally {
+      setIsLoadingMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedOrgId) {
+      setMembers([]);
+      return;
+    }
+    loadMembers(selectedOrgId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrgId]);
 
   if (!user?.is_master_admin) {
     return (
@@ -405,19 +449,40 @@ const MasterOrganizationsView: React.FC = () => {
                   <thead>
                     <tr className="text-left text-slate-500 border-b border-slate-200">
                       <th className="py-2 pr-4 font-medium">User ID</th>
+                      <th className="py-2 pr-4 font-medium">Email</th>
                       <th className="py-2 pr-4 font-medium">Role</th>
                       <th className="py-2 pr-4 font-medium">Added</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedMembers.length === 0 ? (
+                    {isLoadingMembers ? (
                       <tr>
-                        <td colSpan={3} className="py-4 text-slate-500">No members yet.</td>
+                        <td colSpan={4} className="py-4 text-slate-500">Loading members…</td>
+                      </tr>
+                    ) : selectedMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-slate-500">No members yet.</td>
                       </tr>
                     ) : (
                       selectedMembers.slice(0, 200).map((m) => (
                         <tr key={`${m.org_id}:${m.user_id}`} className="border-b border-slate-100">
-                          <td className="py-3 pr-4 font-mono text-xs text-slate-900">{m.user_id}</td>
+                          <td className="py-3 pr-4 font-mono text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMember(m)}
+                              className="text-slate-900 hover:text-red-700 hover:underline"
+                              title="View user details"
+                            >
+                              {m.user_id}
+                            </button>
+                          </td>
+                          <td className="py-3 pr-4 text-slate-900">
+                            {m.user?.email ? (
+                              <span className="truncate inline-block max-w-[260px]">{m.user.email}</span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
                           <td className="py-3 pr-4">
                             <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${m.role === 'fmo_admin' ? 'bg-red-500/10 text-red-700' : m.role === 'advisor' ? 'bg-blue-500/10 text-blue-700' : 'bg-slate-100 text-slate-700'}`}>
                               {m.role === 'fmo_admin' ? <Shield className="w-3 h-3" /> : null}
@@ -431,6 +496,65 @@ const MasterOrganizationsView: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {selectedMember && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedMember(null)} />
+                  <div className="relative w-full max-w-lg rounded-xl bg-white border border-slate-200 shadow-2xl p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-lg font-semibold text-slate-900">User details</div>
+                        <div className="mt-1 text-xs text-slate-500">Click outside to close</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMember(null)}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-3 text-sm">
+                      <div>
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">User ID</div>
+                        <div className="mt-1 font-mono text-xs text-slate-900 break-all">{selectedMember.user_id}</div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</div>
+                          <div className="mt-1 text-slate-900 break-all">{selectedMember.user?.email || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</div>
+                          <div className="mt-1 text-slate-900">{selectedMember.role}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Auth Created</div>
+                          <div className="mt-1 text-slate-900">{selectedMember.user?.created_at ? new Date(selectedMember.user.created_at).toLocaleString() : '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Last Sign In</div>
+                          <div className="mt-1 text-slate-900">{selectedMember.user?.last_sign_in_at ? new Date(selectedMember.user.last_sign_in_at).toLocaleString() : '—'}</div>
+                        </div>
+                      </div>
+
+                      {selectedMember.user?.user_metadata && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Metadata</div>
+                          <pre className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 overflow-auto max-h-48">
+                            {JSON.stringify(selectedMember.user.user_metadata, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-slate-500">Select an org to manage members.</div>

@@ -9,24 +9,25 @@ const ResetPasswordPage: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'ready' | 'saving' | 'done' | 'error'>('idle');
   const [message, setMessage] = useState<string>('');
 
-  const urlHash = useMemo(() => window.location.hash || '', []);
+  const urlParts = useMemo(() => `${window.location.hash || ''}${window.location.search || ''}`, []);
 
   useEffect(() => {
     // Supabase recovery/magiclink arrives with tokens in the URL hash.
     // We don't want to rely on our app routing to keep those tokens.
-    const hasAccessToken = urlHash.includes('access_token=');
-    const isRecovery = urlHash.includes('type=recovery');
+    const hasAccessToken = urlParts.includes('access_token=');
+    const isRecovery = urlParts.includes('type=recovery');
+    const isInvite = urlParts.includes('type=invite');
 
-    if (hasAccessToken && isRecovery) {
+    if (hasAccessToken && (isRecovery || isInvite)) {
       setStatus('ready');
-      setMessage('Enter a new password.');
+      setMessage(isInvite ? 'Create your password to finish setting up your account.' : 'Enter a new password.');
       return;
     }
 
     // If the user lands here without tokens, guide them.
     setStatus('error');
     setMessage('This reset link is missing or expired. Please request a new password reset email.');
-  }, [urlHash]);
+  }, [urlParts]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

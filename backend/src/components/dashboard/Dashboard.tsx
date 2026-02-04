@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import { Campaign, Event, Responder } from '@/types';
 import Header from './Header';
 import Sidebar from './Sidebar';
@@ -17,6 +18,7 @@ import TemplatesView from './TemplatesView';
 import MasterClientsView from './MasterClientsView';
 import MasterOrganizationsView from './MasterOrganizationsView';
 import MeetingSetupView from './MeetingSetupView';
+import OrgMeetingsView from './OrgMeetingsView';
 import SettingsView from './SettingsView';
 import DemographicsUploadView from './DemographicsUploadView';
 import MailingsReportView from './MailingsReportView';
@@ -25,6 +27,7 @@ import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
+  const { actingOrgId } = useActingOrg();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('setup');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -36,6 +39,8 @@ const Dashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending' | 'closed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const prevActingOrgIdRef = useRef<string | null>(actingOrgId);
+
   useEffect(() => { fetchData(); }, [user]);
 
   useEffect(() => {
@@ -46,6 +51,17 @@ const Dashboard: React.FC = () => {
       return user.is_master_admin ? 'master-clients' : 'setup';
     });
   }, [user]);
+
+  useEffect(() => {
+    // When a master admin exits a view-as org, route them back to the super-admin workflow.
+    const prev = prevActingOrgIdRef.current;
+    prevActingOrgIdRef.current = actingOrgId;
+
+    if (!user?.is_master_admin) return;
+    if (prev && !actingOrgId) {
+      setActiveView('master-clients');
+    }
+  }, [actingOrgId, user?.is_master_admin]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -127,6 +143,8 @@ const Dashboard: React.FC = () => {
         );
       case 'uploads':
         return <DemographicsUploadView />;
+      case 'meetings':
+        return <OrgMeetingsView onNavigate={(view) => setActiveView(view)} />;
       case 'mailings':
         return <MailingsReportView />;
       case 'approvals':

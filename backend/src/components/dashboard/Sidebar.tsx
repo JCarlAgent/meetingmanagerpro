@@ -52,6 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       title: 'Launch',
       items: [
         { id: 'campaigns', label: 'Campaigns', icon: FolderKanban },
+        { id: 'meetings', label: 'Meetings', icon: Calendar },
         { id: 'events', label: 'Events', icon: Calendar },
       ],
     },

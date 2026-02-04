@@ -51,6 +51,14 @@ export function saveSetupState(next: SetupState) {
   }
 }
 
+export function clearSetupState() {
+  try {
+    window.localStorage.removeItem(KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function patchSetupState(patch: Partial<SetupState>) {
   const current = loadSetupState();
   saveSetupState({ ...current, ...patch });

@@ -68,9 +68,22 @@ async function findUserIdByEmail(email: string): Promise<string | null> {
   return user?.id ?? null;
 }
 
-async function inviteUser(email: string): Promise<string> {
+function inferBaseUrl(req: any): string {
+  const origin = (req?.headers?.origin as string | undefined) || '';
+  if (origin) return origin;
+
+  const proto = (req?.headers?.['x-forwarded-proto'] as string | undefined) || 'https';
+  const host =
+    (req?.headers?.['x-forwarded-host'] as string | undefined) ||
+    (req?.headers?.host as string | undefined) ||
+    '';
+  if (!host) return '';
+  return `${proto}://${host}`;
+}
+
+async function inviteUser(email: string, redirectTo?: string): Promise<string> {
   const supabaseAdmin = getSupabaseAdmin();
-  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
+  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, redirectTo ? { redirectTo } : undefined);
   if (error || !data?.user?.id) {
     throw new Error(error?.message || 'Failed to invite user');
   }
@@ -133,7 +146,9 @@ export default async function handler(req: any, res: any) {
     let invited = false;
 
     if (!userId) {
-      userId = await inviteUser(email);
+      const baseUrl = inferBaseUrl(req);
+      const redirectTo = baseUrl ? `${baseUrl}/reset-password` : undefined;
+      userId = await inviteUser(email, redirectTo);
       invited = true;
     }
 

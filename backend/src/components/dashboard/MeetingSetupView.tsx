@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useActingOrg } from '@/lib/actingOrg';
 import FinalizeSummaryModal from './FinalizeSummaryModal';
 import {
+  clearSetupState,
   loadSetupState,
   patchSetupState,
   saveSetupState,
@@ -91,6 +92,31 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
   const [isSavingFinalize, setIsSavingFinalize] = useState(false);
 
   const isHydratedRef = useRef(false);
+
+  const resetFormState = () => {
+    setSelectedTemplateId('');
+    setMailQuantity(5000);
+    setMeetings([]);
+    setMeetingDraft(() => {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return { location_name: '', address1: '', city: '', state: '', date: `${yyyy}-${mm}-${dd}`, time: '18:00' };
+    });
+    setRsvpMethods({ call_center: true, qr_code: true });
+    setDemographicsNotes('');
+    setDemographicsMode('printer');
+    setInitials({ locations: '', template: '', rsvp: '', demographics: '', finalize: '' });
+
+    clearSetupState();
+    try {
+      window.localStorage.removeItem('mmp_rsvp_methods');
+      window.localStorage.removeItem('mmp_demographics_notes');
+    } catch {
+      // ignore
+    }
+  };
 
   if (user?.is_master_admin && !actingOrg?.id) {
     return (
@@ -405,6 +431,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       }
 
       setIsFinalizeOpen(false);
+      resetFormState();
       // For now, route to reports after finalize.
       onNavigate('reports');
     } catch (err: unknown) {
@@ -577,13 +604,16 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           </div>
 
           <div className="mt-auto pt-4">
-            <div className="flex items-center gap-2">
-              <input
-                value={initials.locations}
-                onChange={(e) => setInitials((p) => ({ ...p, locations: e.target.value }))}
-                placeholder="Initials"
-                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Initials</label>
+                <input
+                  value={initials.locations}
+                  onChange={(e) => setInitials((p) => ({ ...p, locations: e.target.value }))}
+                  placeholder="Initials"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
               <button
                 type="button"
                 onClick={async () => {
@@ -618,7 +648,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm locations'));
                   }
                 }}
-                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
+                className="w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2.5 rounded-lg transition-colors text-sm"
               >
                 Confirm locations and dates <ArrowRight className="w-4 h-4" />
               </button>
@@ -668,13 +698,16 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           </div>
 
           <div className="mt-auto pt-4">
-            <div className="flex items-center gap-2">
-              <input
-                value={initials.template}
-                onChange={(e) => setInitials((p) => ({ ...p, template: e.target.value }))}
-                placeholder="Initials"
-                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Initials</label>
+                <input
+                  value={initials.template}
+                  onChange={(e) => setInitials((p) => ({ ...p, template: e.target.value }))}
+                  placeholder="Initials"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
               <button
                 type="button"
                 onClick={async () => {
@@ -693,7 +726,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm template'));
                   }
                 }}
-                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
+                className="w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2.5 rounded-lg transition-colors text-sm"
               >
                 Confirm template <ArrowRight className="w-4 h-4" />
               </button>
@@ -741,13 +774,16 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           </div>
 
           <div className="mt-auto pt-4">
-            <div className="flex items-center gap-2">
-              <input
-                value={initials.rsvp}
-                onChange={(e) => setInitials((p) => ({ ...p, rsvp: e.target.value }))}
-                placeholder="Initials"
-                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Initials</label>
+                <input
+                  value={initials.rsvp}
+                  onChange={(e) => setInitials((p) => ({ ...p, rsvp: e.target.value }))}
+                  placeholder="Initials"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
               <button
                 type="button"
                 onClick={async () => {
@@ -761,7 +797,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm confirmation methods'));
                   }
                 }}
-                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
+                className="w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2.5 rounded-lg transition-colors text-sm"
               >
                 Confirm confirmation method(s) <ArrowRight className="w-4 h-4" />
               </button>
@@ -906,7 +942,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => {
@@ -928,7 +964,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
               });
               setIsFinalizeOpen(true);
             }}
-            className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
+            className="w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2.5 rounded-lg transition-colors text-sm"
           >
             Confirm campaign details <ArrowRight className="w-4 h-4" />
           </button>
@@ -936,7 +972,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           <button
             type="button"
             onClick={() => onNewCampaign()}
-            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-medium px-3 py-2 rounded-lg transition-colors border border-slate-200 text-sm"
+            className="w-full inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-medium px-3 py-2.5 rounded-lg transition-colors border border-slate-200 text-sm"
           >
             New campaign
           </button>

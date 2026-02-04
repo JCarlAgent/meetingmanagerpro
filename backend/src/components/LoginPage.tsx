@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
@@ -10,6 +11,7 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +31,7 @@ const LoginPage: React.FC = () => {
   const handleMagicLink = async () => {
     setError('');
     setMagicLinkSent(false);
+    setResetSent(false);
     setIsLoading(true);
 
     if (!email) {
@@ -42,6 +45,31 @@ const LoginPage: React.FC = () => {
       setError(result.error || 'Failed to send magic link');
     } else {
       setMagicLinkSent(true);
+    }
+
+    setIsLoading(false);
+  };
+
+  const handleForgotPassword = async () => {
+    setError('');
+    setMagicLinkSent(false);
+    setResetSent(false);
+    setIsLoading(true);
+
+    if (!email) {
+      setError('Enter your email first');
+      setIsLoading(false);
+      return;
+    }
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (resetError) {
+      setError(resetError.message || 'Failed to send password reset email');
+    } else {
+      setResetSent(true);
     }
 
     setIsLoading(false);
@@ -85,6 +113,12 @@ const LoginPage: React.FC = () => {
             </div>
           )}
 
+          {resetSent && (
+            <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center gap-2 text-emerald-300">
+              <span className="text-sm">Password reset email sent. Open it to set a new password.</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
@@ -119,6 +153,15 @@ const LoginPage: React.FC = () => {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+              <div className="mt-2 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-sm text-slate-300 hover:text-white transition-colors"
+                >
+                  Forgot password?
                 </button>
               </div>
             </div>

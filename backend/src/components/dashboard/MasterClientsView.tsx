@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { clearActingOrg, setActingOrg, useActingOrg } from '@/lib/actingOrg';
-import { Building2, Users, ArrowRight, RefreshCw } from 'lucide-react';
+import { Building2, Users, ArrowRight, RefreshCw, UserPlus } from 'lucide-react';
 
 type OrgRow = {
   id: string;
@@ -26,6 +26,53 @@ function isAdvisorRole(role: string | null | undefined) {
   return role === 'advisor' || role === 'member';
 }
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return 'Unknown error';
+  }
+}
+
+async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+async function readResponseError(resp: Response): Promise<string> {
+  const statusPart = `HTTP ${resp.status}${resp.statusText ? ` ${resp.statusText}` : ''}`;
+  let text = '';
+  try {
+    text = (await resp.text()).trim();
+  } catch {
+    // ignore
+  }
+
+  if (text) {
+    try {
+      const data = JSON.parse(text) as any;
+      const msg = data?.error || data?.message;
+      if (typeof msg === 'string' && msg.trim()) return `${msg} (${statusPart})`;
+      return `${text.slice(0, 400)} (${statusPart})`;
+    } catch {
+      return `${text.slice(0, 400)} (${statusPart})`;
+    }
+  }
+
+  return `Request failed (${statusPart})`;
+}
+
+function slugify(raw: string) {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
 interface MasterClientsViewProps {
   onNavigate: (view: string) => void;
 }
@@ -39,9 +86,19 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const [isAddingIndependent, setIsAddingIndependent] = useState(false);
+  const [advisorName, setAdvisorName] = useState('');
+  const [advisorEmail, setAdvisorEmail] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [openAfterCreate, setOpenAfterCreate] = useState(true);
+  const [isSubmittingIndependent, setIsSubmittingIndependent] = useState(false);
+
   const load = async () => {
     setIsLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       const [{ data: orgData, error: orgErr }, { data: memberData, error: memErr }] = await Promise.all([
         supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(500),
@@ -68,6 +125,15 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!success && !error) return;
+    const t = setTimeout(() => {
+      setSuccess(null);
+      setError(null);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [success, error]);
 
   const rows = useMemo(() => {
     const byOrg = new Map<
@@ -109,7 +175,87 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
   }, [orgs, members]);
 
   const fmos = rows.filter((r) => r.fmoAdmins > 0);
-  const independents = rows.filter((r) => r.fmoAdmins === 0);
+  const independents = rows.filter((r) => r.fmoAdmins === 0 && r.advisors > 0);
+
+  const addIndependentAdvisor = async () => {
+    setError(null);
+    setSuccess(null);
+
+    const email = advisorEmail.trim();
+    if (!email || !email.includes('@')) {
+      setError('Enter a valid advisor email.');
+      return;
+    }
+
+    const namePart = advisorName.trim();
+    const defaultOrgName = namePart ? `${namePart} (Independent)` : `${email} (Independent)`;
+    const nextOrgName = (orgName.trim() || defaultOrgName).trim();
+
+    if (!nextOrgName) {
+      setError('Enter a valid organization name.');
+      return;
+    }
+
+    setIsSubmittingIndependent(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const slug = slugify(nextOrgName);
+      if (!slug) throw new Error('Could not generate a valid slug from org name.');
+
+      const createResp = await fetch('/api/admin/orgs/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: nextOrgName, slug }),
+      });
+
+      if (!createResp.ok) {
+        throw new Error(await readResponseError(createResp));
+      }
+
+      const createData = (await createResp.json().catch(() => ({}))) as any;
+      const createdOrgId = String(createData?.org?.id ?? '').trim();
+      const createdOrgName = (createData?.org?.name as string | null) || nextOrgName;
+      if (!createdOrgId) throw new Error('Org created but no org id returned.');
+
+      const addResp = await fetch('/api/admin/orgs/addMember', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orgId: createdOrgId, email, role: 'advisor' }),
+      });
+
+      if (!addResp.ok) {
+        throw new Error(await readResponseError(addResp));
+      }
+
+      const addData = (await addResp.json().catch(() => ({}))) as any;
+      const invited = !!addData?.invited;
+
+      setAdvisorName('');
+      setAdvisorEmail('');
+      setOrgName('');
+      setIsAddingIndependent(false);
+
+      setSuccess(invited ? `Invited and added independent advisor: ${email}` : `Added independent advisor: ${email}`);
+      await load();
+
+      if (openAfterCreate) {
+        setActingOrg({ id: createdOrgId, name: createdOrgName });
+        onNavigate('setup');
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSubmittingIndependent(false);
+    }
+  };
 
   if (!user?.is_master_admin) {
     return (
@@ -143,19 +289,119 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={load}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setSuccess(null);
+              setIsAddingIndependent(true);
+            }}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add independent advisor
+          </button>
+
+          <button
+            type="button"
+            onClick={load}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {error && (
-        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
+      {(error || success) && (
+        <div
+          className={`mb-5 rounded-xl border p-4 text-sm ${error ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}
+        >
+          {error || success}
+        </div>
+      )}
+
+      {isAddingIndependent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => (!isSubmittingIndependent ? setIsAddingIndependent(false) : null)} />
+          <div className="relative w-full max-w-lg rounded-xl bg-white border border-slate-200 shadow-2xl p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold text-slate-900">Add independent advisor</div>
+                <div className="mt-1 text-sm text-slate-600">Creates an org and adds the advisor by email.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddingIndependent(false)}
+                disabled={isSubmittingIndependent}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Advisor email</label>
+                <input
+                  value={advisorEmail}
+                  onChange={(e) => setAdvisorEmail(e.target.value)}
+                  placeholder="advisor@domain.com"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Advisor name (optional)</label>
+                <input
+                  value={advisorName}
+                  onChange={(e) => {
+                    setAdvisorName(e.target.value);
+                    if (!orgName.trim()) {
+                      const next = e.target.value.trim();
+                      if (next) setOrgName(`${next} (Independent)`);
+                    }
+                  }}
+                  placeholder="A. Jones"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Org name (optional)</label>
+                <input
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="A. Jones (Independent)"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+                <p className="mt-2 text-xs text-slate-500">If left blank, it auto-generates from name/email.</p>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={openAfterCreate}
+                  onChange={(e) => setOpenAfterCreate(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Open dashboard after creating
+              </label>
+
+              <button
+                type="button"
+                onClick={addIndependentAdvisor}
+                disabled={isSubmittingIndependent}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                <UserPlus className="w-4 h-4" />
+                {isSubmittingIndependent ? 'Adding…' : 'Create and invite/add'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
