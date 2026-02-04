@@ -13,6 +13,37 @@ import {
   type RsvpMethod,
 } from '@/lib/setupState';
 
+function formatUnknownError(err: unknown, fallback: string): string {
+  if (!err) return fallback;
+  if (err instanceof Error) return err.message || fallback;
+  if (typeof err === 'string') return err;
+
+  if (typeof err === 'object') {
+    const anyErr = err as any;
+    const message = anyErr?.message || anyErr?.error || anyErr?.error_description;
+    const code = anyErr?.code;
+    const details = anyErr?.details;
+    const hint = anyErr?.hint;
+
+    const parts = [
+      typeof message === 'string' ? message : null,
+      typeof code === 'string' ? `code=${code}` : null,
+      typeof details === 'string' ? details : null,
+      typeof hint === 'string' ? `hint: ${hint}` : null,
+    ].filter(Boolean);
+
+    if (parts.length) return parts.join(' • ');
+
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
+
 interface MeetingSetupViewProps {
   onNewCampaign: () => void;
   onNavigate: (view: string) => void;
@@ -269,7 +300,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       await loadJobs();
       setSelectedJobId((inserted as unknown as { id: string }).id);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to create job');
+      alert(formatUnknownError(err, 'Failed to create job'));
     } finally {
       setIsCreatingJob(false);
     }
@@ -377,7 +408,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       // For now, route to reports after finalize.
       onNavigate('reports');
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to finalize');
+      alert(formatUnknownError(err, 'Failed to finalize'));
     } finally {
       setIsSavingFinalize(false);
     }
@@ -584,7 +615,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     await upsertSignoff('locations', { meetings });
                     alert('Locations confirmed.');
                   } catch (err: unknown) {
-                    alert(err instanceof Error ? err.message : 'Failed to confirm locations');
+                    alert(formatUnknownError(err, 'Failed to confirm locations'));
                   }
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
@@ -659,7 +690,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     await upsertSignoff('template', { template: selectedTemplate });
                     alert('Template confirmed.');
                   } catch (err: unknown) {
-                    alert(err instanceof Error ? err.message : 'Failed to confirm template');
+                    alert(formatUnknownError(err, 'Failed to confirm template'));
                   }
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
@@ -727,7 +758,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     await upsertSignoff('rsvp', { rsvpMethods });
                     alert('Confirmation methods confirmed.');
                   } catch (err: unknown) {
-                    alert(err instanceof Error ? err.message : 'Failed to confirm confirmation methods');
+                    alert(formatUnknownError(err, 'Failed to confirm confirmation methods'));
                   }
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
@@ -829,7 +860,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     });
                     alert('Mailing list details confirmed.');
                   } catch (err: unknown) {
-                    alert(err instanceof Error ? err.message : 'Failed to confirm mailing list details');
+                    alert(formatUnknownError(err, 'Failed to confirm mailing list details'));
                   }
                 }}
                 className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
