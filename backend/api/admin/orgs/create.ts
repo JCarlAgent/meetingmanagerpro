@@ -58,6 +58,11 @@ async function requireMasterAdmin(req: any) {
 }
 
 export default async function handler(req: any, res: any) {
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
   if (req.method !== 'POST') {
     send(res, 405, { error: 'Method not allowed' });
     return;
