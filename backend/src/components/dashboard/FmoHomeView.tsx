@@ -115,6 +115,7 @@ export interface FmoHomeViewProps {
 const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   const { user } = useAuth();
   const [org, setOrg] = useState<Org | null>(null);
+  const [missingOrgContactSchema, setMissingOrgContactSchema] = useState(false);
   const [companyDraft, setCompanyDraft] = useState<{
     contact_name: string;
     contact_job_title: string;
@@ -143,30 +144,46 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     setError(null);
 
     try {
-      const [{ data: orgRow, error: orgErr }, { data: membersRows, error: memErr }, { data: jobsRows, error: jobsErr }] =
-        await Promise.all([
-          supabase
-            .from('orgs')
-            .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
-            .eq('id', orgId)
-            .maybeSingle(),
-          supabase
-            .from('org_members')
-            .select('user_id, role, created_at')
-            .eq('org_id', orgId)
-            .in('role', ['advisor', 'member'])
-            .order('created_at', { ascending: false })
-            .limit(2000),
-          supabase
-            .from('jobs')
-            .select('id, job_number, status, title, created_by_user_id, created_at')
-            .eq('org_id', orgId)
-            .in('status', ['active', 'closed'])
-            .order('created_at', { ascending: false })
-            .limit(2000),
-        ]);
+      // Backward-compat: some environments may not have the org contact columns yet.
+      const orgResult = await supabase
+        .from('orgs')
+        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
+        .eq('id', orgId)
+        .maybeSingle();
 
-      if (orgErr) throw orgErr;
+      let orgRow: any = null;
+      if (orgResult.error) {
+        const code = (orgResult.error as any)?.code;
+        if (code === '42703') {
+          setMissingOrgContactSchema(true);
+          const fallback = await supabase.from('orgs').select('id, name, slug').eq('id', orgId).maybeSingle();
+          if (fallback.error) throw fallback.error;
+          orgRow = fallback.data as any;
+        } else {
+          throw orgResult.error;
+        }
+      } else {
+        setMissingOrgContactSchema(false);
+        orgRow = orgResult.data as any;
+      }
+
+      const [{ data: membersRows, error: memErr }, { data: jobsRows, error: jobsErr }] = await Promise.all([
+        supabase
+          .from('org_members')
+          .select('user_id, role, created_at')
+          .eq('org_id', orgId)
+          .in('role', ['advisor', 'member'])
+          .order('created_at', { ascending: false })
+          .limit(2000),
+        supabase
+          .from('jobs')
+          .select('id, job_number, status, title, created_by_user_id, created_at')
+          .eq('org_id', orgId)
+          .in('status', ['active', 'closed'])
+          .order('created_at', { ascending: false })
+          .limit(2000),
+      ]);
+
       if (memErr) throw memErr;
       if (jobsErr) throw jobsErr;
 
@@ -367,6 +384,11 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   }, [org?.contact_name, user]);
 
   const saveCompanyProfile = async () => {
+    if (missingOrgContactSchema) {
+      setError('Org contact fields are not installed yet. Run the Supabase migration `supabase_profiles_org_contact_expenses.sql` to add org contact columns.');
+      return;
+    }
+
     setIsSavingCompany(true);
     setError(null);
     try {
@@ -403,6 +425,13 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     <div className="max-w-6xl mx-auto">
       {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
 
+      {missingOrgContactSchema && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          This environment is missing the org contact fields (e.g. <span className="font-mono">orgs.contact_name</span>). Apply the Supabase migration
+          <span className="font-mono"> supabase_profiles_org_contact_expenses.sql</span> and refresh.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <section className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4">
@@ -417,7 +446,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
             <button
               type="button"
               onClick={saveCompanyProfile}
-              disabled={isLoading || isSavingCompany}
+              disabled={isLoading || isSavingCompany || missingOrgContactSchema}
               className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-2 text-sm font-semibold transition-colors"
             >
               <Save className="w-4 h-4" />
@@ -460,6 +489,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                     <input
                       value={companyDraft.contact_name}
                       onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_name: e.target.value }))}
+                      disabled={missingOrgContactSchema}
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       placeholder="Representative name"
                     />
@@ -469,6 +499,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                     <input
                       value={companyDraft.contact_job_title}
                       onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_job_title: e.target.value }))}
+                      disabled={missingOrgContactSchema}
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       placeholder="Title"
                     />
@@ -478,6 +509,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                     <input
                       value={companyDraft.contact_email}
                       onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_email: e.target.value }))}
+                      disabled={missingOrgContactSchema}
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       placeholder="Email"
                     />
@@ -487,6 +519,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                     <input
                       value={companyDraft.contact_phone}
                       onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_phone: e.target.value }))}
+                      disabled={missingOrgContactSchema}
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       placeholder="Phone"
                     />
