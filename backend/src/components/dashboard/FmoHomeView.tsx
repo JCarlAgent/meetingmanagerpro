@@ -384,6 +384,10 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   }, [org?.contact_name, user]);
 
   const saveCompanyProfile = async () => {
+    if (!org) {
+      setError('No organization record found for your login. Ask a master admin to add you to an org.');
+      return;
+    }
     if (missingOrgContactSchema) {
       setError('Org contact fields are not installed yet. Run the Supabase migration `supabase_profiles_org_contact_expenses.sql` to add org contact columns.');
       return;
@@ -424,6 +428,12 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   return (
     <div className="max-w-6xl mx-auto">
       {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+
+      {!isLoading && !org && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Your login does not appear to be connected to an organization (or you don’t have permission to read it). Org ID: <span className="font-mono">{orgId}</span>
+        </div>
+      )}
 
       {missingOrgContactSchema && (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">

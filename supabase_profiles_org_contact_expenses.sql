@@ -12,6 +12,35 @@ alter table public.orgs
   add column if not exists contact_phone text,
   add column if not exists contact_job_title text;
 
+-- Allow org admins (FMO/org admins) to update org contact fields.
+-- NOTE: The base schema only allows master admins to modify orgs; this enables the "Update info" button in the FMO Home view.
+alter table public.orgs enable row level security;
+
+drop policy if exists orgs_update_contact on public.orgs;
+create policy orgs_update_contact on public.orgs
+for update
+to authenticated
+using (
+  public.is_master_admin()
+  or exists (
+    select 1
+    from public.org_members m
+    where m.org_id = orgs.id
+      and m.user_id = auth.uid()
+      and m.role in ('fmo_admin','org_admin')
+  )
+)
+with check (
+  public.is_master_admin()
+  or exists (
+    select 1
+    from public.org_members m
+    where m.org_id = orgs.id
+      and m.user_id = auth.uid()
+      and m.role in ('fmo_admin','org_admin')
+  )
+);
+
 -- =========================
 -- User profiles (advisor-facing fields)
 -- Stores email/phone/city/name explicitly so FMOs can view permissioned fields
@@ -30,7 +59,7 @@ create table if not exists public.profiles (
 );
 
 -- updated_at trigger (reuses set_updated_at if present)
-do $$
+do $do$
 begin
   if not exists (
     select 1
@@ -41,14 +70,14 @@ begin
     create or replace function public.set_updated_at()
     returns trigger
     language plpgsql
-    as $$
+    as $set_updated_at$
     begin
       new.updated_at := now();
       return new;
     end;
-    $$;
+    $set_updated_at$;
   end if;
-end $$;
+end $do$;
 
 drop trigger if exists trg_profiles_updated_at on public.profiles;
 create trigger trg_profiles_updated_at
