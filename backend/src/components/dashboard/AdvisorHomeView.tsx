@@ -4,6 +4,7 @@ import {
   Calendar,
   Camera,
   Download,
+  KeyRound,
   Mail,
   MapPin,
   Phone,
@@ -158,6 +159,7 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [savingExpenseMeetingId, setSavingExpenseMeetingId] = useState<string | null>(null);
   const [isSendingToFmo, setIsSendingToFmo] = useState(false);
+  const [isSendingPasswordReset, setIsSendingPasswordReset] = useState(false);
 
   useEffect(() => {
     if (!banner) return;
@@ -542,6 +544,30 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
     }
   };
 
+  const sendPasswordResetEmail = async () => {
+    setIsSendingPasswordReset(true);
+    setBanner(null);
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      const authEmail = data.user?.email;
+      if (!authEmail) throw new Error('No email found for this account.');
+
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo });
+      if (resetErr) throw resetErr;
+
+      setBanner({
+        type: 'success',
+        text: `Password reset email sent to ${authEmail}.`,
+      });
+    } catch (err: unknown) {
+      setBanner({ type: 'error', text: toErrorMessage(err) });
+    } finally {
+      setIsSendingPasswordReset(false);
+    }
+  };
+
   const canSendToFmo = !isIndependent && Boolean(org?.contact_email) && pastMeetings.length > 0;
 
   const photoUrl = profile?.photo_enabled ? profile?.photo_url : null;
@@ -596,6 +622,17 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={sendPasswordResetEmail}
+                disabled={isSendingPasswordReset}
+                className="inline-flex items-center gap-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
+                title="Send a password reset email"
+              >
+                <KeyRound className="w-4 h-4" />
+                {isSendingPasswordReset ? 'Sending…' : 'Reset password'}
+              </button>
+
               <button
                 type="button"
                 onClick={exportCsv}

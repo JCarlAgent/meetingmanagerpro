@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Building2, Users, Mail, Phone, Briefcase, MapPin, Calendar, ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { Building2, Users, Mail, Phone, Briefcase, MapPin, Calendar, ChevronDown, ChevronUp, Save, KeyRound } from 'lucide-react';
 
 type Org = {
   id: string;
@@ -138,6 +138,8 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isSendingPasswordReset, setIsSendingPasswordReset] = useState(false);
 
   const [advisorsOpen, setAdvisorsOpen] = useState(false);
   const [pastExpanded, setPastExpanded] = useState(false);
@@ -406,6 +408,35 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     return fromOrg || fromUser || '—';
   }, [org?.contact_name, user]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const sendPasswordResetEmail = async () => {
+    setIsSendingPasswordReset(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const { data, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+      const authEmail = data.user?.email;
+      if (!authEmail) throw new Error('No email found for this account.');
+
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo });
+      if (resetErr) throw resetErr;
+
+      setNotice(`Password reset email sent to ${authEmail}.`);
+    } catch (err: unknown) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSendingPasswordReset(false);
+    }
+  };
+
   const saveCompanyProfile = async () => {
     if (!org) {
       setError('No organization record found for your login. Ask a master admin to add you to an org.');
@@ -452,6 +483,8 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     <div className="max-w-6xl mx-auto">
       {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
 
+      {notice && <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div>}
+
       {!isLoading && !org && (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           Your login does not appear to be connected to an organization (or you don’t have permission to read it). Org ID: <span className="font-mono">{orgId}</span>
@@ -497,6 +530,19 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                 <div className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
                   <Briefcase className="w-4 h-4 text-slate-400" />
                   <span>{org?.contact_job_title || '—'}</span>
+                </div>
+
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={sendPasswordResetEmail}
+                    disabled={isSendingPasswordReset}
+                    className="inline-flex items-center gap-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
+                    title="Send a password reset email"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    {isSendingPasswordReset ? 'Sending…' : 'Reset password'}
+                  </button>
                 </div>
               </div>
 
