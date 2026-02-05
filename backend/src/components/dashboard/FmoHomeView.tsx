@@ -18,6 +18,7 @@ type Profile = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  city_served: string | null;
   photo_url: string | null;
   photo_enabled: boolean | null;
 };
@@ -61,11 +62,13 @@ type AdvisorSummary = {
   name: string;
   email: string | null;
   phone: string | null;
-  lastMeetingAt: string;
+  lastMeetingAt: string | null;
   lastMeetingCity: string | null;
   lastMeetingState: string | null;
   lastMeetingType: string;
   meetingsCount: number;
+  addedAt: string;
+  cityServed: string | null;
 };
 
 type PastCampaign = {
@@ -225,7 +228,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
       if (profileIds.length) {
         const { data: profileRows, error: profileErr } = await supabase
           .from('profiles')
-          .select('user_id, full_name, email, phone, photo_url, photo_enabled')
+          .select('user_id, full_name, email, phone, city_served, photo_url, photo_enabled')
           .in('user_id', profileIds)
           .limit(2000);
         if (!profileErr) {
@@ -278,17 +281,25 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
         meetingsByAdvisor.set(advisorId, list);
       }
 
-      const summaries: AdvisorSummary[] = Array.from(meetingsByAdvisor.entries()).map(([advisorId, rows]) => {
+      // Advisors list should include all advisors/members, even if they have not held meetings yet.
+      // Sort: most recent meeting first; then newest-added to org.
+      const membersByUserId = new Map<string, OrgMember>();
+      for (const m of members) membersByUserId.set(m.user_id, m);
+
+      const summaries: AdvisorSummary[] = members.map((member) => {
+        const advisorId = member.user_id;
+        const rows = meetingsByAdvisor.get(advisorId) || [];
         rows.sort((a, b) => new Date(String(b.meeting.starts_at)).getTime() - new Date(String(a.meeting.starts_at)).getTime());
-        const latest = rows[0];
+
+        const latest = rows[0] || null;
         const profile = profileById.get(advisorId) || null;
         const name = profile?.full_name || profile?.email || advisorId;
         const email = profile?.email || null;
         const phone = profile?.phone || null;
-        const lastMeetingAt = String(latest?.meeting?.starts_at ?? '');
+        const lastMeetingAt = latest?.meeting?.starts_at ? String(latest.meeting.starts_at) : null;
         const lastMeetingCity = latest?.meeting?.city || null;
         const lastMeetingState = latest?.meeting?.state || null;
-        const lastMeetingType = (latest?.job?.title || '').trim() || latest?.job?.job_number || 'Meeting';
+        const lastMeetingType = latest ? ((latest.job?.title || '').trim() || latest.job?.job_number || 'Meeting') : 'No meetings yet';
 
         return {
           userId: advisorId,
@@ -300,10 +311,22 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
           lastMeetingState,
           lastMeetingType,
           meetingsCount: rows.length,
+          addedAt: member.created_at,
+          cityServed: profile?.city_served || null,
         };
       });
 
-      summaries.sort((a, b) => new Date(b.lastMeetingAt).getTime() - new Date(a.lastMeetingAt).getTime());
+      summaries.sort((a, b) => {
+        const at = a.lastMeetingAt ? new Date(a.lastMeetingAt).getTime() : Number.NaN;
+        const bt = b.lastMeetingAt ? new Date(b.lastMeetingAt).getTime() : Number.NaN;
+        const aHas = Number.isFinite(at);
+        const bHas = Number.isFinite(bt);
+        if (aHas && bHas) return bt - at;
+        if (aHas && !bHas) return -1;
+        if (!aHas && bHas) return 1;
+        return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
+      });
+
       setAdvisorSummaries(summaries);
 
       // Past campaigns (best effort): derive mailing date from print_orders.mailed_at.
@@ -604,7 +627,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
               {isLoading ? (
                 <div className="text-slate-500">Loading…</div>
               ) : advisorSummaries.length === 0 ? (
-                <div className="text-slate-500">No advisors have meetings yet.</div>
+                <div className="text-slate-500">No advisors found.</div>
               ) : (
                 <div className="space-y-2">
                   {advisorSummaries.map((a) => (
@@ -620,11 +643,11 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                       <div className="text-xs text-slate-700 flex items-center gap-3 shrink-0">
                         <span className="hidden sm:inline-flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          {formatDateShort(a.lastMeetingAt)}
+                          {a.lastMeetingAt ? formatDateShort(a.lastMeetingAt) : '—'}
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                          {[a.lastMeetingCity, a.lastMeetingState].filter(Boolean).join(', ') || '—'}
+                          {[a.lastMeetingCity, a.lastMeetingState].filter(Boolean).join(', ') || a.cityServed || '—'}
                         </span>
                         <span className="hidden md:inline">{a.lastMeetingType}</span>
                         <span className="text-slate-500">({a.meetingsCount})</span>
