@@ -299,7 +299,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
 
       if (openAfterCreate) {
         setActingOrg({ id: createdOrgId, name: displayAdvisorNameFromOrg({ ...createData?.org, name: createdOrgName } as any) });
-        onNavigate('setup');
+        onNavigate('home');
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -606,7 +606,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
                       type="button"
                       onClick={() => {
                         setActingOrg({ id: r.org.id, name: r.org.name });
-                        onNavigate('setup');
+                        onNavigate('home');
                       }}
                       className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-sm font-semibold transition-colors"
                     >
@@ -649,7 +649,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
                         type="button"
                         onClick={() => {
                           setActingOrg({ id: r.org.id, name: displayAdvisorNameFromOrg(r.org) });
-                          onNavigate('setup');
+                          onNavigate('home');
                         }}
                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-sm font-semibold transition-colors"
                       >

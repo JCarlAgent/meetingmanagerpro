@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Building2, Search, Users, Mail, Phone, Briefcase, MapPin, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Building2, Users, Mail, Phone, Briefcase, MapPin, Calendar, ChevronDown, ChevronUp, Save } from 'lucide-react';
 
 type Org = {
   id: string;
@@ -17,7 +18,6 @@ type Profile = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
-  city_served: string | null;
   photo_url: string | null;
   photo_enabled: boolean | null;
 };
@@ -45,6 +45,37 @@ type Meeting = {
   state: string | null;
 };
 
+type UpcomingMeeting = {
+  jobId: string;
+  jobStatus: string;
+  startsAt: string;
+  advisorName: string;
+  city: string | null;
+  state: string | null;
+  meetingType: string;
+  jobNumber: string;
+};
+
+type AdvisorSummary = {
+  userId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  lastMeetingAt: string;
+  lastMeetingCity: string | null;
+  lastMeetingState: string | null;
+  lastMeetingType: string;
+  meetingsCount: number;
+};
+
+type PastCampaign = {
+  jobId: string;
+  jobNumber: string;
+  title: string | null;
+  advisorName: string;
+  mailedAt: string;
+};
+
 function toErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
@@ -60,28 +91,21 @@ function formatPhone(raw: string | null | undefined): string {
   return v || '—';
 }
 
-function formatDateRange(starts: (string | null | undefined)[]): string {
-  const dates = starts
-    .filter(Boolean)
-    .map((d) => new Date(String(d)).getTime())
-    .filter((t) => Number.isFinite(t));
-  if (!dates.length) return '—';
-  const min = new Date(Math.min(...dates));
-  const max = new Date(Math.max(...dates));
-  const fmt = (d: Date) => d.toLocaleDateString();
-  return min.getTime() === max.getTime() ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+function formatDateTimeShort(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function joinLocations(meetings: Meeting[]): string {
-  const set = new Set<string>();
-  for (const m of meetings) {
-    const parts = [m.location_name, [m.city, m.state].filter(Boolean).join(', ')].filter(Boolean);
-    if (parts.length) set.add(parts.join(' • '));
-  }
-  const list = Array.from(set);
-  if (!list.length) return '—';
-  if (list.length <= 2) return list.join(' / ');
-  return `${list.slice(0, 2).join(' / ')} +${list.length - 2}`;
+function formatDateShort(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString();
+}
+
+function startOfCurrentYearIso(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), 0, 1).toISOString();
 }
 
 export interface FmoHomeViewProps {
@@ -89,21 +113,30 @@ export interface FmoHomeViewProps {
 }
 
 const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
+  const { user } = useAuth();
   const [org, setOrg] = useState<Org | null>(null);
-  const [advisors, setAdvisors] = useState<(OrgMember & { profile: Profile | null })[]>([]);
-  const [campaigns, setCampaigns] = useState<
-    (Job & { meetings: Meeting[]; advisorName: string })[]
-  >([]);
+  const [companyDraft, setCompanyDraft] = useState<{
+    contact_name: string;
+    contact_job_title: string;
+    contact_email: string;
+    contact_phone: string;
+  }>({
+    contact_name: '',
+    contact_job_title: '',
+    contact_email: '',
+    contact_phone: '',
+  });
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
 
-  const [activeCampaignsCount, setActiveCampaignsCount] = useState<number>(0);
-  const [respondentsTotal, setRespondentsTotal] = useState<number>(0);
+  const [upcomingMeetings, setUpcomingMeetings] = useState<UpcomingMeeting[]>([]);
+  const [advisorSummaries, setAdvisorSummaries] = useState<AdvisorSummary[]>([]);
+  const [pastCampaigns, setPastCampaigns] = useState<PastCampaign[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [advisorsOpen, setAdvisorsOpen] = useState(false);
-  const [campaignsOpen, setCampaignsOpen] = useState(false);
-  const [advisorQuery, setAdvisorQuery] = useState('');
+  const [pastExpanded, setPastExpanded] = useState(false);
 
   const load = async () => {
     setIsLoading(true);
@@ -123,45 +156,41 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
             .eq('org_id', orgId)
             .in('role', ['advisor', 'member'])
             .order('created_at', { ascending: false })
-            .limit(1000),
+            .limit(2000),
           supabase
             .from('jobs')
             .select('id, job_number, status, title, created_by_user_id, created_at')
             .eq('org_id', orgId)
-            .in('status', ['active'])
+            .in('status', ['active', 'closed'])
             .order('created_at', { ascending: false })
-            .limit(500),
+            .limit(2000),
         ]);
 
       if (orgErr) throw orgErr;
       if (memErr) throw memErr;
       if (jobsErr) throw jobsErr;
 
-      setOrg((orgRow as any) || null);
+      const nextOrg = (orgRow as any) || null;
+      setOrg(nextOrg);
+      setCompanyDraft({
+        contact_name: String(nextOrg?.contact_name ?? ''),
+        contact_job_title: String(nextOrg?.contact_job_title ?? ''),
+        contact_email: String(nextOrg?.contact_email ?? ''),
+        contact_phone: String(nextOrg?.contact_phone ?? ''),
+      });
 
       const members = ((membersRows ?? []) as unknown as OrgMember[]) || [];
       const jobs = ((jobsRows ?? []) as unknown as Job[]) || [];
-
-      setActiveCampaignsCount(jobs.length);
-
       const jobIds = jobs.map((j) => j.id);
 
-      const [{ data: meetingsRows, error: meetingsErr }, responsesCountResult] = await Promise.all([
-        jobIds.length
-          ? supabase
-              .from('job_meetings')
-              .select('job_id, starts_at, location_name, city, state')
-              .in('job_id', jobIds)
-              .order('starts_at', { ascending: true })
-              .limit(5000)
-          : Promise.resolve({ data: [], error: null } as any),
-        jobIds.length
-          ? supabase
-              .from('responses')
-              .select('id', { count: 'exact', head: true })
-              .in('job_id', jobIds)
-          : Promise.resolve({ count: 0 } as any),
-      ]);
+      const { data: meetingsRows, error: meetingsErr } = jobIds.length
+        ? await supabase
+            .from('job_meetings')
+            .select('job_id, starts_at, location_name, city, state')
+            .in('job_id', jobIds)
+            .order('starts_at', { ascending: true })
+            .limit(5000)
+        : ({ data: [], error: null } as any);
 
       if (meetingsErr) throw meetingsErr;
 
@@ -179,7 +208,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
       if (profileIds.length) {
         const { data: profileRows, error: profileErr } = await supabase
           .from('profiles')
-          .select('user_id, full_name, email, phone, city_served, photo_url, photo_enabled')
+          .select('user_id, full_name, email, phone, photo_url, photo_enabled')
           .in('user_id', profileIds)
           .limit(2000);
         if (!profileErr) {
@@ -189,32 +218,125 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
       const profileById = new Map(profiles.map((p) => [p.user_id, p] as const));
 
-      setAdvisors(
-        members.map((m) => ({
-          ...m,
-          profile: profileById.get(m.user_id) || null,
-        }))
-      );
+      const jobById = new Map(jobs.map((j) => [j.id, j] as const));
+      const now = new Date();
 
-      const meetingsByJob = new Map<string, Meeting[]>();
-      for (const mtg of meetings) {
-        const list = meetingsByJob.get(mtg.job_id) || [];
-        list.push(mtg);
-        meetingsByJob.set(mtg.job_id, list);
+      const nextUpcoming: UpcomingMeeting[] = meetings
+        .filter((m) => !!m.starts_at)
+        .map((m) => {
+          const startsAt = String(m.starts_at);
+          const job = jobById.get(m.job_id);
+          const creator = job?.created_by_user_id ? profileById.get(String(job.created_by_user_id)) : null;
+          const advisorName = creator?.full_name || creator?.email || (job?.created_by_user_id ? String(job.created_by_user_id) : '—');
+          const meetingType = (job?.title || '').trim() || job?.job_number || 'Meeting';
+          return {
+            jobId: m.job_id,
+            jobStatus: job?.status || 'unknown',
+            startsAt,
+            advisorName,
+            city: m.city || null,
+            state: m.state || null,
+            meetingType,
+            jobNumber: job?.job_number || '—',
+          };
+        })
+        .filter((m) => {
+          const d = new Date(m.startsAt);
+          if (Number.isNaN(d.getTime())) return false;
+          // “Going on” = upcoming meetings for active jobs.
+          if (m.jobStatus !== 'active') return false;
+          return d.getTime() >= now.getTime();
+        })
+        .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+      setUpcomingMeetings(nextUpcoming);
+
+      const meetingsByAdvisor = new Map<string, { meeting: Meeting; job: Job | null }[]>();
+      for (const m of meetings) {
+        const job = jobById.get(m.job_id) || null;
+        const advisorId = job?.created_by_user_id ? String(job.created_by_user_id) : null;
+        if (!advisorId || !m.starts_at) continue;
+        const list = meetingsByAdvisor.get(advisorId) || [];
+        list.push({ meeting: m, job });
+        meetingsByAdvisor.set(advisorId, list);
       }
 
-      const nextCampaigns = jobs.map((j) => {
-        const creator = j.created_by_user_id ? profileById.get(String(j.created_by_user_id)) : null;
-        const advisorName = creator?.full_name || creator?.email || (j.created_by_user_id ? String(j.created_by_user_id) : '—');
+      const summaries: AdvisorSummary[] = Array.from(meetingsByAdvisor.entries()).map(([advisorId, rows]) => {
+        rows.sort((a, b) => new Date(String(b.meeting.starts_at)).getTime() - new Date(String(a.meeting.starts_at)).getTime());
+        const latest = rows[0];
+        const profile = profileById.get(advisorId) || null;
+        const name = profile?.full_name || profile?.email || advisorId;
+        const email = profile?.email || null;
+        const phone = profile?.phone || null;
+        const lastMeetingAt = String(latest?.meeting?.starts_at ?? '');
+        const lastMeetingCity = latest?.meeting?.city || null;
+        const lastMeetingState = latest?.meeting?.state || null;
+        const lastMeetingType = (latest?.job?.title || '').trim() || latest?.job?.job_number || 'Meeting';
+
         return {
-          ...j,
-          advisorName,
-          meetings: meetingsByJob.get(j.id) || [],
+          userId: advisorId,
+          name,
+          email,
+          phone,
+          lastMeetingAt,
+          lastMeetingCity,
+          lastMeetingState,
+          lastMeetingType,
+          meetingsCount: rows.length,
         };
       });
 
-      setCampaigns(nextCampaigns);
-      setRespondentsTotal(Number((responsesCountResult as any)?.count ?? 0));
+      summaries.sort((a, b) => new Date(b.lastMeetingAt).getTime() - new Date(a.lastMeetingAt).getTime());
+      setAdvisorSummaries(summaries);
+
+      // Past campaigns (best effort): derive mailing date from print_orders.mailed_at.
+      try {
+        const yearStartIso = startOfCurrentYearIso();
+        const { data: printRows, error: printErr } = jobIds.length
+          ? await supabase
+              .from('print_orders')
+              .select('job_id, mailed_at')
+              .in('job_id', jobIds)
+              .not('mailed_at', 'is', null)
+              .gte('mailed_at', yearStartIso)
+              .order('mailed_at', { ascending: false })
+              .limit(5000)
+          : ({ data: [], error: null } as any);
+
+        if (printErr) {
+          // If the table isn't present yet in a given environment, don't block the whole Home view.
+          setPastCampaigns([]);
+        } else {
+          const mailedAtByJob = new Map<string, string>();
+          for (const row of (printRows ?? []) as any[]) {
+            const jobId = String(row.job_id);
+            const mailedAt = String(row.mailed_at);
+            const prev = mailedAtByJob.get(jobId);
+            if (!prev || new Date(mailedAt).getTime() > new Date(prev).getTime()) {
+              mailedAtByJob.set(jobId, mailedAt);
+            }
+          }
+
+          const past: PastCampaign[] = Array.from(mailedAtByJob.entries())
+            .map(([jobId, mailedAt]) => {
+              const job = jobById.get(jobId);
+              const creator = job?.created_by_user_id ? profileById.get(String(job.created_by_user_id)) : null;
+              const advisorName = creator?.full_name || creator?.email || (job?.created_by_user_id ? String(job.created_by_user_id) : '—');
+              return {
+                jobId,
+                jobNumber: job?.job_number || '—',
+                title: job?.title || null,
+                advisorName,
+                mailedAt,
+              };
+            })
+            .sort((a, b) => new Date(b.mailedAt).getTime() - new Date(a.mailedAt).getTime());
+
+          setPastCampaigns(past);
+        }
+      } catch {
+        setPastCampaigns([]);
+      }
     } catch (err: unknown) {
       setError(toErrorMessage(err));
     } finally {
@@ -227,15 +349,55 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
-  const filteredAdvisors = useMemo(() => {
-    const q = advisorQuery.trim().toLowerCase();
-    if (!q) return advisors;
-    return advisors.filter((a) => {
-      const p = a.profile;
-      const text = [p?.full_name, p?.email, p?.phone, p?.city_served, a.user_id].filter(Boolean).join(' ').toLowerCase();
-      return text.includes(q);
-    });
-  }, [advisors, advisorQuery]);
+  const upcomingToShow = useMemo(() => {
+    // Always show at least the next 5 by date, but if there are more than 5, let the box grow and show all.
+    if (upcomingMeetings.length > 5) return upcomingMeetings;
+    return upcomingMeetings.slice(0, 5);
+  }, [upcomingMeetings]);
+
+  const pastToShow = useMemo(() => {
+    if (pastExpanded) return pastCampaigns;
+    return pastCampaigns.slice(0, 5);
+  }, [pastCampaigns, pastExpanded]);
+
+  const repName = useMemo(() => {
+    const fromOrg = (org?.contact_name || '').trim();
+    const fromUser = (user as any)?.user_metadata?.full_name ? String((user as any).user_metadata.full_name) : '';
+    return fromOrg || fromUser || '—';
+  }, [org?.contact_name, user]);
+
+  const saveCompanyProfile = async () => {
+    setIsSavingCompany(true);
+    setError(null);
+    try {
+      const payload = {
+        contact_name: companyDraft.contact_name.trim() || null,
+        contact_job_title: companyDraft.contact_job_title.trim() || null,
+        contact_email: companyDraft.contact_email.trim() || null,
+        contact_phone: companyDraft.contact_phone.trim() || null,
+      } as any;
+
+      const { data, error: saveErr } = await supabase
+        .from('orgs')
+        .update(payload)
+        .eq('id', orgId)
+        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
+        .maybeSingle();
+      if (saveErr) throw saveErr;
+      const nextOrg = (data as any) || null;
+      setOrg(nextOrg);
+      setCompanyDraft({
+        contact_name: String(nextOrg?.contact_name ?? ''),
+        contact_job_title: String(nextOrg?.contact_job_title ?? ''),
+        contact_email: String(nextOrg?.contact_email ?? ''),
+        contact_phone: String(nextOrg?.contact_phone ?? ''),
+      });
+    } catch (err: unknown) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSavingCompany(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -243,14 +405,24 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <section className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-red-400" />
-                <h1 className="text-xl font-semibold text-slate-900">{org?.name || 'Organization'}</h1>
+                <h1 className="text-xl font-semibold text-slate-900">Company Profile</h1>
               </div>
-              <div className="mt-1 text-sm text-slate-600">Company profile</div>
+              <div className="mt-1 text-sm text-slate-600">FMO: <span className="font-semibold text-slate-800">{org?.name || '—'}</span></div>
             </div>
+
+            <button
+              type="button"
+              onClick={saveCompanyProfile}
+              disabled={isLoading || isSavingCompany}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-2 text-sm font-semibold transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              {isSavingCompany ? 'Saving…' : 'Update info'}
+            </button>
           </div>
 
           {isLoading ? (
@@ -258,8 +430,8 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
           ) : (
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-slate-200 p-4">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</div>
-                <div className="mt-2 text-slate-900 font-semibold">{org?.contact_name || '—'}</div>
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Representative</div>
+                <div className="mt-2 text-slate-900 font-semibold">{repName}</div>
                 <div className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
                   <Briefcase className="w-4 h-4 text-slate-400" />
                   <span>{org?.contact_job_title || '—'}</span>
@@ -267,7 +439,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
               </div>
 
               <div className="rounded-lg border border-slate-200 p-4">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact details</div>
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact info</div>
                 <div className="mt-2 flex flex-col gap-2 text-sm text-slate-700">
                   <div className="inline-flex items-center gap-2">
                     <Phone className="w-4 h-4 text-slate-400" />
@@ -279,20 +451,91 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                   </div>
                 </div>
               </div>
+
+              <div className="md:col-span-2 rounded-lg border border-slate-200 p-4">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Update info</div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</label>
+                    <input
+                      value={companyDraft.contact_name}
+                      onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_name: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="Representative name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Job title</label>
+                    <input
+                      value={companyDraft.contact_job_title}
+                      onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_job_title: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="Title"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</label>
+                    <input
+                      value={companyDraft.contact_email}
+                      onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_email: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="Email"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Phone</label>
+                    <input
+                      value={companyDraft.contact_phone}
+                      onChange={(e) => setCompanyDraft((p) => ({ ...p, contact_phone: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="Phone"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </section>
 
-        <section className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active campaigns</div>
-          <div className="mt-2 text-4xl font-extrabold text-slate-900">{isLoading ? '—' : activeCampaignsCount}</div>
-          <div className="mt-1 text-sm text-slate-600">Currently running</div>
-        </section>
+        <section className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-red-400" />
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Meetings</div>
+                <div className="text-xs text-slate-600">Upcoming across all advisors</div>
+              </div>
+            </div>
+            <div className="text-3xl font-extrabold text-slate-900">{isLoading ? '—' : upcomingMeetings.length}</div>
+          </div>
 
-        <section className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Respondents</div>
-          <div className="mt-2 text-4xl font-extrabold text-slate-900">{isLoading ? '—' : respondentsTotal}</div>
-          <div className="mt-1 text-sm text-slate-600">Across active campaigns</div>
+          <div className="mt-4">
+            {isLoading ? (
+              <div className="text-slate-500">Loading…</div>
+            ) : upcomingToShow.length === 0 ? (
+              <div className="text-slate-500">No upcoming meetings scheduled.</div>
+            ) : (
+              <div className="space-y-2">
+                {upcomingToShow.map((m, idx) => (
+                  <div key={`${m.startsAt}:${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-sm font-semibold text-slate-900 truncate">{m.advisorName}</div>
+                    <div className="mt-1 text-xs text-slate-700 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        {formatDateTimeShort(m.startsAt)}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        {[m.city, m.state].filter(Boolean).join(', ') || '—'}
+                      </span>
+                      <span className="truncate">Type: <span className="font-semibold">{m.meetingType}</span></span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">Campaign: {m.jobNumber}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       </div>
 
@@ -315,56 +558,36 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
           {advisorsOpen && (
             <div className="border-t border-slate-200 p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    value={advisorQuery}
-                    onChange={(e) => setAdvisorQuery(e.target.value)}
-                    placeholder="Search advisors…"
-                    className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
-                  />
-                </div>
-              </div>
-
               {isLoading ? (
                 <div className="text-slate-500">Loading…</div>
-              ) : filteredAdvisors.length === 0 ? (
-                <div className="text-slate-500">No advisors found.</div>
+              ) : advisorSummaries.length === 0 ? (
+                <div className="text-slate-500">No advisors have meetings yet.</div>
               ) : (
                 <div className="space-y-2">
-                  {filteredAdvisors.map((a) => {
-                    const p = a.profile;
-                    const name = p?.full_name || p?.email || a.user_id;
-                    return (
-                      <details key={a.user_id} className="rounded-lg border border-slate-200">
-                        <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-slate-900 truncate">{name}</div>
-                            <div className="mt-1 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-slate-600">
-                              <span className="inline-flex items-center gap-1">
-                                <Phone className="w-3.5 h-3.5 text-slate-400" />
-                                {p?.phone || '—'}
-                              </span>
-                              <span className="inline-flex items-center gap-1 truncate">
-                                <Mail className="w-3.5 h-3.5 text-slate-400" />
-                                {p?.email || '—'}
-                              </span>
-                              <span className="inline-flex items-center gap-1">
-                                <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                                {p?.city_served || '—'}
-                              </span>
-                            </div>
-                          </div>
-                          <ChevronDown className="w-4 h-4 text-slate-500" />
-                        </summary>
-                        <div className="px-4 pb-4 text-sm text-slate-700">
-                          <div className="mt-2 text-xs text-slate-500">Advisor ID: <span className="font-mono">{a.user_id}</span></div>
-                          <div className="mt-1 text-xs text-slate-500">Added: {new Date(a.created_at).toLocaleDateString()}</div>
-                        </div>
-                      </details>
-                    );
-                  })}
+                  {advisorSummaries.map((a) => (
+                    <div
+                      key={a.userId}
+                      className="h-12 w-full rounded-lg border border-slate-200 bg-white px-4 flex items-center justify-between gap-4"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{a.name}</div>
+                        <div className="text-[11px] text-slate-500 truncate">{[a.email, a.phone].filter(Boolean).join(' • ') || '—'}</div>
+                      </div>
+
+                      <div className="text-xs text-slate-700 flex items-center gap-3 shrink-0">
+                        <span className="hidden sm:inline-flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          {formatDateShort(a.lastMeetingAt)}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          {[a.lastMeetingCity, a.lastMeetingState].filter(Boolean).join(', ') || '—'}
+                        </span>
+                        <span className="hidden md:inline">{a.lastMeetingType}</span>
+                        <span className="text-slate-500">({a.meetingsCount})</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -372,70 +595,55 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
         </section>
 
         <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setCampaignsOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50"
-          >
+          <div className="px-5 py-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-red-400" />
-              <div className="text-left">
-                <div className="text-sm font-semibold text-slate-900">Active campaigns</div>
-                <div className="text-xs text-slate-600">{campaignsOpen ? 'Click to hide campaigns' : 'Click to see campaigns'}</div>
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Past campaigns</div>
+                <div className="text-xs text-slate-600">Newest to oldest by mailing date (current year)</div>
               </div>
             </div>
-            {campaignsOpen ? <ChevronUp className="w-5 h-5 text-slate-500" /> : <ChevronDown className="w-5 h-5 text-slate-500" />}
-          </button>
 
-          {campaignsOpen && (
-            <div className="border-t border-slate-200 p-5">
-              {isLoading ? (
-                <div className="text-slate-500">Loading…</div>
-              ) : campaigns.length === 0 ? (
-                <div className="text-slate-500">No active campaigns.</div>
-              ) : (
-                <div className="space-y-2">
-                  {campaigns.map((c) => (
-                    <details key={c.id} className="rounded-lg border border-slate-200">
-                      <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-slate-900">{c.job_number}</span>
-                            <span className="text-xs text-slate-500">{c.title || ''}</span>
-                          </div>
-                          <div className="mt-1 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs text-slate-600">
-                            <span className="truncate">Advisor: <span className="font-semibold text-slate-700">{c.advisorName}</span></span>
-                            <span># of meetings: <span className="font-semibold text-slate-700">{c.meetings.length}</span></span>
-                            <span>Dates: <span className="font-semibold text-slate-700">{formatDateRange(c.meetings.map((m) => m.starts_at))}</span></span>
-                            <span className="truncate">Locations: <span className="font-semibold text-slate-700">{joinLocations(c.meetings)}</span></span>
-                          </div>
+            {pastCampaigns.length > 5 && (
+              <button
+                type="button"
+                onClick={() => setPastExpanded((v) => !v)}
+                className="text-sm font-semibold text-red-700 hover:text-red-800"
+              >
+                {pastExpanded ? 'Show less' : 'Show more'}
+              </button>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 p-5">
+            {isLoading ? (
+              <div className="text-slate-500">Loading…</div>
+            ) : pastToShow.length === 0 ? (
+              <div className="text-slate-500">No mailed campaigns found for this year yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {pastToShow.map((c) => (
+                  <div key={c.jobId} className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-900">{c.jobNumber}</span>
+                          <span className="text-xs text-slate-500 truncate">{c.title || ''}</span>
                         </div>
-                        <ChevronDown className="w-4 h-4 text-slate-500" />
-                      </summary>
-
-                      <div className="px-4 pb-4">
-                        {c.meetings.length === 0 ? (
-                          <div className="text-sm text-slate-600">No meetings scheduled yet.</div>
-                        ) : (
-                          <div className="mt-2 space-y-2">
-                            {c.meetings.map((m, idx) => (
-                              <div key={idx} className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-800">
-                                <div className="font-semibold">{m.location_name || 'Meeting'}</div>
-                                <div className="mt-1 text-xs text-slate-600">
-                                  {m.starts_at ? new Date(m.starts_at).toLocaleString() : 'TBD'}
-                                  {m.city || m.state ? ` • ${(m.city || '')}${m.city && m.state ? ', ' : ''}${m.state || ''}` : ''}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <div className="mt-1 text-xs text-slate-700">
+                          Advisor: <span className="font-semibold">{c.advisorName}</span>
+                        </div>
                       </div>
-                    </details>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                      <div className="shrink-0 text-xs text-slate-600 inline-flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        {formatDateShort(c.mailedAt)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>
