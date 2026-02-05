@@ -1,5 +1,6 @@
 import React from 'react';
 import { 
+  Home,
   LayoutDashboard, 
   FolderKanban, 
   Users, 
@@ -43,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
     {
       title: 'Plan',
       items: [
+        { id: 'home', label: 'Home', icon: Home },
         { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
         { id: 'templates', label: 'Templates', icon: FileText },
         { id: 'uploads', label: 'Demographics CSV', icon: Upload },

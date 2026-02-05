@@ -726,7 +726,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm template'));
                   }
                 }}
-                className="w-full inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2.5 rounded-lg transition-colors text-sm"
+                className="w-full h-11 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
               >
                 Confirm template <ArrowRight className="w-4 h-4" />
               </button>
@@ -870,13 +870,16 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           </div>
 
           <div className="mt-auto pt-4">
-            <div className="flex items-center gap-2">
-              <input
-                value={initials.demographics}
-                onChange={(e) => setInitials((p) => ({ ...p, demographics: e.target.value }))}
-                placeholder="Initials"
-                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Initials</label>
+                <input
+                  value={initials.demographics}
+                  onChange={(e) => setInitials((p) => ({ ...p, demographics: e.target.value }))}
+                  placeholder="Initials"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
               <button
                 type="button"
                 onClick={async () => {
@@ -899,7 +902,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm mailing list details'));
                   }
                 }}
-                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-2 rounded-lg transition-colors text-sm"
+                className="w-full h-11 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
               >
                 Confirm mailing list details <ArrowRight className="w-4 h-4" />
               </button>

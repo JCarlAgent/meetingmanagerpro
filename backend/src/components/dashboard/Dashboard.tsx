@@ -23,13 +23,14 @@ import SettingsView from './SettingsView';
 import DemographicsUploadView from './DemographicsUploadView';
 import MailingsReportView from './MailingsReportView';
 import ApprovalsArchiveView from './ApprovalsArchiveView';
+import HomeView from './HomeView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const { actingOrgId } = useActingOrg();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState('setup');
+  const [activeView, setActiveView] = useState('home');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [responders, setResponders] = useState<Responder[]>([]);
@@ -47,8 +48,8 @@ const Dashboard: React.FC = () => {
     if (!user) return;
     // Default master admins to the Clients view (onboarding workflow).
     setActiveView((prev) => {
-      if (prev !== 'setup') return prev;
-      return user.is_master_admin ? 'master-clients' : 'setup';
+      if (prev !== 'home') return prev;
+      return user.is_master_admin ? 'master-clients' : 'home';
     });
   }, [user]);
 
@@ -130,6 +131,8 @@ const Dashboard: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
+      case 'home':
+        return <HomeView />;
       case 'master-clients':
         return <MasterClientsView onNavigate={(view) => setActiveView(view)} />;
       case 'master-orgs':
