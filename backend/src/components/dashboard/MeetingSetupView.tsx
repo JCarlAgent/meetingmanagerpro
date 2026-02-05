@@ -648,7 +648,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm locations'));
                   }
                 }}
-                className="w-full h-10 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
+                className="w-full h-12 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
               >
                 Confirm locations and dates <ArrowRight className="w-4 h-4" />
               </button>
@@ -726,7 +726,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm template'));
                   }
                 }}
-                className="w-full h-10 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
+                className="w-full h-12 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
               >
                 Confirm template <ArrowRight className="w-4 h-4" />
               </button>
@@ -797,7 +797,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm confirmation methods'));
                   }
                 }}
-                className="w-full h-10 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
+                className="w-full h-12 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
               >
                 Confirm confirmation method(s) <ArrowRight className="w-4 h-4" />
               </button>
@@ -902,7 +902,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     alert(formatUnknownError(err, 'Failed to confirm mailing list details'));
                   }
                 }}
-                className="w-full h-10 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
+                className="w-full h-12 inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-3 rounded-lg transition-colors text-sm"
               >
                 Confirm mailing list details <ArrowRight className="w-4 h-4" />
               </button>
