@@ -11,6 +11,7 @@ type Org = {
   contact_email?: string | null;
   contact_phone?: string | null;
   contact_job_title?: string | null;
+  logo_url?: string | null;
 };
 
 type Profile = {
@@ -119,16 +120,19 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   const { user } = useAuth();
   const [org, setOrg] = useState<Org | null>(null);
   const [missingOrgContactSchema, setMissingOrgContactSchema] = useState(false);
+  const [missingOrgLogoSchema, setMissingOrgLogoSchema] = useState(false);
   const [companyDraft, setCompanyDraft] = useState<{
     contact_name: string;
     contact_job_title: string;
     contact_email: string;
     contact_phone: string;
+    logo_url: string;
   }>({
     contact_name: '',
     contact_job_title: '',
     contact_email: '',
     contact_phone: '',
+    logo_url: '',
   });
   const [isSavingCompany, setIsSavingCompany] = useState(false);
 
@@ -149,26 +153,46 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     setError(null);
 
     try {
-      // Backward-compat: some environments may not have the org contact columns yet.
+      // Backward-compat: some environments may not have org contact columns and/or logo_url yet.
+      let orgRow: any = null;
+      setMissingOrgContactSchema(false);
+      setMissingOrgLogoSchema(false);
+
       const orgResult = await supabase
         .from('orgs')
-        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
+        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title, logo_url')
         .eq('id', orgId)
         .maybeSingle();
 
-      let orgRow: any = null;
       if (orgResult.error) {
         const code = (orgResult.error as any)?.code;
         if (code === '42703') {
-          setMissingOrgContactSchema(true);
-          const fallback = await supabase.from('orgs').select('id, name, slug').eq('id', orgId).maybeSingle();
-          if (fallback.error) throw fallback.error;
-          orgRow = fallback.data as any;
+          // Could be missing logo_url or missing contact columns. Retry without logo_url.
+          const retry = await supabase
+            .from('orgs')
+            .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
+            .eq('id', orgId)
+            .maybeSingle();
+
+          if (retry.error) {
+            const retryCode = (retry.error as any)?.code;
+            if (retryCode === '42703') {
+              setMissingOrgContactSchema(true);
+              const fallback = await supabase.from('orgs').select('id, name, slug').eq('id', orgId).maybeSingle();
+              if (fallback.error) throw fallback.error;
+              orgRow = fallback.data as any;
+            } else {
+              throw retry.error;
+            }
+          } else {
+            // Contact columns exist; only logo_url missing.
+            setMissingOrgLogoSchema(true);
+            orgRow = retry.data as any;
+          }
         } else {
           throw orgResult.error;
         }
       } else {
-        setMissingOrgContactSchema(false);
         orgRow = orgResult.data as any;
       }
 
@@ -199,6 +223,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
         contact_job_title: String(nextOrg?.contact_job_title ?? ''),
         contact_email: String(nextOrg?.contact_email ?? ''),
         contact_phone: String(nextOrg?.contact_phone ?? ''),
+        logo_url: missingOrgLogoSchema ? '' : String(nextOrg?.logo_url ?? ''),
       });
 
       const members = ((membersRows ?? []) as unknown as OrgMember[]) || [];
@@ -450,27 +475,52 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     setIsSavingCompany(true);
     setError(null);
     try {
-      const payload = {
+      const payload: any = {
         contact_name: companyDraft.contact_name.trim() || null,
         contact_job_title: companyDraft.contact_job_title.trim() || null,
         contact_email: companyDraft.contact_email.trim() || null,
         contact_phone: companyDraft.contact_phone.trim() || null,
-      } as any;
+      };
+      if (!missingOrgLogoSchema) {
+        payload.logo_url = companyDraft.logo_url.trim() || null;
+      }
 
-      const { data, error: saveErr } = await supabase
+      let nextOrg: any = null;
+      const attempt = await supabase
         .from('orgs')
         .update(payload)
         .eq('id', orgId)
-        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
+        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title, logo_url')
         .maybeSingle();
-      if (saveErr) throw saveErr;
-      const nextOrg = (data as any) || null;
+
+      if (attempt.error) {
+        const code = (attempt.error as any)?.code;
+        if (code === '42703') {
+          // Likely logo_url missing in this environment; retry without it.
+          setMissingOrgLogoSchema(true);
+          delete payload.logo_url;
+          const retry = await supabase
+            .from('orgs')
+            .update(payload)
+            .eq('id', orgId)
+            .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title')
+            .maybeSingle();
+          if (retry.error) throw retry.error;
+          nextOrg = (retry.data as any) || null;
+        } else {
+          throw attempt.error;
+        }
+      } else {
+        nextOrg = (attempt.data as any) || null;
+      }
+
       setOrg(nextOrg);
       setCompanyDraft({
         contact_name: String(nextOrg?.contact_name ?? ''),
         contact_job_title: String(nextOrg?.contact_job_title ?? ''),
         contact_email: String(nextOrg?.contact_email ?? ''),
         contact_phone: String(nextOrg?.contact_phone ?? ''),
+        logo_url: missingOrgLogoSchema ? '' : String(nextOrg?.logo_url ?? ''),
       });
     } catch (err: unknown) {
       setError(toErrorMessage(err));
@@ -602,6 +652,18 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       placeholder="Phone"
                     />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Logo URL</label>
+                    <input
+                      value={companyDraft.logo_url}
+                      onChange={(e) => setCompanyDraft((p) => ({ ...p, logo_url: e.target.value }))}
+                      disabled={missingOrgContactSchema}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="https://.../logo.png"
+                    />
+                    <div className="mt-2 text-xs text-slate-500">Shown on advisor dashboards in the upper-left.</div>
                   </div>
                 </div>
               </div>

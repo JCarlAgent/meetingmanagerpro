@@ -10,7 +10,8 @@ alter table public.orgs
   add column if not exists contact_name text,
   add column if not exists contact_email text,
   add column if not exists contact_phone text,
-  add column if not exists contact_job_title text;
+  add column if not exists contact_job_title text,
+  add column if not exists logo_url text;
 
 -- Allow org admins (FMO/org admins) to update org contact fields.
 -- NOTE: The base schema only allows master admins to modify orgs; this enables the "Update info" button in the FMO Home view.

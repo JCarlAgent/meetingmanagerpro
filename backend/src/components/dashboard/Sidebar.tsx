@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Home,
   LayoutDashboard, 
@@ -18,6 +18,7 @@ import {
   FileImage
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -28,6 +29,80 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewChange }) => {
   const { user } = useAuth();
+
+  const [showFmoLogo, setShowFmoLogo] = useState(false);
+  const [fmoLogoUrl, setFmoLogoUrl] = useState<string | null>(null);
+  const [fmoName, setFmoName] = useState<string>('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const load = async () => {
+      const orgId = (user as any)?.org_id ? String((user as any).org_id) : null;
+      const role = (user as any)?.org_role ? String((user as any).org_role) : null;
+      const isAdvisorLevel = role === 'advisor' || role === 'member';
+
+      if (!orgId || !isAdvisorLevel) {
+        if (!isMounted) return;
+        setShowFmoLogo(false);
+        setFmoLogoUrl(null);
+        setFmoName('');
+        return;
+      }
+
+      try {
+        // Only show the FMO logo if this org has an FMO/org admin.
+        const { data: adminRows, error: adminErr } = await supabase
+          .from('org_members')
+          .select('user_id, role')
+          .eq('org_id', orgId)
+          .in('role', ['fmo_admin', 'org_admin'])
+          .limit(1);
+
+        if (adminErr) throw adminErr;
+        const underFmo = (adminRows ?? []).length > 0;
+        if (!isMounted) return;
+        setShowFmoLogo(underFmo);
+        if (!underFmo) {
+          setFmoLogoUrl(null);
+          setFmoName('');
+          return;
+        }
+
+        // Best-effort: logo_url may not exist yet in some environments.
+        const orgResult = await supabase.from('orgs').select('name, logo_url').eq('id', orgId).maybeSingle();
+        if (orgResult.error) {
+          const code = (orgResult.error as any)?.code;
+          if (code === '42703') {
+            const fallback = await supabase.from('orgs').select('name').eq('id', orgId).maybeSingle();
+            if (!fallback.error) {
+              if (!isMounted) return;
+              setFmoName(String((fallback.data as any)?.name ?? ''));
+              setFmoLogoUrl(null);
+            }
+            return;
+          }
+          throw orgResult.error;
+        }
+
+        if (!isMounted) return;
+        setFmoName(String((orgResult.data as any)?.name ?? ''));
+        setFmoLogoUrl(((orgResult.data as any)?.logo_url as string | null) ?? null);
+      } catch {
+        if (!isMounted) return;
+        setShowFmoLogo(false);
+        setFmoLogoUrl(null);
+        setFmoName('');
+      }
+    };
+
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  const isViewOnlyAdvisor = (user as any)?.org_role === 'member';
 
   const menuSections = [
     ...(user?.is_master_admin
@@ -45,9 +120,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       title: 'Plan',
       items: [
         { id: 'home', label: 'Home', icon: Home },
-        { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
-        { id: 'templates', label: 'Templates', icon: FileText },
-        { id: 'uploads', label: 'Demographics CSV', icon: Upload },
+        ...(!isViewOnlyAdvisor
+          ? [
+              { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
+              { id: 'templates', label: 'Templates', icon: FileText },
+              { id: 'uploads', label: 'Demographics CSV', icon: Upload },
+            ]
+          : []),
       ],
     },
     {
@@ -94,27 +173,46 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
         flex flex-col
       `}>
         {/* Logo */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
+        <div className="p-4 border-b border-slate-200">
+          {showFmoLogo && (
+            <div className="mb-3">
+              {fmoLogoUrl ? (
+                <img
+                  src={fmoLogoUrl}
+                  alt={fmoName ? `${fmoName} logo` : 'FMO logo'}
+                  className="w-full h-12 object-contain rounded-lg border border-slate-200 bg-white"
+                />
+              ) : (
+                <div className="w-full h-12 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center text-xs font-semibold text-slate-600">
+                  FMO Logo
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
+              </div>
+              <div>
+                <span className="text-lg font-bold text-slate-900">MMP</span>
+                <span className="text-xs text-slate-500 block">Dashboard</span>
+              </div>
             </div>
-            <div>
-              <span className="text-lg font-bold text-slate-900">MMP</span>
-              <span className="text-xs text-slate-500 block">Dashboard</span>
-            </div>
+            <button
+              onClick={onClose}
+              className="lg:hidden p-1 text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button 
-            onClick={onClose}
-            className="lg:hidden p-1 text-slate-500 hover:text-slate-900 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* New Campaign Button */}
+        {!isViewOnlyAdvisor && (
         <div className="p-4">
           <button 
             onClick={() => onViewChange('new-campaign')}
@@ -124,6 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
             <span>New Campaign</span>
           </button>
         </div>
+        )}
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-2 overflow-y-auto">

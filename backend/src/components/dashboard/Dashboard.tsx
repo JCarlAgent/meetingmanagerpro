@@ -132,12 +132,23 @@ const Dashboard: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'home':
-        return <HomeView />;
+        return <HomeView onNavigate={(view) => setActiveView(view)} />;
       case 'master-clients':
         return <MasterClientsView onNavigate={(view) => setActiveView(view)} />;
       case 'master-orgs':
         return <MasterOrganizationsView />;
       case 'setup':
+        // View-only advisors should not access meeting input.
+        if ((user as any)?.org_role === 'member') {
+          return (
+            <div className="max-w-4xl mx-auto">
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                <h1 className="text-xl font-semibold text-slate-900">Meeting Setup</h1>
+                <p className="mt-2 text-slate-600">Your account is view-only. Contact your FMO to make meeting changes.</p>
+              </div>
+            </div>
+          );
+        }
         return (
           <MeetingSetupView
             onNewCampaign={() => setShowNewCampaign(true)}

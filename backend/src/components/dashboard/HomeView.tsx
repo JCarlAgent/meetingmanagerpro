@@ -4,7 +4,11 @@ import { useActingOrg } from '@/lib/actingOrg';
 import FmoHomeView from './FmoHomeView';
 import AdvisorHomeView from './AdvisorHomeView';
 
-const HomeView: React.FC = () => {
+export interface HomeViewProps {
+  onNavigate?: (view: string) => void;
+}
+
+const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   const { user } = useAuth();
   const { actingOrgId } = useActingOrg();
 
@@ -40,7 +44,7 @@ const HomeView: React.FC = () => {
     return <FmoHomeView orgId={orgId} />;
   }
 
-  return <AdvisorHomeView orgId={orgId} userId={user.id} />;
+  return <AdvisorHomeView orgId={orgId} userId={user.id} onNavigate={onNavigate} />;
 };
 
 export default HomeView;

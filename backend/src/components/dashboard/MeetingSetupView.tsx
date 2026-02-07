@@ -53,6 +53,8 @@ interface MeetingSetupViewProps {
 const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNavigate }) => {
   const { user } = useAuth();
   const { actingOrg } = useActingOrg();
+  const [advisorOptions, setAdvisorOptions] = useState<Array<{ user_id: string; label: string }>>([]);
+  const [assignedAdvisorUserId, setAssignedAdvisorUserId] = useState<string>('');
   const [jobs, setJobs] = useState<Array<{ id: string; job_number: string; title: string | null; status: string; org_id: string }>>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState('');
@@ -289,6 +291,58 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
     loadTemplates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+  
+  useEffect(() => {
+    const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
+    const canAssign = Boolean(user?.is_admin || user?.is_master_admin);
+    if (!effectiveOrgId || !canAssign) return;
+
+    let isMounted = true;
+    const loadAdvisors = async () => {
+      try {
+        const { data: members, error } = await supabase
+          .from('org_members')
+          .select('user_id, role')
+          .eq('org_id', effectiveOrgId)
+          .in('role', ['advisor', 'member'])
+          .limit(2000);
+        if (error) throw error;
+
+        const ids = Array.from(new Set(((members ?? []) as any[]).map((m) => String(m.user_id))));
+        let profileRows: any[] = [];
+        if (ids.length) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('user_id, full_name, email')
+            .in('user_id', ids)
+            .limit(2000);
+          profileRows = (profiles ?? []) as any[];
+        }
+
+        const byId = new Map(profileRows.map((p) => [String(p.user_id), p] as const));
+        const options = ids
+          .map((id) => {
+            const p = byId.get(id);
+            const label = (p?.full_name || p?.email || id) as string;
+            return { user_id: id, label };
+          })
+          .sort((a, b) => a.label.localeCompare(b.label));
+
+        if (!isMounted) return;
+        setAdvisorOptions(options);
+        setAssignedAdvisorUserId((prev) => prev || user?.id || '');
+      } catch {
+        if (!isMounted) return;
+        setAdvisorOptions([]);
+        setAssignedAdvisorUserId((prev) => prev || user?.id || '');
+      }
+    };
+
+    loadAdvisors();
+    return () => {
+      isMounted = false;
+    };
+  }, [actingOrg?.id, user?.id, user?.is_admin, user?.is_master_admin, user?.org_id]);
 
   const createJob = async () => {
     const orgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
@@ -313,7 +367,10 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
         .from('jobs')
         .insert({
           org_id: orgId,
-          created_by_user_id: user?.id,
+          created_by_user_id:
+            (user?.is_admin || user?.is_master_admin) && assignedAdvisorUserId
+              ? assignedAdvisorUserId
+              : user?.id,
           job_number: jobNumber,
           status: 'pending',
           title,
@@ -509,6 +566,29 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
               </button>
             </div>
           </div>
+
+          {(user?.is_admin || user?.is_master_admin) && (
+            <div className="md:col-span-3">
+              <label className="block text-sm font-medium text-slate-700">Assign to advisor</label>
+              <select
+                value={assignedAdvisorUserId || user?.id || ''}
+                onChange={(e) => setAssignedAdvisorUserId(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              >
+                <option value={user?.id || ''}>Me</option>
+                {advisorOptions
+                  .filter((o) => o.user_id !== user?.id)
+                  .map((o) => (
+                    <option key={o.user_id} value={o.user_id}>
+                      {o.label}
+                    </option>
+                  ))}
+              </select>
+              <div className="mt-2 text-xs text-slate-500">
+                The assigned advisor will see this meeting + mailer results on their Home dashboard.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

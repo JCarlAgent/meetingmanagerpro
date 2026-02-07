@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Calendar,
   Camera,
   Download,
   KeyRound,
+  LayoutDashboard,
   Mail,
   MapPin,
   Phone,
@@ -67,6 +69,28 @@ type MeetingExpense = {
   gas: number | null;
   other: number | null;
   notes: string | null;
+};
+
+type JobStatsRow = {
+  job_id: string;
+  mailed_count: number | null;
+  responses_total: number | null;
+  responses_confirmed: number | null;
+  responses_scheduled: number | null;
+};
+
+type ResponseRow = {
+  id: string;
+  job_id: string;
+  status: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address1: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  scheduled_appointment: boolean;
 };
 
 type Banner = { type: 'success' | 'error'; text: string };
@@ -136,9 +160,11 @@ function csvEscape(v: unknown): string {
 export interface AdvisorHomeViewProps {
   orgId: string;
   userId: string;
+  onNavigate?: (view: string) => void;
 }
 
-const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
+const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId, onNavigate }) => {
+  const { user } = useAuth();
   const [org, setOrg] = useState<Org | null>(null);
   const [isIndependent, setIsIndependent] = useState<boolean>(true);
 
@@ -160,6 +186,21 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
   const [savingExpenseMeetingId, setSavingExpenseMeetingId] = useState<string | null>(null);
   const [isSendingToFmo, setIsSendingToFmo] = useState(false);
   const [isSendingPasswordReset, setIsSendingPasswordReset] = useState(false);
+
+  const [jobStatsByJobId, setJobStatsByJobId] = useState<Map<string, JobStatsRow>>(new Map());
+  const [responsesByJobId, setResponsesByJobId] = useState<Map<string, ResponseRow[]>>(new Map());
+  const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
+  const [savingResponseId, setSavingResponseId] = useState<string | null>(null);
+
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatAddress(r: ResponseRow): string {
+  const parts = [r.address1, [r.city, r.state].filter(Boolean).join(', '), r.postal_code].filter(Boolean);
+  return parts.length ? parts.join(' • ') : '—';
+}
 
   useEffect(() => {
     if (!banner) return;
@@ -245,6 +286,59 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
       const nextMeetings: MeetingWithJob[] = meetingRows.map((m) => ({ ...m, job: jobById.get(m.job_id) ?? null }));
       setMeetings(nextMeetings);
 
+      // If this advisor is under an FMO/org admin, also load mailer results for their jobs.
+      if (!isIndependent && jobIds.length) {
+        try {
+          const [{ data: statsRows, error: statsErr }, { data: respRows, error: respErr }] = await Promise.all([
+            supabase
+              .from('job_stats')
+              .select('job_id, mailed_count, responses_total, responses_confirmed, responses_scheduled')
+              .in('job_id', jobIds)
+              .limit(5000),
+            supabase
+              .from('responses')
+              .select(
+                'id, job_id, status, full_name, phone, email, address1, city, state, postal_code, scheduled_appointment'
+              )
+              .in('job_id', jobIds)
+              .order('created_at', { ascending: false })
+              .limit(5000),
+          ]);
+
+          if (!statsErr) {
+            const m = new Map<string, JobStatsRow>();
+            const rows = ((statsRows ?? []) as unknown as JobStatsRow[]) || [];
+            for (const row of rows) m.set(String(row.job_id), row);
+            setJobStatsByJobId(m);
+          } else {
+            setJobStatsByJobId(new Map());
+          }
+
+          if (!respErr) {
+            const byJob = new Map<string, ResponseRow[]>();
+            const rows = ((respRows ?? []) as unknown as ResponseRow[]) || [];
+            for (const r of rows) {
+              const key = String(r.job_id);
+              const list = byJob.get(key) || [];
+              list.push({
+                ...r,
+                scheduled_appointment: Boolean((r as any).scheduled_appointment),
+              });
+              byJob.set(key, list);
+            }
+            setResponsesByJobId(byJob);
+          } else {
+            setResponsesByJobId(new Map());
+          }
+        } catch {
+          setJobStatsByJobId(new Map());
+          setResponsesByJobId(new Map());
+        }
+      } else {
+        setJobStatsByJobId(new Map());
+        setResponsesByJobId(new Map());
+      }
+
       const pastMeetingIds = nextMeetings.filter((m) => !isUpcoming(m.starts_at)).map((m) => m.id);
       if (!pastMeetingIds.length) {
         setExpensesByMeeting(new Map());
@@ -294,6 +388,73 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const toggleExpanded = (jobId: string) => {
+    setExpandedJobs((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  };
+
+  const updateResponse = async (responseId: string, updates: Partial<{ status: string; scheduled_appointment: boolean; scheduled_at: string | null }>) => {
+    setSavingResponseId(responseId);
+    setBanner(null);
+    try {
+      const { data, error } = await supabase
+        .from('responses')
+        .update(updates as any)
+        .eq('id', responseId)
+        .select('id, job_id, status, full_name, phone, email, address1, city, state, postal_code, scheduled_appointment')
+        .maybeSingle();
+      if (error) throw error;
+
+      const updated = (data as any) as ResponseRow | null;
+      if (!updated) return;
+
+      setResponsesByJobId((prev) => {
+        const next = new Map(prev);
+        const jobId = String(updated.job_id);
+        const list = (next.get(jobId) || []).map((r) => (r.id === updated.id ? { ...r, ...updated } : r));
+        next.set(jobId, list);
+        return next;
+      });
+    } catch (err: unknown) {
+      setBanner({ type: 'error', text: toErrorMessage(err) });
+    } finally {
+      setSavingResponseId(null);
+    }
+  };
+
+  const resultsCards = useMemo(() => {
+    if (isIndependent) return [] as Array<{ job: JobRow; meeting: MeetingWithJob | null }>;
+    const byJob = new Map<string, MeetingWithJob[]>();
+    for (const m of meetings) {
+      const key = m.job?.id ? String(m.job.id) : String(m.job_id);
+      const list = byJob.get(key) || [];
+      list.push(m);
+      byJob.set(key, list);
+    }
+
+    const rows: Array<{ job: JobRow; meeting: MeetingWithJob | null }> = [];
+    for (const m of meetings) {
+      const job = m.job;
+      if (!job) continue;
+      const key = String(job.id);
+      if (rows.some((r) => r.job.id === key)) continue;
+      const list = byJob.get(key) || [];
+      list.sort((a, b) => new Date(String(a.starts_at ?? '')).getTime() - new Date(String(b.starts_at ?? '')).getTime());
+      rows.push({ job, meeting: list[0] || null });
+    }
+
+    rows.sort((a, b) => {
+      const at = a.meeting?.starts_at ? new Date(String(a.meeting.starts_at)).getTime() : 0;
+      const bt = b.meeting?.starts_at ? new Date(String(b.meeting.starts_at)).getTime() : 0;
+      return bt - at;
+    });
+    return rows;
+  }, [isIndependent, meetings]);
 
   const upcomingMeetings = useMemo(() => meetings.filter((m) => isUpcoming(m.starts_at)), [meetings]);
   const pastMeetings = useMemo(
@@ -633,6 +794,19 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
                 {isSendingPasswordReset ? 'Sending…' : 'Reset password'}
               </button>
 
+              {!((user as any)?.org_role === 'member') && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('setup')}
+                  disabled={!onNavigate}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60"
+                  title={!onNavigate ? 'Navigation unavailable' : 'Open meeting input'}
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Meeting input
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={exportCsv}
@@ -767,6 +941,124 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId }) => {
                 )}
               </div>
             </div>
+
+            {!isIndependent && (
+              <div className="rounded-lg border border-slate-200 p-4">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mailer results</div>
+                <div className="mt-2 text-sm text-slate-600">Expand a meeting to review responders and mark attendance/appointments.</div>
+
+                <div className="mt-4 space-y-2">
+                  {resultsCards.length === 0 ? (
+                    <div className="text-sm text-slate-500">No meetings found yet.</div>
+                  ) : (
+                    resultsCards.map(({ job, meeting }) => {
+                      const jobId = String(job.id);
+                      const isOpen = expandedJobs.has(jobId);
+                      const responses = responsesByJobId.get(jobId) || [];
+                      const mailed = jobStatsByJobId.get(jobId)?.mailed_count ?? null;
+                      const responders = responses.length;
+                      const attendees = responses.filter((r) => String(r.status) === 'confirmed').length;
+                      const rate = mailed && mailed > 0 ? responders / mailed : null;
+                      const meetingType = (job.title || '').trim() || job.job_number;
+
+                      return (
+                        <div key={jobId} className="rounded-lg border border-slate-200 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(jobId)}
+                            className="w-full px-3 py-3 bg-white hover:bg-slate-50 text-left transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-slate-900 truncate">{meetingType}</div>
+                                <div className="mt-1 text-xs text-slate-600">
+                                  {formatWhen(meeting?.starts_at ?? null)} • {meeting?.city || '—'}{meeting?.state ? `, ${meeting.state}` : ''}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500 truncate">{meeting ? formatLocation(meeting) : '—'}</div>
+                              </div>
+
+                              <div className="flex items-center gap-3 text-xs text-slate-700">
+                                <div className="text-right">
+                                  <div><span className="font-semibold">{responders}</span> responders</div>
+                                  <div><span className="font-semibold">{attendees}</span> attendees</div>
+                                  <div>Rate: <span className="font-semibold">{formatPercent(rate)}</span></div>
+                                </div>
+                                <div className="text-slate-400">{isOpen ? '−' : '+'}</div>
+                              </div>
+                            </div>
+                          </button>
+
+                          {isOpen && (
+                            <div className="px-3 pb-3">
+                              <div className="pt-2 text-xs text-slate-600">
+                                Mail pieces sent: <span className="font-semibold">{mailed ?? '—'}</span>
+                              </div>
+
+                              <div className="mt-3 space-y-2">
+                                {responses.length === 0 ? (
+                                  <div className="text-sm text-slate-500">No responders yet.</div>
+                                ) : (
+                                  responses.map((r) => {
+                                    const attended = String(r.status) === 'confirmed';
+                                    const saving = savingResponseId === r.id;
+                                    return (
+                                      <div key={r.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className="text-sm font-semibold text-slate-900 truncate">{r.full_name || 'Responder'}</div>
+                                            <div className="mt-1 text-xs text-slate-700">
+                                              {r.phone || '—'} • {r.email || '—'}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-600 truncate">{formatAddress(r)}</div>
+                                          </div>
+
+                                          <div className="flex flex-wrap items-center gap-4 text-sm">
+                                            <label className="inline-flex items-center gap-2 text-slate-800">
+                                              <input
+                                                type="checkbox"
+                                                checked={attended}
+                                                disabled={saving}
+                                                onChange={(e) => {
+                                                  const next = e.target.checked;
+                                                  updateResponse(r.id, { status: next ? 'confirmed' : 'no_show' });
+                                                }}
+                                              />
+                                              Attended
+                                            </label>
+
+                                            <label className="inline-flex items-center gap-2 text-slate-800">
+                                              <input
+                                                type="checkbox"
+                                                checked={Boolean(r.scheduled_appointment)}
+                                                disabled={saving}
+                                                onChange={(e) => {
+                                                  const next = e.target.checked;
+                                                  updateResponse(r.id, {
+                                                    scheduled_appointment: next,
+                                                    scheduled_at: next ? new Date().toISOString() : null,
+                                                  });
+                                                }}
+                                              />
+                                              Appointment set
+                                            </label>
+
+                                            {saving && <span className="text-xs text-slate-500">Saving…</span>}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
