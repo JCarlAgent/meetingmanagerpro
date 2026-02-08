@@ -47,6 +47,12 @@ type OrgOption = {
   name: string;
 };
 
+function shortId(id: string): string {
+  if (!id) return '';
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 6)}…${id.slice(-6)}`;
+}
+
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
@@ -131,9 +137,11 @@ const MasterOrganizationsView: React.FC = () => {
   const [selectedMember, setSelectedMember] = useState<OrgMemberWithUser | null>(null);
 
   const [fmoOrgOptions, setFmoOrgOptions] = useState<OrgOption[]>([]);
+  const [fmoOrgIdList, setFmoOrgIdList] = useState<string[]>([]);
   const [transferTargetOrgId, setTransferTargetOrgId] = useState<string>('');
   const [transferMemberUserId, setTransferMemberUserId] = useState<string>('');
   const [transferSourceOrgId, setTransferSourceOrgId] = useState<string>('');
+  const [transferSelection, setTransferSelection] = useState<string>('');
   const [removeFromSource, setRemoveFromSource] = useState(true);
   const [isTransferring, setIsTransferring] = useState(false);
 
@@ -146,6 +154,8 @@ const MasterOrganizationsView: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
 
   const [showAllOrgs, setShowAllOrgs] = useState(false);
+
+  const [openOrgIds, setOpenOrgIds] = useState<Record<string, boolean>>({});
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'fmo_admin' | 'advisor'>('fmo_admin');
@@ -206,6 +216,7 @@ const MasterOrganizationsView: React.FC = () => {
       }
 
       const fmoOrgIds = new Set<string>(((fmoMembers ?? []) as any[]).map((m) => String(m.org_id)));
+      setFmoOrgIdList(Array.from(fmoOrgIds));
       const nextFmoOptions: OrgOption[] = nextOrgs
         .filter((o) => fmoOrgIds.has(o.id))
         .map((o) => ({
@@ -249,7 +260,7 @@ const MasterOrganizationsView: React.FC = () => {
 
   const visibleOrgs = useMemo(() => {
     if (showAllOrgs) return orgs;
-    const fmoIds = new Set(fmoOrgOptions.map((o) => o.id));
+    const fmoIds = new Set(fmoOrgIdList);
     const base = orgs.filter((o) => fmoIds.has(o.id));
 
     // Important UX: newly-created orgs won't be classified as an FMO until an fmo_admin/org_admin is added.
@@ -260,7 +271,7 @@ const MasterOrganizationsView: React.FC = () => {
     }
 
     return base;
-  }, [orgs, showAllOrgs, fmoOrgOptions, selectedOrgId]);
+  }, [orgs, showAllOrgs, fmoOrgIdList, selectedOrgId]);
 
   const selectedOrg = useMemo(() => visibleOrgs.find((o) => o.id === selectedOrgId) || null, [visibleOrgs, selectedOrgId]);
 
@@ -315,18 +326,8 @@ const MasterOrganizationsView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrgId]);
 
-  useEffect(() => {
-    if (!members.length) {
-      // Don't clear the independent transfer selection when browsing orgs.
-      return;
-    }
-    if (transferMemberUserId || transferSourceOrgId) return;
-    const advisor = members.find((m) => m.role === 'advisor' || m.role === 'member');
-    if (advisor?.user_id) setTransferMemberUserId(advisor.user_id);
-  }, [members, transferMemberUserId, transferSourceOrgId]);
-
   const independentAdvisorOptions = useMemo((): IndependentAdvisorOption[] => {
-    const fmoIds = new Set(fmoOrgOptions.map((o) => o.id));
+    const fmoIds = new Set(fmoOrgIdList);
     const byOrgId = new Map(orgs.map((o) => [o.id, o] as const));
 
     const options: IndependentAdvisorOption[] = [];
@@ -348,7 +349,60 @@ const MasterOrganizationsView: React.FC = () => {
 
     options.sort((a, b) => a.label.localeCompare(b.label));
     return options;
-  }, [advisorMembers, fmoOrgOptions, orgs, profilesByUserId]);
+  }, [advisorMembers, fmoOrgIdList, orgs, profilesByUserId]);
+
+  const advisorOptionsByOrgId = useMemo(() => {
+    const byOrg = new Map<string, IndependentAdvisorOption[]>();
+    for (const opt of independentAdvisorOptions) {
+      const list = byOrg.get(opt.orgId) || [];
+      list.push(opt);
+      byOrg.set(opt.orgId, list);
+    }
+    for (const [orgId, list] of byOrg) {
+      list.sort((a, b) => a.label.localeCompare(b.label));
+      byOrg.set(orgId, list);
+    }
+    return byOrg;
+  }, [independentAdvisorOptions]);
+
+  const orgAdvisorRows = useMemo(() => {
+    const byOrg = new Map<string, OrgMemberRow[]>();
+    for (const m of advisorMembers) {
+      const list = byOrg.get(m.org_id) || [];
+      list.push(m);
+      byOrg.set(m.org_id, list);
+    }
+    for (const [orgId, list] of byOrg) {
+      list.sort((a, b) => a.user_id.localeCompare(b.user_id));
+      byOrg.set(orgId, list);
+    }
+    return byOrg;
+  }, [advisorMembers]);
+
+  const orgAdminCounts = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const orgId of fmoOrgIdList) {
+      out.set(orgId, (out.get(orgId) || 0) + 0);
+    }
+    return out;
+  }, [fmoOrgIdList]);
+
+  const orgListRows = useMemo(() => {
+    const fmoIds = new Set(fmoOrgIdList);
+    return visibleOrgs
+      .map((o) => {
+        const advisors = orgAdvisorRows.get(o.id) || [];
+        return {
+          org: o,
+          isFmo: fmoIds.has(o.id),
+          advisorsCount: advisors.length,
+        };
+      })
+      .sort((a, b) => {
+        if (a.isFmo !== b.isFmo) return a.isFmo ? -1 : 1;
+        return (a.org.name || a.org.slug || a.org.id).localeCompare(b.org.name || b.org.slug || b.org.id);
+      });
+  }, [visibleOrgs, fmoOrgIdList, orgAdvisorRows]);
 
   if (!user?.is_master_admin) {
     return (
@@ -742,21 +796,25 @@ const MasterOrganizationsView: React.FC = () => {
                   <div className="md:col-span-3">
                     <label className="block text-sm font-medium text-slate-700">Advisor</label>
                     <select
-                      value={transferMemberUserId}
+                      value={transferSelection}
                       onChange={(e) => {
-                        const nextUserId = e.target.value;
-                        setTransferMemberUserId(nextUserId);
-                        const match = independentAdvisorOptions.find((o) => o.userId === nextUserId);
-                        setTransferSourceOrgId(match?.orgId || '');
+                        const next = e.target.value;
+                        setTransferSelection(next);
+                        const [orgId, userId] = next.split(':');
+                        setTransferSourceOrgId(orgId || '');
+                        setTransferMemberUserId(userId || '');
                       }}
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                     >
                       <option value="">Select advisor…</option>
-                      {independentAdvisorOptions.map((o) => (
-                        <option key={`${o.orgId}:${o.userId}`} value={o.userId}>
-                          {o.label}
-                        </option>
-                      ))}
+                      {independentAdvisorOptions.map((o) => {
+                        const v = `${o.orgId}:${o.userId}`;
+                        return (
+                          <option key={v} value={v}>
+                            {o.label}
+                          </option>
+                        );
+                      })}
                     </select>
                     <div className="mt-1 text-xs text-slate-500">
                       {independentAdvisorOptions.length ? `${independentAdvisorOptions.length} independent advisor(s) found.` : 'No independent advisors found.'}
@@ -803,6 +861,104 @@ const MasterOrganizationsView: React.FC = () => {
                   />
                   Remove from source org
                 </label>
+              </div>
+
+              <div className="mt-6 rounded-xl border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-900">Organizations list</div>
+                <div className="mt-1 text-xs text-slate-600">Expandable rows. FMOs show nested advisor memberships.</div>
+
+                <div className="mt-4 space-y-2">
+                  {orgListRows.length === 0 ? (
+                    <div className="text-sm text-slate-500">No organizations found.</div>
+                  ) : (
+                    orgListRows.map((row) => {
+                      const orgName = row.org.name || row.org.slug || row.org.id;
+                      const isOpen = !!openOrgIds[row.org.id];
+                      const advisors = orgAdvisorRows.get(row.org.id) || [];
+                      return (
+                        <div key={row.org.id} className="rounded-xl border border-slate-200 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenOrgIds((prev) => ({
+                                ...prev,
+                                [row.org.id]: !prev[row.org.id],
+                              }))
+                            }
+                            className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-white hover:bg-slate-50 text-left"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-900 truncate">{orgName}</div>
+                              <div className="mt-1 text-xs text-slate-500">Org ID: {shortId(row.org.id)} • {row.isFmo ? 'FMO' : 'Independent/Other'} • Advisors: {row.advisorsCount}</div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setSelectedOrgId(row.org.id);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                title="Select in Manage members"
+                              >
+                                Select
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setActingOrg({ id: row.org.id, name: row.org.name });
+                                }}
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                title="View as org"
+                              >
+                                View as
+                              </button>
+                              <span className="text-xs text-slate-500">{isOpen ? 'Hide' : 'Show'}</span>
+                            </div>
+                          </button>
+
+                          {isOpen && row.isFmo ? (
+                            <div className="px-4 pb-4 bg-slate-50 border-t border-slate-200">
+                              <div className="pt-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Advisors</div>
+                              {advisors.length === 0 ? (
+                                <div className="mt-2 text-sm text-slate-500">No advisors in this org.</div>
+                              ) : (
+                                <div className="mt-2 space-y-2">
+                                  {advisors.map((m) => {
+                                    const p = profilesByUserId[m.user_id];
+                                    const label = (p?.full_name || p?.email || m.user_id).trim();
+                                    return (
+                                      <div key={`${row.org.id}:${m.user_id}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                        <div className="text-sm font-semibold text-slate-900 truncate">{label}</div>
+                                        <div className="mt-1 text-xs text-slate-600">{p?.email || '—'} • Role: {m.role}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+
+                          {isOpen && !row.isFmo ? (
+                            <div className="px-4 pb-4 bg-slate-50 border-t border-slate-200">
+                              <div className="pt-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Notes</div>
+                              <div className="mt-2 text-sm text-slate-600">This org is not classified as an FMO yet (no fmo_admin/org_admin member). Add an FMO admin to make it appear in the FMO-only filter.</div>
+                              {advisorOptionsByOrgId.get(row.org.id)?.length ? (
+                                <div className="mt-3 text-sm text-slate-700">
+                                  Independent advisor(s): <span className="font-semibold">{advisorOptionsByOrgId.get(row.org.id)?.length}</span>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               {selectedMember && (
