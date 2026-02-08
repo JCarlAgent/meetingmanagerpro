@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MailTemplate } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import { Eye, FileImage, RefreshCw, Search, X } from 'lucide-react';
 
 const INDUSTRIES: Array<{ value: MailTemplate['industry'] | 'all'; label: string }> = [
@@ -12,6 +14,8 @@ const INDUSTRIES: Array<{ value: MailTemplate['industry'] | 'all'; label: string
 ];
 
 const TemplatesView: React.FC = () => {
+  const { user } = useAuth();
+  const { actingOrgId } = useActingOrg();
   const [templates, setTemplates] = useState<MailTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,18 +23,44 @@ const TemplatesView: React.FC = () => {
   const [industry, setIndustry] = useState<(typeof INDUSTRIES)[number]['value']>('all');
   const [selected, setSelected] = useState<MailTemplate | null>(null);
 
+  const effectiveOrgId = user?.is_master_admin ? actingOrgId : ((user as any)?.org_id ? String((user as any).org_id) : null);
+
   const fetchTemplates = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('mail_templates')
         .select('*')
         .eq('is_active', true)
         .order('industry', { ascending: true })
         .order('template_number', { ascending: true });
 
-      if (error) throw error;
+      if (effectiveOrgId) {
+        query = query.or(`org_id.is.null,org_id.eq.${effectiveOrgId}`);
+      } else {
+        query = query.is('org_id', null);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        const code = (error as any)?.code;
+        // Fallback for environments where org_id isn't added yet.
+        if (code === '42703') {
+          const fallback = await supabase
+            .from('mail_templates')
+            .select('*')
+            .eq('is_active', true)
+            .order('industry', { ascending: true })
+            .order('template_number', { ascending: true });
+          if (fallback.error) throw fallback.error;
+          setTemplates((fallback.data || []) as MailTemplate[]);
+          return;
+        }
+        throw error;
+      }
+
       setTemplates((data || []) as MailTemplate[]);
     } catch (err: any) {
       setError(err?.message ? String(err.message) : 'Failed to load templates');

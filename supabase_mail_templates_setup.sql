@@ -16,6 +16,8 @@ $$;
 
 create table if not exists public.mail_templates (
   id uuid primary key default gen_random_uuid(),
+  -- Optional org scope: NULL = global template; otherwise scoped to a specific org/FMO
+  org_id uuid references public.orgs(id) on delete cascade,
   name text not null,
   description text not null default '',
   industry text not null,
@@ -30,6 +32,12 @@ create table if not exists public.mail_templates (
   constraint mail_templates_industry_check check (industry in ('financial','medicare','stem_cell','reverse_mortgage')),
   constraint mail_templates_template_number_check check (template_number > 0)
 );
+
+-- If the table already exists, safely add the org scope column.
+alter table public.mail_templates
+  add column if not exists org_id uuid references public.orgs(id) on delete cascade;
+
+create index if not exists mail_templates_org_id_idx on public.mail_templates(org_id);
 
 create index if not exists mail_templates_active_idx on public.mail_templates(is_active);
 create index if not exists mail_templates_industry_num_idx on public.mail_templates(industry, template_number);
@@ -47,15 +55,87 @@ drop policy if exists mail_templates_select on public.mail_templates;
 create policy mail_templates_select on public.mail_templates
 for select
 to authenticated
-using (true);
+using (
+  org_id is null
+  or public.is_master_admin()
+  or exists (
+    select 1
+    from public.org_members om
+    where om.org_id = mail_templates.org_id
+      and om.user_id = auth.uid()
+  )
+);
 
--- Write access: only master admins can create/update/delete templates
-drop policy if exists mail_templates_modify on public.mail_templates;
-create policy mail_templates_modify on public.mail_templates
-for all
+-- Write access:
+-- - Master admins can create/update/delete any template (global or org-scoped)
+-- - FMO/org admins can create/update/delete templates scoped to their org_id
+
+drop policy if exists mail_templates_insert on public.mail_templates;
+create policy mail_templates_insert on public.mail_templates
+for insert
 to authenticated
-using (public.is_master_admin())
-with check (public.is_master_admin());
+with check (
+  public.is_master_admin()
+  or (
+    org_id is not null
+    and exists (
+      select 1
+      from public.org_members om
+      where om.org_id = mail_templates.org_id
+        and om.user_id = auth.uid()
+        and om.role in ('fmo_admin','org_admin')
+    )
+  )
+);
+
+drop policy if exists mail_templates_update on public.mail_templates;
+create policy mail_templates_update on public.mail_templates
+for update
+to authenticated
+using (
+  public.is_master_admin()
+  or (
+    org_id is not null
+    and exists (
+      select 1
+      from public.org_members om
+      where om.org_id = mail_templates.org_id
+        and om.user_id = auth.uid()
+        and om.role in ('fmo_admin','org_admin')
+    )
+  )
+)
+with check (
+  public.is_master_admin()
+  or (
+    org_id is not null
+    and exists (
+      select 1
+      from public.org_members om
+      where om.org_id = mail_templates.org_id
+        and om.user_id = auth.uid()
+        and om.role in ('fmo_admin','org_admin')
+    )
+  )
+);
+
+drop policy if exists mail_templates_delete on public.mail_templates;
+create policy mail_templates_delete on public.mail_templates
+for delete
+to authenticated
+using (
+  public.is_master_admin()
+  or (
+    org_id is not null
+    and exists (
+      select 1
+      from public.org_members om
+      where om.org_id = mail_templates.org_id
+        and om.user_id = auth.uid()
+        and om.role in ('fmo_admin','org_admin')
+    )
+  )
+);
 
 -- Optional: create the Storage bucket used by Template Manager uploads.
 -- If you prefer to manage buckets in the Supabase UI, you can delete this section.
@@ -75,7 +155,31 @@ drop policy if exists "mail_templates_bucket_write" on storage.objects;
 create policy "mail_templates_bucket_write" on storage.objects
 for all
 to authenticated
-using (bucket_id = 'mail-templates' and public.is_master_admin())
-with check (bucket_id = 'mail-templates' and public.is_master_admin());
+using (
+  bucket_id = 'mail-templates'
+  and (
+    public.is_master_admin()
+    or exists (
+      select 1
+      from public.org_members om
+      where om.user_id = auth.uid()
+        and om.role in ('fmo_admin','org_admin')
+        and om.org_id::text = split_part(storage.objects.name, '/', 2)
+    )
+  )
+)
+with check (
+  bucket_id = 'mail-templates'
+  and (
+    public.is_master_admin()
+    or exists (
+      select 1
+      from public.org_members om
+      where om.user_id = auth.uid()
+        and om.role in ('fmo_admin','org_admin')
+        and om.org_id::text = split_part(storage.objects.name, '/', 2)
+    )
+  )
+);
 
 commit;

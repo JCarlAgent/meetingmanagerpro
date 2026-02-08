@@ -82,6 +82,7 @@ export interface DemographicList {
 
 export interface MailTemplate {
   id: string;
+  org_id?: string | null;
   name: string;
   description: string;
   industry: 'financial' | 'medicare' | 'stem_cell' | 'reverse_mortgage';

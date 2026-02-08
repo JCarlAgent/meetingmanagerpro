@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MailTemplate } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import { useActingOrg } from '@/lib/actingOrg';
 import {
   FileImage,
   Upload,
@@ -30,6 +32,14 @@ const INDUSTRIES = [
 ];
 
 const TemplateManagerView: React.FC = () => {
+  const { user } = useAuth();
+  const { actingOrgId } = useActingOrg();
+
+  const isMaster = Boolean(user?.is_master_admin);
+  const isOrgAdmin = (user as any)?.org_role === 'fmo_admin' || (user as any)?.org_role === 'org_admin';
+  const canChooseOrg = isMaster && !actingOrgId;
+  const fixedOrgId = isMaster ? (actingOrgId ?? null) : ((user as any)?.org_id ? String((user as any)?.org_id) : null);
+
   const [templates, setTemplates] = useState<MailTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +56,10 @@ const TemplateManagerView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [orgOptions, setOrgOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const scopeOrgId = canChooseOrg ? selectedOrgId : fixedOrgId;
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -70,8 +84,38 @@ const TemplateManagerView: React.FC = () => {
   });
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadOrgs = async () => {
+      if (!canChooseOrg) return;
+      try {
+        const { data, error } = await supabase
+          .from('orgs')
+          .select('id, name')
+          .order('created_at', { ascending: false })
+          .limit(2000);
+        if (error) throw error;
+        const rows = ((data ?? []) as any[]).map((r) => ({ id: String(r.id), name: String(r.name ?? r.id) }));
+        if (!isMounted) return;
+        setOrgOptions(rows);
+        setSelectedOrgId((prev) => prev ?? (rows[0]?.id ?? null));
+      } catch {
+        if (!isMounted) return;
+        setOrgOptions([]);
+        setSelectedOrgId((prev) => prev ?? null);
+      }
+    };
+
+    loadOrgs();
+    return () => {
+      isMounted = false;
+    };
+  }, [canChooseOrg]);
+
+  useEffect(() => {
     fetchTemplates();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeOrgId]);
 
   useEffect(() => {
     if (success || error) {
@@ -86,14 +130,37 @@ const TemplateManagerView: React.FC = () => {
   const fetchTemplates = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('mail_templates')
         .select('*')
         .order('industry', { ascending: true })
         .order('template_number', { ascending: true });
 
-      if (error) throw error;
-      setTemplates(data || []);
+      if (scopeOrgId) {
+        query = query.or(`org_id.is.null,org_id.eq.${scopeOrgId}`);
+      } else {
+        // If we don't have an org selected, show global templates only.
+        query = query.is('org_id', null);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        const code = (error as any)?.code;
+        // Backward-compatible fallback if org_id hasn't been added yet.
+        if (code === '42703') {
+          const fallback = await supabase
+            .from('mail_templates')
+            .select('*')
+            .order('industry', { ascending: true })
+            .order('template_number', { ascending: true });
+          if (fallback.error) throw fallback.error;
+          setTemplates((fallback.data || []) as MailTemplate[]);
+          return;
+        }
+        throw error;
+      }
+
+      setTemplates((data || []) as MailTemplate[]);
     } catch (err: any) {
       setError('Failed to load templates: ' + err.message);
     } finally {
@@ -190,7 +257,10 @@ const TemplateManagerView: React.FC = () => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${selectedTemplate.industry}_template_${selectedTemplate.template_number}_${Date.now()}.${fileExt}`;
-      const filePath = `templates/${fileName}`;
+
+      const templateOrgId = (selectedTemplate as any)?.org_id ? String((selectedTemplate as any).org_id) : null;
+      const folder = templateOrgId || scopeOrgId || 'global';
+      const filePath = `templates/${folder}/${fileName}`;
 
       // Upload to storage
       const { error: uploadError } = await supabase.storage
@@ -257,9 +327,11 @@ const TemplateManagerView: React.FC = () => {
   const handleAddTemplate = async () => {
     setIsSaving(true);
     try {
+      const orgIdForNew = isMaster ? (scopeOrgId ?? null) : (isOrgAdmin ? (fixedOrgId ?? null) : null);
       const { data, error } = await supabase
         .from('mail_templates')
         .insert({
+          org_id: orgIdForNew,
           name: addForm.name,
           description: addForm.description,
           industry: addForm.industry,
@@ -325,15 +397,42 @@ const TemplateManagerView: React.FC = () => {
             <FileImage className="w-7 h-7 text-red-400" />
             Template Manager
           </h1>
-          <p className="text-slate-400 mt-1">Manage mail piece templates for all industries</p>
+          <p className="text-slate-400 mt-1">
+            {canChooseOrg
+              ? 'Select an organization to manage templates (global + org-specific).'
+              : scopeOrgId
+                ? 'Managing templates for this organization (global + org-specific).'
+                : 'Managing global templates.'}
+          </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Add Template
-        </button>
+        <div className="flex items-center gap-3">
+          {canChooseOrg && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-white" htmlFor="templateOrg">Organization</label>
+              <select
+                id="templateOrg"
+                value={selectedOrgId ?? ''}
+                onChange={(e) => setSelectedOrgId(e.target.value ? e.target.value : null)}
+                className="bg-slate-900/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              >
+                <option value="" className="bg-slate-900 text-white">Global only</option>
+                {orgOptions.map((o) => (
+                  <option key={o.id} value={o.id} className="bg-slate-900 text-white">
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add Template
+          </button>
+        </div>
       </div>
 
       {/* Alerts */}

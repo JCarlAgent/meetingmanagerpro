@@ -121,7 +121,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
         <div className="flex items-center gap-3">
           <Users className="w-6 h-6 text-red-400" />
           <h2 className="text-xl font-semibold text-white">All Responders</h2>
-          <span className="bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full text-sm">
+          <span className="bg-slate-700 text-white px-2 py-0.5 rounded-full text-sm">
             {filteredResponders.length}
           </span>
         </div>
@@ -175,7 +175,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-xs text-slate-400 uppercase border-b border-white/10">
+              <tr className="text-left text-xs text-white uppercase border-b border-white/10">
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Campaign</th>
                 <th className="px-4 py-3">Name</th>
@@ -214,18 +214,18 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-white">{responder.first_name} {responder.last_name}</div>
-                      <div className="text-xs text-slate-500">{responder.city}, {responder.state}</div>
+                      <div className="text-xs text-white">{responder.city}, {responder.state}</div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <div className="flex flex-col gap-1">
                         {responder.phone && (
-                          <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-300 hover:text-white">
+                          <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-white hover:text-white">
                             <Phone className="w-3 h-3" />
                             {responder.phone}
                           </a>
                         )}
                         {responder.email && (
-                          <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-slate-400 hover:text-white truncate max-w-[150px]">
+                          <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-white hover:text-white truncate max-w-[150px]">
                             <Mail className="w-3 h-3" />
                             {responder.email}
                           </a>
@@ -236,10 +236,10 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                       {eventInfo ? (
                         <div className="text-sm">
                           <div className="text-white">{eventInfo.venue}</div>
-                          <div className="text-xs text-slate-500">{eventInfo.date}</div>
+                          <div className="text-xs text-white">{eventInfo.date}</div>
                         </div>
                       ) : (
-                        <span className="text-slate-500 text-sm">Unassigned</span>
+                        <span className="text-white text-sm">Unassigned</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -248,7 +248,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                     <td className="px-4 py-3 hidden sm:table-cell">
                       <div className="flex items-center gap-2">
                         {getSourceIcon(responder.response_source)}
-                        <span className="text-xs text-slate-400 capitalize">
+                        <span className="text-xs text-white capitalize">
                           {responder.response_source.replace('_', ' ')}
                         </span>
                       </div>
@@ -273,11 +273,11 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                       ) : (
                         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => handleStartEditNote(responder)}>
                           {responder.notes ? (
-                            <span className="text-sm text-slate-300 truncate max-w-[100px]" title={responder.notes}>
+                            <span className="text-sm text-white truncate max-w-[100px]" title={responder.notes}>
                               {responder.notes}
                             </span>
                           ) : (
-                            <span className="text-sm text-slate-500 italic">Add note...</span>
+                            <span className="text-sm text-white italic">Add note...</span>
                           )}
                           <Edit3 className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
                         </div>
@@ -303,7 +303,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
         {filteredResponders.length === 0 && (
           <div className="text-center py-12">
             <Users className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400">No responders found</p>
+            <p className="text-white">No responders found</p>
           </div>
         )}
       </div>

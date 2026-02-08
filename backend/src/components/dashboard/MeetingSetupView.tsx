@@ -272,14 +272,38 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
 
   const loadTemplates = async () => {
     try {
-      const { data, error } = await supabase
+      const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
+
+      let query = supabase
         .from('mail_templates')
         .select('id, name, thumbnail_url')
         .eq('is_active', true)
         .order('industry', { ascending: true })
         .order('template_number', { ascending: true })
         .limit(200);
-      if (error) throw error;
+
+      if (effectiveOrgId) {
+        query = query.or(`org_id.is.null,org_id.eq.${effectiveOrgId}`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        const code = (error as any)?.code;
+        if (code === '42703') {
+          const fallback = await supabase
+            .from('mail_templates')
+            .select('id, name, thumbnail_url')
+            .eq('is_active', true)
+            .order('industry', { ascending: true })
+            .order('template_number', { ascending: true })
+            .limit(200);
+          if (fallback.error) throw fallback.error;
+          setTemplates(((fallback.data ?? []) as unknown as Array<{ id: string; name: string; thumbnail_url: string | null }>));
+          return;
+        }
+        throw error;
+      }
+
       setTemplates(((data ?? []) as unknown as Array<{ id: string; name: string; thumbnail_url: string | null }>));
     } catch {
       setTemplates([]);
