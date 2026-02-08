@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { setActingOrg, useActingOrg } from '@/lib/actingOrg';
-import { Building2, Plus, RefreshCw, Users, Mail, Shield, UserPlus } from 'lucide-react';
+import { Building2, Plus, RefreshCw, Users, Mail, Shield, UserPlus, Trash2 } from 'lucide-react';
 
 type OrgRow = {
   id: string;
@@ -156,6 +156,10 @@ const MasterOrganizationsView: React.FC = () => {
   const [showAllOrgs, setShowAllOrgs] = useState(false);
 
   const [openOrgIds, setOpenOrgIds] = useState<Record<string, boolean>>({});
+
+  const [deleteOrgOpen, setDeleteOrgOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [isDeletingOrg, setIsDeletingOrg] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'fmo_admin' | 'advisor'>('fmo_admin');
@@ -313,6 +317,38 @@ const MasterOrganizationsView: React.FC = () => {
       setError(getErrorMessage(err) || 'Failed to load members');
     } finally {
       setIsLoadingMembers(false);
+    }
+  };
+
+  const deleteOrg = async () => {
+    if (!selectedOrgId) return;
+    setError(null);
+    setSuccess(null);
+    setIsDeletingOrg(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orgId: selectedOrgId, confirm: deleteConfirm.trim() }),
+      });
+
+      if (!resp.ok) throw new Error(await readResponseError(resp));
+
+      setSuccess('Organization deleted.');
+      setDeleteOrgOpen(false);
+      setDeleteConfirm('');
+      setSelectedOrgId('');
+      await load();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || 'Failed to delete org');
+    } finally {
+      setIsDeletingOrg(false);
     }
   };
 
@@ -685,13 +721,27 @@ const MasterOrganizationsView: React.FC = () => {
                   <div className="font-semibold text-slate-900">{selectedOrg.name || selectedOrg.slug || selectedOrg.id}</div>
                   <div className="mt-1 text-xs text-slate-500">Org ID: {selectedOrg.id} • Slug: {selectedOrg.slug || '—'}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActingOrg({ id: selectedOrg.id, name: selectedOrg.name })}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  View as org
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActingOrg({ id: selectedOrg.id, name: selectedOrg.name })}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                  >
+                    View as org
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteOrgOpen(true);
+                      setDeleteConfirm('');
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                    title="Delete this organization"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
@@ -862,6 +912,60 @@ const MasterOrganizationsView: React.FC = () => {
                   Remove from source org
                 </label>
               </div>
+
+              {deleteOrgOpen && selectedOrg && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <div
+                    className="absolute inset-0 bg-black/40"
+                    onClick={() => {
+                      if (isDeletingOrg) return;
+                      setDeleteOrgOpen(false);
+                      setDeleteConfirm('');
+                    }}
+                  />
+                  <div className="relative w-full max-w-lg rounded-xl bg-white border border-slate-200 shadow-2xl p-5">
+                    <div className="text-sm font-semibold text-slate-900">Delete organization</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      This permanently deletes the org and cascades to org members and most org-owned records. Type the Org ID to confirm.
+                    </div>
+
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      Org: <span className="font-semibold">{selectedOrg.name || selectedOrg.slug || selectedOrg.id}</span>
+                      <div className="mt-1">Org ID: <span className="font-mono">{selectedOrg.id}</span></div>
+                    </div>
+
+                    <label className="block mt-4 text-sm font-medium text-slate-700">Type Org ID to confirm</label>
+                    <input
+                      value={deleteConfirm}
+                      onChange={(e) => setDeleteConfirm(e.target.value)}
+                      placeholder={selectedOrg.id}
+                      className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    />
+
+                    <div className="mt-5 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isDeletingOrg) return;
+                          setDeleteOrgOpen(false);
+                          setDeleteConfirm('');
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={deleteOrg}
+                        disabled={isDeletingOrg || deleteConfirm.trim() !== selectedOrg.id}
+                        className="rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-3 py-2 text-sm font-semibold"
+                      >
+                        {isDeletingOrg ? 'Deleting…' : 'Delete org'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 rounded-xl border border-slate-200 p-4">
                 <div className="text-sm font-semibold text-slate-900">Organizations list</div>

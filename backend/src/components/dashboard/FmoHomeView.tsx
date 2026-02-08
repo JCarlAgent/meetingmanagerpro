@@ -197,6 +197,8 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   const [isSavingAdvisorName, setIsSavingAdvisorName] = useState(false);
 
   const [addAdvisorEmail, setAddAdvisorEmail] = useState('');
+  const [addAdvisorFullName, setAddAdvisorFullName] = useState('');
+  const [addAdvisorPhone, setAddAdvisorPhone] = useState('');
   const [addAdvisorRole, setAddAdvisorRole] = useState<'advisor' | 'member'>('advisor');
   const [isAddingAdvisor, setIsAddingAdvisor] = useState(false);
 
@@ -566,6 +568,8 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
   const addAdvisor = async () => {
     const email = addAdvisorEmail.trim();
+    const fullName = addAdvisorFullName.trim();
+    const phone = addAdvisorPhone.trim();
     if (!email || !email.includes('@')) {
       setError('Enter a valid advisor email.');
       return;
@@ -584,14 +588,23 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ orgId, email, role: addAdvisorRole }),
+        body: JSON.stringify({ orgId, email, role: addAdvisorRole, fullName: fullName || null, phone: phone || null }),
       });
 
       if (!resp.ok) throw new Error(await readResponseError(resp));
       const data = (await resp.json().catch(() => ({}))) as any;
       const invited = !!data?.invited;
-      setNotice(invited ? `Advisor invited: ${email}` : `Advisor added: ${email}`);
+      const profileErr = String(data?.profileError ?? '').trim();
+      setNotice(
+        profileErr
+          ? `Advisor ${invited ? 'invited' : 'added'}: ${email} (profile not updated: ${profileErr})`
+          : invited
+            ? `Advisor invited: ${email}`
+            : `Advisor added: ${email}`
+      );
       setAddAdvisorEmail('');
+      setAddAdvisorFullName('');
+      setAddAdvisorPhone('');
       await load();
     } catch (err: unknown) {
       setError(toErrorMessage(err));
@@ -1054,6 +1067,18 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                       onChange={(e) => setAddAdvisorEmail(e.target.value)}
                       placeholder="advisor@email.com"
                       className="w-full sm:flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    />
+                    <input
+                      value={addAdvisorFullName}
+                      onChange={(e) => setAddAdvisorFullName(e.target.value)}
+                      placeholder="Advisor name"
+                      className="w-full sm:flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    />
+                    <input
+                      value={addAdvisorPhone}
+                      onChange={(e) => setAddAdvisorPhone(e.target.value)}
+                      placeholder="Phone"
+                      className="w-full sm:w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                     />
                     <select
                       value={addAdvisorRole}

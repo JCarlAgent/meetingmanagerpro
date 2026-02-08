@@ -134,6 +134,8 @@ export default async function handler(req: any, res: any) {
     const orgId = String(body?.orgId ?? '').trim();
     const email = String(body?.email ?? '').trim();
     const role = String(body?.role ?? '').trim();
+    const fullName = String(body?.fullName ?? '').trim();
+    const phone = String(body?.phone ?? '').trim();
 
     if (!orgId) {
       send(res, 400, { error: 'Missing orgId' });
@@ -145,6 +147,15 @@ export default async function handler(req: any, res: any) {
     }
     if (!ALLOWED_ROLES.has(role)) {
       send(res, 400, { error: `Invalid role. Use one of: ${Array.from(ALLOWED_ROLES).join(', ')}` });
+      return;
+    }
+
+    if (fullName && fullName.length > 120) {
+      send(res, 400, { error: 'Full name too long' });
+      return;
+    }
+    if (phone && phone.length > 40) {
+      send(res, 400, { error: 'Phone number too long' });
       return;
     }
 
@@ -197,7 +208,31 @@ export default async function handler(req: any, res: any) {
 
     if (upsertErr) throw toError(upsertErr);
 
-    send(res, 200, { ok: true, invited, member });
+    // Best-effort: write profile fields for display (name/phone) if provided.
+    // This lets the FMO dashboard show advisor names even when auth metadata lacks them.
+    let profileUpdated = false;
+    let profileError: string | null = null;
+    try {
+      if ((fullName || phone) && userId) {
+        const payload: any = {
+          user_id: userId,
+          email: email || null,
+        };
+        if (fullName) payload.full_name = fullName;
+        if (phone) payload.phone = phone;
+
+        const { error: profErr } = await supabaseAdmin.from('profiles').upsert(payload, { onConflict: 'user_id' });
+        if (profErr) {
+          profileError = profErr.message || 'Failed to update profile';
+        } else {
+          profileUpdated = true;
+        }
+      }
+    } catch (e: any) {
+      profileError = e?.message || 'Failed to update profile';
+    }
+
+    send(res, 200, { ok: true, invited, member, profileUpdated, profileError });
   } catch (err: unknown) {
     const message = toMessage(err);
     // eslint-disable-next-line no-console
