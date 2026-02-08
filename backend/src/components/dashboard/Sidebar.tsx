@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useActingOrg } from '@/lib/actingOrg';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewChange }) => {
   const { user } = useAuth();
+  const { actingOrgId } = useActingOrg();
 
   const [showFmoLogo, setShowFmoLogo] = useState(false);
   const [fmoLogoUrl, setFmoLogoUrl] = useState<string | null>(null);
@@ -105,7 +107,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
   const isViewOnlyAdvisor = (user as any)?.org_role === 'member';
 
   const menuSections = [
-    ...(user?.is_master_admin
+    ...(user?.is_master_admin && !actingOrgId
       ? [
           {
             title: 'Master',

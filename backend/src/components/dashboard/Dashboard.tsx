@@ -49,9 +49,17 @@ const Dashboard: React.FC = () => {
     // Default master admins to the Clients view (onboarding workflow).
     setActiveView((prev) => {
       if (prev !== 'home') return prev;
-      return user.is_master_admin ? 'master-clients' : 'home';
+      return user.is_master_admin && !actingOrgId ? 'master-clients' : 'home';
     });
-  }, [user]);
+  }, [user, actingOrgId]);
+
+  useEffect(() => {
+    // When a master admin begins viewing-as an org, behave like that org's dashboard.
+    if (!user?.is_master_admin) return;
+    if (actingOrgId) {
+      setActiveView('home');
+    }
+  }, [actingOrgId, user?.is_master_admin]);
 
   useEffect(() => {
     // When a master admin exits a view-as org, route them back to the super-admin workflow.
@@ -134,8 +142,14 @@ const Dashboard: React.FC = () => {
       case 'home':
         return <HomeView onNavigate={(view) => setActiveView(view)} />;
       case 'master-clients':
+        if (user?.is_master_admin && actingOrgId) {
+          return <HomeView onNavigate={(view) => setActiveView(view)} />;
+        }
         return <MasterClientsView onNavigate={(view) => setActiveView(view)} />;
       case 'master-orgs':
+        if (user?.is_master_admin && actingOrgId) {
+          return <HomeView onNavigate={(view) => setActiveView(view)} />;
+        }
         return <MasterOrganizationsView />;
       case 'setup':
         // View-only advisors should not access meeting input.
