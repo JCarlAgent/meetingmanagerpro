@@ -25,8 +25,7 @@ function toError(err: any): Error {
 
 const ALLOWED_ROLES = new Set(['advisor', 'fmo_admin', 'member', 'org_admin']);
 
-async function requireMasterAdmin(req: any) {
-  const user = await requireUserFromAuthHeader(req);
+async function isMasterAdmin(user: { id: string; email: string | null }) {
   const supabaseAdmin = getSupabaseAdmin();
 
   const { data: ma } = await supabaseAdmin
@@ -35,7 +34,7 @@ async function requireMasterAdmin(req: any) {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  if (ma?.user_id) return { ok: true as const, user };
+  if (ma?.user_id) return true;
 
   if (user.email) {
     const { data: adminEmail } = await supabaseAdmin
@@ -44,10 +43,26 @@ async function requireMasterAdmin(req: any) {
       .ilike('email', user.email)
       .maybeSingle();
 
-    if (adminEmail?.email) return { ok: true as const, user };
+    if (adminEmail?.email) return true;
   }
 
-  return { ok: false as const, user };
+  return false;
+}
+
+async function canManageOrgMembers(user: { id: string; email: string | null }, orgId: string) {
+  if (await isMasterAdmin(user)) return { ok: true as const, isMaster: true as const };
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data } = await supabaseAdmin
+    .from('org_members')
+    .select('role')
+    .eq('org_id', orgId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const role = String((data as any)?.role ?? '');
+  const ok = role === 'fmo_admin' || role === 'org_admin';
+  return { ok, isMaster: false as const };
 }
 
 async function findUserIdByEmail(email: string): Promise<string | null> {
@@ -55,17 +70,21 @@ async function findUserIdByEmail(email: string): Promise<string | null> {
 
   // Supabase JS v2 doesn't have a guaranteed getUserByEmail in all builds.
   // listUsers() is supported; we filter by email.
-  const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-    page: 1,
-    perPage: 200,
-  });
+  const target = email.toLowerCase();
+  const perPage = 200;
+  for (let page = 1; page <= 10; page++) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw new Error(error.message || 'Failed to list users');
+    }
 
-  if (error) {
-    throw new Error(error.message || 'Failed to list users');
+    const users = data?.users || [];
+    const user = users.find((u) => (u.email || '').toLowerCase() === target);
+    if (user?.id) return user.id;
+
+    if (users.length < perPage) break;
   }
-
-  const user = (data?.users || []).find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
-  return user?.id ?? null;
+  return null;
 }
 
 function inferBaseUrl(req: any): string {
@@ -102,11 +121,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const access = await requireMasterAdmin(req);
-    if (!access.ok) {
-      send(res, 403, { error: 'Not authorized' });
-      return;
-    }
+    const user = await requireUserFromAuthHeader(req);
 
     let body: any;
     try {
@@ -130,6 +145,18 @@ export default async function handler(req: any, res: any) {
     }
     if (!ALLOWED_ROLES.has(role)) {
       send(res, 400, { error: `Invalid role. Use one of: ${Array.from(ALLOWED_ROLES).join(', ')}` });
+      return;
+    }
+
+    const access = await canManageOrgMembers(user, orgId);
+    if (!access.ok) {
+      send(res, 403, { error: 'Not authorized' });
+      return;
+    }
+
+    // Org admins can only add advisors/members to their org.
+    if (!access.isMaster && role !== 'advisor' && role !== 'member') {
+      send(res, 403, { error: 'Only master admins can assign admin roles' });
       return;
     }
 

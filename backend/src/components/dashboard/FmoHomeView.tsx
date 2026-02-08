@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Building2, Users, Mail, Phone, Briefcase, MapPin, Calendar, ChevronDown, ChevronUp, Save, KeyRound } from 'lucide-react';
+import { Building2, Users, Mail, Phone, Briefcase, MapPin, Calendar, ChevronDown, ChevronUp, Save, KeyRound, UserPlus } from 'lucide-react';
 
 type Org = {
   id: string;
@@ -150,7 +150,18 @@ function pickMetadataName(meta: Record<string, unknown> | null | undefined): str
   const m = meta || {};
   const fullName = (m['full_name'] as string | undefined) || (m['fullName'] as string | undefined);
   const name = (m['name'] as string | undefined) || (m['display_name'] as string | undefined) || (m['displayName'] as string | undefined);
-  const v = String(fullName || name || '').trim();
+  const first =
+    (m['first_name'] as string | undefined) ||
+    (m['firstName'] as string | undefined) ||
+    (m['given_name'] as string | undefined) ||
+    (m['givenName'] as string | undefined);
+  const last =
+    (m['last_name'] as string | undefined) ||
+    (m['lastName'] as string | undefined) ||
+    (m['family_name'] as string | undefined) ||
+    (m['familyName'] as string | undefined);
+  const combined = `${String(first || '').trim()} ${String(last || '').trim()}`.trim();
+  const v = String(fullName || name || combined || '').trim();
   return v ? v : null;
 }
 
@@ -179,6 +190,15 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const [isSyncingNames, setIsSyncingNames] = useState(false);
+  const [editAdvisorId, setEditAdvisorId] = useState<string | null>(null);
+  const [editAdvisorName, setEditAdvisorName] = useState('');
+  const [isSavingAdvisorName, setIsSavingAdvisorName] = useState(false);
+
+  const [addAdvisorEmail, setAddAdvisorEmail] = useState('');
+  const [addAdvisorRole, setAddAdvisorRole] = useState<'advisor' | 'member'>('advisor');
+  const [isAddingAdvisor, setIsAddingAdvisor] = useState(false);
 
   const [upcomingMeetings, setUpcomingMeetings] = useState<UpcomingMeeting[]>([]);
   const [advisorSummaries, setAdvisorSummaries] = useState<AdvisorSummary[]>([]);
@@ -274,7 +294,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
       for (const m of membersEnriched) {
         const email = m.user?.email ?? null;
         const metaName = pickMetadataName(m.user?.user_metadata ?? null);
-        const name = metaName || email;
+        const name = metaName || null;
         identityByUserId.set(m.user_id, { name: name || null, email });
       }
 
@@ -476,6 +496,107 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
       setError(toErrorMessage(err));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const syncAdvisorNames = async () => {
+    setError(null);
+    setNotice(null);
+    setIsSyncingNames(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/syncProfiles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orgId }),
+      });
+
+      if (!resp.ok) throw new Error(await readResponseError(resp));
+      const data = (await resp.json().catch(() => ({}))) as any;
+      const updated = Number(data?.updated ?? 0);
+      setNotice(updated ? `Synced ${updated} advisor name(s).` : 'No missing advisor names were found to sync.');
+      await load();
+    } catch (err: unknown) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSyncingNames(false);
+    }
+  };
+
+  const saveAdvisorName = async () => {
+    if (!editAdvisorId) return;
+    const fullName = editAdvisorName.trim();
+    if (!fullName) {
+      setError('Enter a name first.');
+      return;
+    }
+    setIsSavingAdvisorName(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/setMemberName', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orgId, userId: editAdvisorId, fullName }),
+      });
+
+      if (!resp.ok) throw new Error(await readResponseError(resp));
+
+      setNotice('Advisor name saved.');
+      setEditAdvisorId(null);
+      setEditAdvisorName('');
+      await load();
+    } catch (err: unknown) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsSavingAdvisorName(false);
+    }
+  };
+
+  const addAdvisor = async () => {
+    const email = addAdvisorEmail.trim();
+    if (!email || !email.includes('@')) {
+      setError('Enter a valid advisor email.');
+      return;
+    }
+
+    setIsAddingAdvisor(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const resp = await fetch('/api/admin/orgs/addMember', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ orgId, email, role: addAdvisorRole }),
+      });
+
+      if (!resp.ok) throw new Error(await readResponseError(resp));
+      const data = (await resp.json().catch(() => ({}))) as any;
+      const invited = !!data?.invited;
+      setNotice(invited ? `Advisor invited: ${email}` : `Advisor added: ${email}`);
+      setAddAdvisorEmail('');
+      await load();
+    } catch (err: unknown) {
+      setError(toErrorMessage(err));
+    } finally {
+      setIsAddingAdvisor(false);
     }
   };
 
@@ -924,6 +1045,48 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
           {advisorsOpen && (
             <div className="border-t border-slate-200 p-5">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex-1">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Add advisor</div>
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                    <input
+                      value={addAdvisorEmail}
+                      onChange={(e) => setAddAdvisorEmail(e.target.value)}
+                      placeholder="advisor@email.com"
+                      className="w-full sm:flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    />
+                    <select
+                      value={addAdvisorRole}
+                      onChange={(e) => setAddAdvisorRole((e.target.value as any) === 'member' ? 'member' : 'advisor')}
+                      className="w-full sm:w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    >
+                      <option value="advisor">Advisor (full)</option>
+                      <option value="member">Advisor (view-only)</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={addAdvisor}
+                      disabled={isLoading || isAddingAdvisor}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-3 py-2 text-sm font-semibold"
+                      title="Adds the advisor to your org (invites if they don’t exist yet)"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      {isAddingAdvisor ? 'Adding…' : 'Add'}
+                    </button>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">Use “Sync advisor names” after inviting to populate names if needed.</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={syncAdvisorNames}
+                  disabled={isLoading || isSyncingNames}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  title="Pull names from auth metadata into profiles (where missing)"
+                >
+                  {isSyncingNames ? 'Syncing…' : 'Sync advisor names'}
+                </button>
+              </div>
               {isLoading ? (
                 <div className="text-slate-500">Loading…</div>
               ) : advisorSummaries.length === 0 ? (
@@ -936,7 +1099,22 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                       className="h-12 w-full rounded-lg border border-slate-200 bg-white px-4 flex items-center justify-between gap-4"
                     >
                       <div className="min-w-0">
-                        <div className="font-semibold text-slate-900 truncate">{a.name}</div>
+                        <div className="font-semibold text-slate-900 truncate flex items-center gap-2">
+                          <span className="truncate">{a.name}</span>
+                          {a.name === (a.email || '') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditAdvisorId(a.userId);
+                                setEditAdvisorName('');
+                              }}
+                              className="shrink-0 text-xs font-semibold text-red-700 hover:text-red-800"
+                              title="Set advisor name"
+                            >
+                              Set name
+                            </button>
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-500 truncate">{[a.email, a.phone].filter(Boolean).join(' • ') || '—'}</div>
                       </div>
 
@@ -959,6 +1137,54 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
             </div>
           )}
         </section>
+
+        {editAdvisorId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => {
+                if (isSavingAdvisorName) return;
+                setEditAdvisorId(null);
+                setEditAdvisorName('');
+              }}
+            />
+            <div className="relative w-full max-w-md rounded-xl bg-white border border-slate-200 shadow-2xl p-5">
+              <div className="text-sm font-semibold text-slate-900">Set advisor name</div>
+              <div className="mt-1 text-xs text-slate-600">This saves into the Profiles table so the FMO dashboard shows names.</div>
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-slate-700">Full name</label>
+                <input
+                  value={editAdvisorName}
+                  onChange={(e) => setEditAdvisorName(e.target.value)}
+                  placeholder="Jane Smith"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSavingAdvisorName) return;
+                    setEditAdvisorId(null);
+                    setEditAdvisorName('');
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveAdvisorName}
+                  disabled={isSavingAdvisorName}
+                  className="rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-3 py-2 text-sm font-semibold"
+                >
+                  {isSavingAdvisorName ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 flex items-center justify-between gap-3">
