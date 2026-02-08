@@ -93,11 +93,43 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
+    // Best-effort cleanup: remove org logo files from Storage.
+    // Upload paths are orgId/<timestamp>-<name>, so a single list(orgId) is sufficient.
+    const storageBucket = 'org-logos';
+    let storageRemovedCount = 0;
+    let storageWarning: string | null = null;
+    try {
+      const { data: items, error: listErr } = await supabaseAdmin.storage.from(storageBucket).list(orgId, { limit: 1000 });
+      if (listErr) throw listErr;
+
+      const names = (items ?? [])
+        .map((i: any) => String(i?.name ?? '').trim())
+        .filter(Boolean);
+
+      if (names.length) {
+        const paths = names.map((n) => `${orgId}/${n}`);
+        const { error: remErr } = await supabaseAdmin.storage.from(storageBucket).remove(paths);
+        if (remErr) throw remErr;
+        storageRemovedCount = paths.length;
+      }
+    } catch (e: any) {
+      // Don't block org deletion if storage isn't configured.
+      storageWarning = toMessage(e);
+    }
+
     // Delete cascades to org_members and (in this schema) most org-owned rows.
     const { error: delErr } = await supabaseAdmin.from('orgs').delete().eq('id', orgId);
     if (delErr) throw delErr;
 
-    send(res, 200, { ok: true, deletedOrg: org });
+    send(res, 200, {
+      ok: true,
+      deletedOrg: org,
+      storage: {
+        bucket: storageBucket,
+        removedCount: storageRemovedCount,
+        warning: storageWarning,
+      },
+    });
   } catch (err: unknown) {
     const message = toMessage(err);
     // eslint-disable-next-line no-console
