@@ -250,8 +250,17 @@ const MasterOrganizationsView: React.FC = () => {
   const visibleOrgs = useMemo(() => {
     if (showAllOrgs) return orgs;
     const fmoIds = new Set(fmoOrgOptions.map((o) => o.id));
-    return orgs.filter((o) => fmoIds.has(o.id));
-  }, [orgs, showAllOrgs, fmoOrgOptions]);
+    const base = orgs.filter((o) => fmoIds.has(o.id));
+
+    // Important UX: newly-created orgs won't be classified as an FMO until an fmo_admin/org_admin is added.
+    // Still allow selecting/seeing the currently-selected org even when filtering to FMOs.
+    if (selectedOrgId && !base.some((o) => o.id === selectedOrgId)) {
+      const selected = orgs.find((o) => o.id === selectedOrgId);
+      if (selected) return [selected, ...base];
+    }
+
+    return base;
+  }, [orgs, showAllOrgs, fmoOrgOptions, selectedOrgId]);
 
   const selectedOrg = useMemo(() => visibleOrgs.find((o) => o.id === selectedOrgId) || null, [visibleOrgs, selectedOrgId]);
 
@@ -541,7 +550,7 @@ const MasterOrganizationsView: React.FC = () => {
           onChange={(e) => setShowAllOrgs(e.target.checked)}
           className="h-4 w-4 rounded border-slate-300"
         />
-        Show all orgs (including independent advisors)
+        Show all orgs (otherwise only FMOs with an admin)
       </label>
 
       {(error || success) && (
