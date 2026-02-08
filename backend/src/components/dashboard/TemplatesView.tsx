@@ -37,9 +37,12 @@ const TemplatesView: React.FC = () => {
         .order('template_number', { ascending: true });
 
       if (effectiveOrgId) {
-        query = query.or(`org_id.is.null,org_id.eq.${effectiveOrgId}`);
+        query = query.eq('org_id', effectiveOrgId);
       } else {
-        query = query.is('org_id', null);
+        setTemplates([]);
+        setError('No organization selected for templates.');
+        setIsLoading(false);
+        return;
       }
 
       const { data, error } = await query;

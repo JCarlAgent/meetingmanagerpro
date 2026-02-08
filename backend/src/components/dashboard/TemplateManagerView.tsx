@@ -130,18 +130,19 @@ const TemplateManagerView: React.FC = () => {
   const fetchTemplates = async () => {
     setIsLoading(true);
     try {
+      if (!scopeOrgId) {
+        setTemplates([]);
+        setIsLoading(false);
+        return;
+      }
+
       let query = supabase
         .from('mail_templates')
         .select('*')
         .order('industry', { ascending: true })
         .order('template_number', { ascending: true });
 
-      if (scopeOrgId) {
-        query = query.or(`org_id.is.null,org_id.eq.${scopeOrgId}`);
-      } else {
-        // If we don't have an org selected, show global templates only.
-        query = query.is('org_id', null);
-      }
+      query = query.eq('org_id', scopeOrgId);
 
       const { data, error } = await query;
       if (error) {
@@ -259,7 +260,7 @@ const TemplateManagerView: React.FC = () => {
       const fileName = `${selectedTemplate.industry}_template_${selectedTemplate.template_number}_${Date.now()}.${fileExt}`;
 
       const templateOrgId = (selectedTemplate as any)?.org_id ? String((selectedTemplate as any).org_id) : null;
-      const folder = templateOrgId || scopeOrgId || 'global';
+      const folder = templateOrgId || scopeOrgId;
       const filePath = `templates/${folder}/${fileName}`;
 
       // Upload to storage
@@ -327,7 +328,11 @@ const TemplateManagerView: React.FC = () => {
   const handleAddTemplate = async () => {
     setIsSaving(true);
     try {
-      const orgIdForNew = isMaster ? (scopeOrgId ?? null) : (isOrgAdmin ? (fixedOrgId ?? null) : null);
+      if (!scopeOrgId) {
+        setError('Select an organization before adding a template.');
+        return;
+      }
+      const orgIdForNew = scopeOrgId;
       const { data, error } = await supabase
         .from('mail_templates')
         .insert({
@@ -415,7 +420,6 @@ const TemplateManagerView: React.FC = () => {
                 onChange={(e) => setSelectedOrgId(e.target.value ? e.target.value : null)}
                 className="bg-slate-900/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/30"
               >
-                <option value="" className="bg-slate-900 text-white">Global only</option>
                 {orgOptions.map((o) => (
                   <option key={o.id} value={o.id} className="bg-slate-900 text-white">
                     {o.name}

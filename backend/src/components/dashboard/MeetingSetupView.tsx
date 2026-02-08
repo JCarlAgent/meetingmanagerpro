@@ -274,6 +274,11 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
     try {
       const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
 
+      if (!effectiveOrgId) {
+        setTemplates([]);
+        return;
+      }
+
       let query = supabase
         .from('mail_templates')
         .select('id, name, thumbnail_url')
@@ -282,9 +287,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
         .order('template_number', { ascending: true })
         .limit(200);
 
-      if (effectiveOrgId) {
-        query = query.or(`org_id.is.null,org_id.eq.${effectiveOrgId}`);
-      }
+      query = query.eq('org_id', effectiveOrgId);
 
       const { data, error } = await query;
       if (error) {

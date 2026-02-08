@@ -37,6 +37,11 @@ create table if not exists public.mail_templates (
 alter table public.mail_templates
   add column if not exists org_id uuid references public.orgs(id) on delete cascade;
 
+-- Templates are org-specific (no global templates). Make org_id required.
+-- If you have existing rows with org_id null, backfill them before enforcing NOT NULL.
+alter table public.mail_templates
+  alter column org_id set not null;
+
 create index if not exists mail_templates_org_id_idx on public.mail_templates(org_id);
 
 create index if not exists mail_templates_active_idx on public.mail_templates(is_active);
@@ -56,8 +61,7 @@ create policy mail_templates_select on public.mail_templates
 for select
 to authenticated
 using (
-  org_id is null
-  or public.is_master_admin()
+  public.is_master_admin()
   or exists (
     select 1
     from public.org_members om
@@ -164,6 +168,7 @@ using (
       from public.org_members om
       where om.user_id = auth.uid()
         and om.role in ('fmo_admin','org_admin')
+        and split_part(storage.objects.name, '/', 1) = 'templates'
         and om.org_id::text = split_part(storage.objects.name, '/', 2)
     )
   )
@@ -177,6 +182,7 @@ with check (
       from public.org_members om
       where om.user_id = auth.uid()
         and om.role in ('fmo_admin','org_admin')
+        and split_part(storage.objects.name, '/', 1) = 'templates'
         and om.org_id::text = split_part(storage.objects.name, '/', 2)
     )
   )
