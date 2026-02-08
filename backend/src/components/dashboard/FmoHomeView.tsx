@@ -30,6 +30,18 @@ type OrgMember = {
   created_at: string;
 };
 
+type OrgMemberWithUser = {
+  org_id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+  user: {
+    id: string;
+    email: string | null;
+    user_metadata: Record<string, unknown> | null;
+  } | null;
+};
+
 type Job = {
   id: string;
   job_number: string;
@@ -110,6 +122,36 @@ function formatDateShort(iso: string): string {
 function startOfCurrentYearIso(): string {
   const now = new Date();
   return new Date(now.getFullYear(), 0, 1).toISOString();
+}
+
+async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+async function readResponseError(resp: Response): Promise<string> {
+  try {
+    const json = await resp.json();
+    const msg = (json as any)?.error;
+    if (typeof msg === 'string' && msg) return msg;
+  } catch {
+    // ignore
+  }
+  try {
+    const text = await resp.text();
+    if (text) return text;
+  } catch {
+    // ignore
+  }
+  return `Request failed (${resp.status})`;
+}
+
+function pickMetadataName(meta: Record<string, unknown> | null | undefined): string | null {
+  const m = meta || {};
+  const fullName = (m['full_name'] as string | undefined) || (m['fullName'] as string | undefined);
+  const name = (m['name'] as string | undefined) || (m['display_name'] as string | undefined) || (m['displayName'] as string | undefined);
+  const v = String(fullName || name || '').trim();
+  return v ? v : null;
 }
 
 export interface FmoHomeViewProps {
@@ -198,14 +240,18 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
         orgRow = orgResult.data as any;
       }
 
-      const [{ data: membersRows, error: memErr }, { data: jobsRows, error: jobsErr }] = await Promise.all([
-        supabase
-          .from('org_members')
-          .select('user_id, role, created_at')
-          .eq('org_id', orgId)
-          .in('role', ['advisor', 'member'])
-          .order('created_at', { ascending: false })
-          .limit(2000),
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not logged in.');
+
+      const [membersResp, jobsResult] = await Promise.all([
+        fetch('/api/admin/orgs/members', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ orgId }),
+        }),
         supabase
           .from('jobs')
           .select('id, job_number, status, title, created_by_user_id, created_at')
@@ -215,8 +261,22 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
           .limit(2000),
       ]);
 
-      if (memErr) throw memErr;
-      if (jobsErr) throw jobsErr;
+      if (!membersResp.ok) throw new Error(await readResponseError(membersResp));
+      if (jobsResult.error) throw jobsResult.error;
+
+      const membersJson = (await membersResp.json().catch(() => ({}))) as any;
+      const membersEnriched = ((membersJson?.members ?? []) as unknown as OrgMemberWithUser[]) || [];
+      const members = membersEnriched
+        .filter((m) => m.role === 'advisor' || m.role === 'member')
+        .map((m) => ({ user_id: m.user_id, role: m.role, created_at: m.created_at } as OrgMember));
+
+      const identityByUserId = new Map<string, { name: string | null; email: string | null }>();
+      for (const m of membersEnriched) {
+        const email = m.user?.email ?? null;
+        const metaName = pickMetadataName(m.user?.user_metadata ?? null);
+        const name = metaName || email;
+        identityByUserId.set(m.user_id, { name: name || null, email });
+      }
 
       const nextOrg = (orgRow as any) || null;
       setOrg(nextOrg);
@@ -228,8 +288,7 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
         logo_url: missingOrgLogoSchema ? '' : String(nextOrg?.logo_url ?? ''),
       });
 
-      const members = ((membersRows ?? []) as unknown as OrgMember[]) || [];
-      const jobs = ((jobsRows ?? []) as unknown as Job[]) || [];
+      const jobs = ((jobsResult.data ?? []) as unknown as Job[]) || [];
       const jobIds = jobs.map((j) => j.id);
 
       const { data: meetingsRows, error: meetingsErr } = jobIds.length
@@ -276,7 +335,13 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
           const startsAt = String(m.starts_at);
           const job = jobById.get(m.job_id);
           const creator = job?.created_by_user_id ? profileById.get(String(job.created_by_user_id)) : null;
-          const advisorName = creator?.full_name || creator?.email || (job?.created_by_user_id ? String(job.created_by_user_id) : '—');
+          const fallback = job?.created_by_user_id ? identityByUserId.get(String(job.created_by_user_id)) : null;
+          const advisorName =
+            creator?.full_name ||
+            fallback?.name ||
+            creator?.email ||
+            fallback?.email ||
+            (job?.created_by_user_id ? String(job.created_by_user_id) : '—');
           const meetingType = (job?.title || '').trim() || job?.job_number || 'Meeting';
           return {
             jobId: m.job_id,
@@ -322,8 +387,9 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
 
         const latest = rows[0] || null;
         const profile = profileById.get(advisorId) || null;
-        const name = profile?.full_name || profile?.email || advisorId;
-        const email = profile?.email || null;
+        const fallback = identityByUserId.get(advisorId) || null;
+        const name = profile?.full_name || fallback?.name || profile?.email || fallback?.email || advisorId;
+        const email = profile?.email || fallback?.email || null;
         const phone = profile?.phone || null;
         const lastMeetingAt = latest?.meeting?.starts_at ? String(latest.meeting.starts_at) : null;
         const lastMeetingCity = latest?.meeting?.city || null;
@@ -461,9 +527,24 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
       const publicUrl = String(data?.publicUrl || '').trim();
       if (!publicUrl) throw new Error('Upload succeeded but could not get public URL.');
 
-      setCompanyDraft((p) => ({ ...p, logo_url: publicUrl }));
+      // Persist immediately so the logo stays after refresh.
+      const { data: updatedOrg, error: orgErr } = await supabase
+        .from('orgs')
+        .update({ logo_url: publicUrl })
+        .eq('id', orgId)
+        .select('id, name, slug, contact_name, contact_email, contact_phone, contact_job_title, logo_url')
+        .maybeSingle();
+
+      if (orgErr) throw orgErr;
+
+      setOrg((updatedOrg as any) || null);
+      setCompanyDraft((p) => ({
+        ...p,
+        logo_url: String((updatedOrg as any)?.logo_url ?? publicUrl),
+      }));
+
       setSelectedLogoFile(null);
-      setNotice('Logo uploaded. Click “Update info” to save it to the org profile.');
+      setNotice('Logo uploaded and saved.');
     } catch (err: any) {
       const msg = toErrorMessage(err);
       setError(
