@@ -135,6 +135,8 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     logo_url: '',
   });
   const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const [upcomingMeetings, setUpcomingMeetings] = useState<UpcomingMeeting[]>([]);
   const [advisorSummaries, setAdvisorSummaries] = useState<AdvisorSummary[]>([]);
@@ -411,6 +413,69 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
     }
   };
 
+  const uploadLogo = async () => {
+    setError(null);
+    setNotice(null);
+
+    if (missingOrgLogoSchema) {
+      setError('Logo upload requires the orgs.logo_url column. Run the latest Supabase migration first.');
+      return;
+    }
+
+    const file = selectedLogoFile;
+    if (!file) {
+      setError('Select a logo image first.');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setError('Logo must be an image file (PNG, JPG, SVG, etc).');
+      return;
+    }
+
+    const maxBytes = 2 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setError('Logo file is too large (max 2MB).');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const safeName = (file.name || 'logo')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+
+      const path = `${orgId}/${Date.now()}-${safeName || 'logo'}`;
+
+      const { error: uploadErr } = await supabase.storage.from('org-logos').upload(path, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type,
+      });
+
+      if (uploadErr) throw uploadErr;
+
+      const { data } = supabase.storage.from('org-logos').getPublicUrl(path);
+      const publicUrl = String(data?.publicUrl || '').trim();
+      if (!publicUrl) throw new Error('Upload succeeded but could not get public URL.');
+
+      setCompanyDraft((p) => ({ ...p, logo_url: publicUrl }));
+      setSelectedLogoFile(null);
+      setNotice('Logo uploaded. Click “Update info” to save it to the org profile.');
+    } catch (err: any) {
+      const msg = toErrorMessage(err);
+      setError(
+        msg.includes('Bucket not found') || msg.includes('bucket')
+          ? 'Upload failed: missing Storage bucket/policies for org logos. Create a public bucket named org-logos and add write policies for org admins.'
+          : msg
+      );
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -556,7 +621,28 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                 <Building2 className="w-5 h-5 text-red-400" />
                 <h1 className="text-xl font-semibold text-slate-900">Company Profile</h1>
               </div>
-              <div className="mt-1 text-sm text-slate-600">FMO: <span className="font-semibold text-slate-800">{org?.name || '—'}</span></div>
+
+              <div className="mt-3 w-full max-w-2xl">
+                {companyDraft.logo_url ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="h-16 sm:h-20 w-full overflow-hidden flex items-center justify-center">
+                      <img
+                        src={companyDraft.logo_url}
+                        alt={org?.name ? `${org.name} logo` : 'FMO logo'}
+                        className="h-16 sm:h-20 w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
+                    <div className="h-16 sm:h-20 w-full flex items-center justify-center text-sm text-slate-500">
+                      Upload a horizontal logo below (recommended).
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 text-sm text-slate-600">FMO: <span className="font-semibold text-slate-800">{org?.name || '—'}</span></div>
             </div>
 
             <button
@@ -664,6 +750,31 @@ const FmoHomeView: React.FC<FmoHomeViewProps> = ({ orgId }) => {
                       placeholder="https://.../logo.png"
                     />
                     <div className="mt-2 text-xs text-slate-500">Shown on advisor dashboards in the upper-left.</div>
+
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Upload logo</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={missingOrgContactSchema || isUploadingLogo}
+                          onChange={(e) => setSelectedLogoFile(e.target.files?.[0] || null)}
+                          className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        />
+                        <div className="mt-1 text-xs text-slate-500">Uploads to Storage bucket: <span className="font-mono">org-logos</span> (max 2MB).</div>
+                      </div>
+                      <div className="md:col-span-1">
+                        <button
+                          type="button"
+                          onClick={uploadLogo}
+                          disabled={missingOrgContactSchema || isUploadingLogo || !selectedLogoFile}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 transition-colors disabled:opacity-50"
+                        >
+                          {isUploadingLogo ? 'Uploading…' : 'Upload'}
+                        </button>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               </div>

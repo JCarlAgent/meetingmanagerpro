@@ -18,6 +18,19 @@ type OrgMemberRow = {
   created_at: string;
 };
 
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+};
+
+type IndependentAdvisorOption = {
+  userId: string;
+  orgId: string;
+  role: string;
+  label: string;
+};
+
 type OrgMemberWithUser = OrgMemberRow & {
   user: {
     id: string;
@@ -72,6 +85,30 @@ async function readResponseError(resp: Response): Promise<string> {
   return `Request failed (${statusPart})`;
 }
 
+async function fetchProfilesByUserId(userIds: string[]): Promise<Record<string, ProfileRow>> {
+  const ids = Array.from(new Set(userIds.map((x) => String(x || '').trim()).filter(Boolean)));
+  if (!ids.length) return {};
+
+  const out: Record<string, ProfileRow> = {};
+  const chunkSize = 500;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, email')
+      .in('user_id', chunk)
+      .limit(chunkSize);
+
+    if (error) throw error;
+    for (const p of (data ?? []) as unknown as ProfileRow[]) {
+      if (!p?.user_id) continue;
+      out[p.user_id] = p;
+    }
+  }
+
+  return out;
+}
+
 function slugify(raw: string) {
   return raw
     .toLowerCase()
@@ -87,6 +124,8 @@ const MasterOrganizationsView: React.FC = () => {
 
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [members, setMembers] = useState<OrgMemberWithUser[]>([]);
+  const [advisorMembers, setAdvisorMembers] = useState<OrgMemberRow[]>([]);
+  const [profilesByUserId, setProfilesByUserId] = useState<Record<string, ProfileRow>>({});
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [selectedMember, setSelectedMember] = useState<OrgMemberWithUser | null>(null);
@@ -94,6 +133,7 @@ const MasterOrganizationsView: React.FC = () => {
   const [fmoOrgOptions, setFmoOrgOptions] = useState<OrgOption[]>([]);
   const [transferTargetOrgId, setTransferTargetOrgId] = useState<string>('');
   const [transferMemberUserId, setTransferMemberUserId] = useState<string>('');
+  const [transferSourceOrgId, setTransferSourceOrgId] = useState<string>('');
   const [removeFromSource, setRemoveFromSource] = useState(true);
   const [isTransferring, setIsTransferring] = useState(false);
 
@@ -115,13 +155,19 @@ const MasterOrganizationsView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [{ data: orgData, error: orgErr }, { data: fmoMembers, error: fmoErr }] = await Promise.all([
-        supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(500),
+      const [{ data: orgData, error: orgErr }, { data: fmoMembers, error: fmoErr }, { data: advisorMemberRows, error: advErr }] = await Promise.all([
+        supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(2000),
         supabase
           .from('org_members')
           .select('org_id, role')
           .in('role', ['fmo_admin', 'org_admin'])
           .limit(5000),
+        supabase
+          .from('org_members')
+          .select('org_id, user_id, role, created_at')
+          .in('role', ['advisor', 'member'])
+          .order('created_at', { ascending: false })
+          .limit(20000),
       ]);
 
       if (orgErr) throw orgErr;
@@ -130,9 +176,34 @@ const MasterOrganizationsView: React.FC = () => {
         // eslint-disable-next-line no-console
         console.warn('Failed to load FMO org members for options', fmoErr);
       }
+      if (advErr) {
+        // Non-fatal: page can still manage FMOs even if advisor list fails.
+        // eslint-disable-next-line no-console
+        console.warn('Failed to load advisor memberships for transfer options', advErr);
+      }
 
       const nextOrgs = ((orgData ?? []) as unknown as OrgRow[]) || [];
       setOrgs(nextOrgs);
+
+      const nextAdvisorMembers = (((advisorMemberRows ?? []) as unknown as OrgMemberRow[]) || []).map((m) => ({
+        ...m,
+        org_id: String((m as any).org_id),
+        user_id: String((m as any).user_id),
+      }));
+      setAdvisorMembers(nextAdvisorMembers);
+
+      // Best-effort: show names/emails for independent advisor transfer list.
+      try {
+        const nextProfiles = await fetchProfilesByUserId(nextAdvisorMembers.map((m) => m.user_id));
+        setProfilesByUserId(nextProfiles);
+      } catch (profileErr: any) {
+        const code = profileErr?.code;
+        if (code !== '42P01') {
+          // eslint-disable-next-line no-console
+          console.warn('Failed to load profiles for independent advisor transfer list', profileErr);
+        }
+        setProfilesByUserId({});
+      }
 
       const fmoOrgIds = new Set<string>(((fmoMembers ?? []) as any[]).map((m) => String(m.org_id)));
       const nextFmoOptions: OrgOption[] = nextOrgs
@@ -237,12 +308,38 @@ const MasterOrganizationsView: React.FC = () => {
 
   useEffect(() => {
     if (!members.length) {
-      setTransferMemberUserId('');
+      // Don't clear the independent transfer selection when browsing orgs.
       return;
     }
+    if (transferMemberUserId || transferSourceOrgId) return;
     const advisor = members.find((m) => m.role === 'advisor' || m.role === 'member');
     if (advisor?.user_id) setTransferMemberUserId(advisor.user_id);
-  }, [members]);
+  }, [members, transferMemberUserId, transferSourceOrgId]);
+
+  const independentAdvisorOptions = useMemo((): IndependentAdvisorOption[] => {
+    const fmoIds = new Set(fmoOrgOptions.map((o) => o.id));
+    const byOrgId = new Map(orgs.map((o) => [o.id, o] as const));
+
+    const options: IndependentAdvisorOption[] = [];
+    for (const m of advisorMembers) {
+      if (fmoIds.size && fmoIds.has(m.org_id)) continue;
+      const org = byOrgId.get(m.org_id);
+      const profile = profilesByUserId[m.user_id];
+      const name = (profile?.full_name || '').trim();
+      const email = (profile?.email || '').trim();
+      const who = name || email || m.user_id;
+      const orgLabel = (org?.name || org?.slug || m.org_id || '').trim();
+      options.push({
+        userId: m.user_id,
+        orgId: m.org_id,
+        role: m.role,
+        label: `${who} — ${orgLabel}`.slice(0, 160),
+      });
+    }
+
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return options;
+  }, [advisorMembers, fmoOrgOptions, orgs, profilesByUserId]);
 
   if (!user?.is_master_admin) {
     return (
@@ -352,8 +449,8 @@ const MasterOrganizationsView: React.FC = () => {
     setError(null);
     setSuccess(null);
 
-    if (!selectedOrgId) {
-      setError('Select a source organization first.');
+    if (!transferSourceOrgId) {
+      setError('Select an independent advisor to move.');
       return;
     }
     if (!transferMemberUserId) {
@@ -364,7 +461,7 @@ const MasterOrganizationsView: React.FC = () => {
       setError('Select a destination FMO organization.');
       return;
     }
-    if (selectedOrgId === transferTargetOrgId) {
+    if (transferSourceOrgId === transferTargetOrgId) {
       setError('Source and destination org must be different.');
       return;
     }
@@ -381,7 +478,7 @@ const MasterOrganizationsView: React.FC = () => {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          fromOrgId: selectedOrgId,
+          fromOrgId: transferSourceOrgId,
           toOrgId: transferTargetOrgId,
           userId: transferMemberUserId,
           removeFromSource,
@@ -394,7 +491,10 @@ const MasterOrganizationsView: React.FC = () => {
 
       const data = (await resp.json().catch(() => ({}))) as any;
       setSuccess(data?.removed ? 'Transferred advisor to destination org.' : 'Added advisor to destination org (kept in source org).');
-      await loadMembers(selectedOrgId);
+      await load();
+      if (selectedOrgId && selectedOrgId === transferSourceOrgId) {
+        await loadMembers(selectedOrgId);
+      }
     } catch (err: unknown) {
       setError(getErrorMessage(err) || 'Failed to transfer advisor');
     } finally {
@@ -634,18 +734,24 @@ const MasterOrganizationsView: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-700">Advisor</label>
                     <select
                       value={transferMemberUserId}
-                      onChange={(e) => setTransferMemberUserId(e.target.value)}
+                      onChange={(e) => {
+                        const nextUserId = e.target.value;
+                        setTransferMemberUserId(nextUserId);
+                        const match = independentAdvisorOptions.find((o) => o.userId === nextUserId);
+                        setTransferSourceOrgId(match?.orgId || '');
+                      }}
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                     >
                       <option value="">Select advisor…</option>
-                      {selectedMembers
-                        .filter((m) => m.role === 'advisor' || m.role === 'member')
-                        .map((m) => (
-                          <option key={m.user_id} value={m.user_id}>
-                            {(m.user?.email || m.user_id).slice(0, 80)}
-                          </option>
-                        ))}
+                      {independentAdvisorOptions.map((o) => (
+                        <option key={`${o.orgId}:${o.userId}`} value={o.userId}>
+                          {o.label}
+                        </option>
+                      ))}
                     </select>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {independentAdvisorOptions.length ? `${independentAdvisorOptions.length} independent advisor(s) found.` : 'No independent advisors found.'}
+                    </div>
                   </div>
 
                   <div className="md:col-span-2">

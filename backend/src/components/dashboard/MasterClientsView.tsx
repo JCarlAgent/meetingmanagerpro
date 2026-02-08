@@ -18,11 +18,18 @@ type OrgMemberRow = {
   created_at: string;
 };
 
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+};
+
 type IndependentAdvisorRow = {
   org: OrgRow;
   userId: string;
   role: string;
   addedAt: string;
+  profile?: ProfileRow | null;
 };
 
 function isFmoRole(role: string | null | undefined) {
@@ -86,6 +93,38 @@ function displayAdvisorNameFromOrg(org: OrgRow): string {
   return base.replace(/\s*\(\s*independent\s*\)\s*/gi, '').trim() || base;
 }
 
+function displayAdvisorName(row: IndependentAdvisorRow): string {
+  const full = (row.profile?.full_name || '').trim();
+  if (full) return full;
+  const email = (row.profile?.email || '').trim();
+  if (email) return email;
+  return displayAdvisorNameFromOrg(row.org);
+}
+
+async function fetchProfilesByUserId(userIds: string[]): Promise<Record<string, ProfileRow>> {
+  const ids = Array.from(new Set(userIds.map((x) => String(x || '').trim()).filter(Boolean)));
+  if (!ids.length) return {};
+
+  const out: Record<string, ProfileRow> = {};
+  const chunkSize = 500;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, email')
+      .in('user_id', chunk)
+      .limit(chunkSize);
+
+    if (error) throw error;
+    for (const p of (data ?? []) as unknown as ProfileRow[]) {
+      if (!p?.user_id) continue;
+      out[p.user_id] = p;
+    }
+  }
+
+  return out;
+}
+
 function shortId(id: string): string {
   if (!id) return '';
   if (id.length <= 12) return id;
@@ -102,6 +141,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
 
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [members, setMembers] = useState<OrgMemberRow[]>([]);
+  const [profilesByUserId, setProfilesByUserId] = useState<Record<string, ProfileRow>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,19 +165,35 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
     setSuccess(null);
     try {
       const [{ data: orgData, error: orgErr }, { data: memberData, error: memErr }] = await Promise.all([
-        supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(500),
+        supabase.from('orgs').select('id, name, slug, created_at').order('created_at', { ascending: false }).limit(2000),
         supabase
           .from('org_members')
           .select('org_id, user_id, role, created_at')
           .order('created_at', { ascending: false })
-          .limit(5000),
+          .limit(20000),
       ]);
 
       if (orgErr) throw orgErr;
       if (memErr) throw memErr;
 
-      setOrgs(((orgData ?? []) as unknown as OrgRow[]) || []);
-      setMembers(((memberData ?? []) as unknown as OrgMemberRow[]) || []);
+      const nextOrgs = ((orgData ?? []) as unknown as OrgRow[]) || [];
+      const nextMembers = ((memberData ?? []) as unknown as OrgMemberRow[]) || [];
+
+      setOrgs(nextOrgs);
+      setMembers(nextMembers);
+
+      // Best-effort: show advisor full name/email when profiles are available.
+      try {
+        const nextProfiles = await fetchProfilesByUserId(nextMembers.map((m) => m.user_id));
+        setProfilesByUserId(nextProfiles);
+      } catch (profileErr: any) {
+        const code = profileErr?.code;
+        if (code !== '42P01') {
+          // eslint-disable-next-line no-console
+          console.warn('Failed to load profiles for advisor names', profileErr);
+        }
+        setProfilesByUserId({});
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to load clients');
     } finally {
@@ -210,18 +266,18 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
       if (fmoOrgIds.has(m.org_id)) continue;
       const org = byOrgId.get(m.org_id);
       if (!org) continue;
-      list.push({ org, userId: m.user_id, role: m.role, addedAt: m.created_at });
+      list.push({ org, userId: m.user_id, role: m.role, addedAt: m.created_at, profile: profilesByUserId[m.user_id] || null });
     }
 
     list.sort((a, b) => {
-      const aName = displayAdvisorNameFromOrg(a.org).toLowerCase();
-      const bName = displayAdvisorNameFromOrg(b.org).toLowerCase();
+      const aName = displayAdvisorName(a).toLowerCase();
+      const bName = displayAdvisorName(b).toLowerCase();
       if (aName !== bName) return aName.localeCompare(bName);
       return a.userId.localeCompare(b.userId);
     });
 
     return list;
-  }, [members, orgs, rows]);
+  }, [members, orgs, rows, profilesByUserId]);
 
   const fmoOptions = useMemo(() => {
     return fmos
@@ -524,7 +580,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
               <div>
                 <div className="text-lg font-semibold text-slate-900">Move advisor under an FMO</div>
                 <div className="mt-1 text-sm text-slate-600">
-                  {displayAdvisorNameFromOrg(moveSource.org)} • Advisor ID: <span className="font-mono">{shortId(moveSource.userId)}</span>
+                  {displayAdvisorName(moveSource)} • Advisor ID: <span className="font-mono">{shortId(moveSource.userId)}</span>
                 </div>
               </div>
               <button
@@ -637,7 +693,8 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
                 <div key={`${r.org.id}:${r.userId}`} className="rounded-xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-slate-900">{displayAdvisorNameFromOrg(r.org)}</div>
+                      <div className="font-semibold text-slate-900">{displayAdvisorName(r)}</div>
+                      {r.profile?.email ? <div className="mt-1 text-xs text-slate-600">{r.profile.email}</div> : null}
                       <div className="mt-1 text-xs text-slate-500">Advisor ID: {shortId(r.userId)}</div>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-700">
                         <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1">Role: <span className="font-semibold">{r.role}</span></span>
@@ -648,7 +705,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
                       <button
                         type="button"
                         onClick={() => {
-                          setActingOrg({ id: r.org.id, name: displayAdvisorNameFromOrg(r.org) });
+                          setActingOrg({ id: r.org.id, name: displayAdvisorName(r) });
                           onNavigate('home');
                         }}
                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-2 text-sm font-semibold transition-colors"
