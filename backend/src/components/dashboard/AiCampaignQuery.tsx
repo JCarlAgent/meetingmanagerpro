@@ -39,6 +39,10 @@ export default function AiCampaignQuery() {
       if (response.error) {
         throw new Error(response.error.message || 'Failed to analyze campaign request.');
       }
+      
+      if (response.data && response.data.error) {
+        throw new Error(response.data.error);
+      }
 
       // 3. Set the results!
       setResult(response.data);
