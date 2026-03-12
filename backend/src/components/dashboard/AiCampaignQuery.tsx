@@ -41,10 +41,19 @@ export default function AiCampaignQuery() {
         body: JSON.stringify({ query })
       });
 
-      const data = await response.json();
+      // Vercel sometimes returns HTML or plain text strings (like 500 error pages) when a serverless function crashes.
+      // This safely checks the response type before attempting to parse JSON.
+      const contentType = response.headers.get("content-type");
+      let data;
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await response.json();
+      } else {
+        const textData = await response.text();
+        throw new Error(`Server Error: ${textData.substring(0, 80)}...`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to analyze campaign request.');
+        throw new Error(data?.error || 'Failed to analyze campaign request.');
       }
 
       // 3. Set the results!
