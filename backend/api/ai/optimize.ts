@@ -1,10 +1,5 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUserIdFromAuthHeader } from '../_lib/supabaseAdmin.js';
-
-function send(res: any, status: number, body: any) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(body));
-}
 
 // Ensure the system prompt forces Gemini to act strictly as an event marketing expert
 // and return perfectly parsable JSON to populate our UI components.
@@ -39,39 +34,38 @@ You must extract the location and goal from the user's prompt. If no location is
 
 export const config = { maxDuration: 60 };
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
-    res.statusCode = 204;
-    res.end();
+    res.status(204).end();
     return;
   }
 
   if (req.method !== 'POST') {
-    return send(res, 405, { error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   // Ensure the user is logged in (Data Toll lockout logic can also be verified here eventually)
   try {
     await requireUserIdFromAuthHeader(req);
   } catch {
-    return send(res, 401, { error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return send(res, 500, { error: 'Gemini API Key is not configured on the server.' });
+    return res.status(500).json({ error: 'Gemini API Key is not configured on the server.' });
   }
 
   // Parse the query from the request body
   let parsedBody;
   try {
-    parsedBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    parsedBody = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
   } catch (error) {
-    return send(res, 400, { error: 'Invalid JSON body' });
+    return res.status(400).json({ error: 'Invalid JSON body' });
   }
 
   if (!parsedBody || !parsedBody.query || typeof parsedBody.query !== 'string') {
-    return send(res, 400, { error: 'Missing or invalid query parameter' });
+    return res.status(400).json({ error: 'Missing or invalid query parameter' });
   }
 
   const { query } = parsedBody;
@@ -102,7 +96,7 @@ export default async function handler(req: any, res: any) {
 
     if (!response.ok) {
       console.error('Gemini API Error:', data);
-      return send(res, 500, { error: 'Failed to generate AI response' });
+      return res.status(500).json({ error: 'Failed to generate AI response' });
     }
 
     const aiText = data.candidates[0].content.parts[0].text;
@@ -111,10 +105,10 @@ export default async function handler(req: any, res: any) {
     const cleanJsonString = aiText.replace(/^\`\`\`json/m, '').replace(/\`\`\`$/m, '').trim();
     const resultObj = JSON.parse(cleanJsonString);
 
-    return send(res, 200, resultObj);
+    return res.status(200).json(resultObj);
 
   } catch (err: any) {
     console.error('AI Processing Error:', err);
-    return send(res, 500, { error: 'Internal AI processing error', details: err.message });
+    return res.status(500).json({ error: 'Internal AI processing error', details: err.message });
   }
 }
