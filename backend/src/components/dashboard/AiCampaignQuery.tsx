@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
+import PostMeetingROIModal from './PostMeetingROIModal';
 
 interface AiProposal {
   targetAudience: { headline: string; subtext: string };
@@ -17,22 +18,29 @@ export default function AiCampaignQuery() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isTollLocked, setIsTollLocked] = useState(false);
   const [tollMessage, setTollMessage] = useState('');
+  const [violatingJobs, setViolatingJobs] = useState<any[]>([]);
+  const [showRoiModal, setShowRoiModal] = useState(false);
+
+  const checkDataToll = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      
+      const { data, error } = await supabase.rpc('get_data_toll_violations');
+      if (!error && data && data.locked) {
+        setIsTollLocked(true);
+        setTollMessage(data.message);
+        setViolatingJobs(data.violating_jobs || []);
+      } else {
+        setIsTollLocked(false);
+        setViolatingJobs([]);
+      }
+    } catch (err) {
+      console.error("Checking data toll failed", err);
+    }
+  };
 
   useEffect(() => {
-    async function checkDataToll() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-        
-        const { data, error } = await supabase.rpc('get_data_toll_violations');
-        if (!error && data && data.locked) {
-          setIsTollLocked(true);
-          setTollMessage(data.message);
-        }
-      } catch (err) {
-        console.error("Checking data toll failed", err);
-      }
-    }
     checkDataToll();
   }, []);
 
@@ -122,10 +130,29 @@ export default function AiCampaignQuery() {
             <h3 className="text-xl font-bold text-red-900 mb-1">Data Toll Active</h3>
             <p className="text-red-700">{tollMessage}</p>
           </div>
-          <button className="mt-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm">
-            Enter Missing ROI Report
-          </button>
+          {violatingJobs.length > 0 && (
+            <button 
+              onClick={() => setShowRoiModal(true)}
+              className="mt-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm"
+            >
+              Report ROI for: {violatingJobs[0].title || 'Meeting'}
+            </button>
+          )}
         </div>
+      )}
+
+      {violatingJobs.length > 0 && (
+        <PostMeetingROIModal 
+          isOpen={showRoiModal}
+          onClose={() => setShowRoiModal(false)}
+          jobId={violatingJobs[0].job_id}
+          jobTitle={violatingJobs[0].title || `Meeting on ${new Date(violatingJobs[0].starts_at).toLocaleDateString()}`}
+          onSuccess={() => {
+            setShowRoiModal(false);
+            // Re-check the toll to unlock the magic bar!
+            checkDataToll();
+          }}
+        />
       )}
 
       {/* Loading State Indicators */}
