@@ -31,33 +31,17 @@ export default function AiCampaignQuery() {
         throw new Error('You must be logged in to use the AI Optimizer.');
       }
 
-      // 2. Call our new Edge Function for Gemini
-      const response = await fetch('/api/ai/optimize', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query })
+      // 2. Call our new Supabase Edge Function for Gemini
+      const response = await supabase.functions.invoke('gemini-optimizer', {
+        body: { query }
       });
 
-      // Vercel sometimes returns HTML or plain text strings (like 500 error pages) when a serverless function crashes.
-      // This safely checks the response type before attempting to parse JSON.
-      const contentType = response.headers.get("content-type");
-      let data;
-      if (contentType && contentType.indexOf("application/json") !== -1) {
-        data = await response.json();
-      } else {
-        const textData = await response.text();
-        throw new Error(`Server Error: ${textData.substring(0, 80)}...`);
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to analyze campaign request.');
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to analyze campaign request.');
       }
 
       // 3. Set the results!
-      setResult(data);
+      setResult(response.data);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'An unexpected error occurred during AI processing.');
