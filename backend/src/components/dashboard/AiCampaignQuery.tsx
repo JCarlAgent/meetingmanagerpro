@@ -1,23 +1,60 @@
 import React, { useState } from 'react';
 import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar } from 'lucide-react';
+import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
+
+interface AiProposal {
+  targetAudience: { headline: string; subtext: string };
+  recommendedVenue: { headline: string; subtext: string };
+  optimalTiming: { headline: string; subtext: string };
+  mailStrategy: { headline: string; subtext: string };
+  confidenceScore: string;
+}
 
 export default function AiCampaignQuery() {
   const [query, setQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showResults, setShowResults] = useState(false);
+  const [result, setResult] = useState<AiProposal | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
 
     setIsProcessing(true);
-    setShowResults(false);
+    setResult(null);
+    setErrorMsg('');
 
-    // Simulate AI orchestration delay (fetching map data, reasoning, etc.)
-    setTimeout(() => {
+    try {
+      // 1. Get the current user session token for the backend API
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('You must be logged in to use the AI Optimizer.');
+      }
+
+      // 2. Call our new Edge Function for Gemini
+      const response = await fetch('/api/ai/optimize', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to analyze campaign request.');
+      }
+
+      // 3. Set the results!
+      setResult(data);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'An unexpected error occurred during AI processing.');
+    } finally {
       setIsProcessing(false);
-      setShowResults(true);
-    }, 2500);
+    }
   };
 
   return (
@@ -65,17 +102,24 @@ export default function AiCampaignQuery() {
         </div>
       )}
 
+      {/* Error state */}
+      {errorMsg && (
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center justify-center fade-in slide-in-from-top-4 duration-500">
+          {errorMsg}
+        </div>
+      )}
+
       {/* Mock AI Proposal Results */}
-      {showResults && (
+      {result && (
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">AI Campaign Proposal</h2>
-              <p className="text-gray-500 mt-1">Optimized for maximum ROI based on historical performance.</p>
+              <p className="text-gray-500 mt-1">Optimized for maximum ROI based on real-world constraints.</p>
             </div>
             <div className="bg-green-50 text-green-700 px-4 py-2 rounded-full text-sm font-semibold flex items-center">
               <Target className="w-4 h-4 mr-2" />
-              92% Success Confidence
+              {result.confidenceScore}% Success Confidence
             </div>
           </div>
 
@@ -85,8 +129,8 @@ export default function AiCampaignQuery() {
                 <Users className="w-4 h-4 mr-2" />
                 Target Audience
               </div>
-              <p className="font-semibold text-lg text-gray-900">55-75 yrs, $100k+ Income</p>
-              <p className="text-sm text-gray-500">$500k+ Investable Assets</p>
+              <p className="font-semibold text-lg text-gray-900">{result.targetAudience.headline}</p>
+              <p className="text-sm text-gray-500">{result.targetAudience.subtext}</p>
             </div>
             
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
@@ -94,8 +138,8 @@ export default function AiCampaignQuery() {
                 <MapPin className="w-4 h-4 mr-2" />
                 Recommended Venue
               </div>
-              <p className="font-semibold text-lg text-gray-900">Ruth's Chris Steak House</p>
-              <p className="text-sm text-gray-500">Uptown Dallas (15m Drive Zone)</p>
+              <p className="font-semibold text-lg text-gray-900">{result.recommendedVenue.headline}</p>
+              <p className="text-sm text-gray-500">{result.recommendedVenue.subtext}</p>
             </div>
 
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
@@ -103,8 +147,8 @@ export default function AiCampaignQuery() {
                 <Calendar className="w-4 h-4 mr-2" />
                 Optimal Timing
               </div>
-              <p className="font-semibold text-lg text-gray-900">Tuesday, 4:30 PM</p>
-              <p className="text-sm text-gray-500">Avoids rush hour & night driving</p>
+              <p className="font-semibold text-lg text-gray-900">{result.optimalTiming.headline}</p>
+              <p className="text-sm text-gray-500">{result.optimalTiming.subtext}</p>
             </div>
 
             <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
@@ -112,8 +156,8 @@ export default function AiCampaignQuery() {
                 <ArrowRight className="w-4 h-4 mr-2" />
                 Mail Strategy
               </div>
-              <p className="font-semibold text-lg text-indigo-900">8,500 Mailers</p>
-              <p className="text-sm text-indigo-700">Estimated 52 Attendees</p>
+              <p className="font-semibold text-lg text-indigo-900">{result.mailStrategy.headline}</p>
+              <p className="text-sm text-indigo-700">{result.mailStrategy.subtext}</p>
             </div>
           </div>
 
