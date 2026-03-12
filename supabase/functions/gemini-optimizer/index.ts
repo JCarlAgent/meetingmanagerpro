@@ -61,16 +61,22 @@ Deno.serve(async (req) => {
     const body = JSON.parse(bodyText);
     const query = body.query;
     
-    if (!query || typeof query !== 'string') {
-      throw new Error('Missing or invalid query parameter')
-    }
-
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
       throw new Error('Server missing GEMINI_API_KEY')
     }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    if (query === "LIST_MODELS") {
+      const listResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      const listData = await listResponse.json();
+      throw new Error("AVAILABLE MODELS: " + listData.models.map((m: any) => m.name).join(", "));
+    }
+
+    if (!query || typeof query !== 'string') {
+      throw new Error('Missing or invalid query parameter')
+    }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
