@@ -61,23 +61,18 @@ export default async function handler(req: any, res: any) {
   }
 
   // Parse the query from the request body
-  let body;
+  let parsedBody;
   try {
-    const rawBody = await new Promise<string>((resolve, reject) => {
-      let data = '';
-      req.on('data', (chunk: any) => { data += chunk; });
-      req.on('end', () => resolve(data));
-      req.on('error', reject);
-    });
-    body = JSON.parse(rawBody);
-  } catch {
+    parsedBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  } catch (error) {
     return send(res, 400, { error: 'Invalid JSON body' });
   }
 
-  const { query } = body;
-  if (!query || typeof query !== 'string') {
+  if (!parsedBody || !parsedBody.query || typeof parsedBody.query !== 'string') {
     return send(res, 400, { error: 'Missing or invalid query parameter' });
   }
+
+  const { query } = parsedBody;
 
   try {
     const response = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=\${apiKey}\`, {
