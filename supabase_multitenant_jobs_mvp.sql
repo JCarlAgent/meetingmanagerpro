@@ -3,10 +3,8 @@
 --
 -- Before running:
 -- 1) Ensure you have the existing `admins` table used by the marketing site's admin area.
--- 2) Decide how portal users become members of an org (manual insert by master admin initially).
---
--- Notes:
--- - This file creates new tables in `public`.
+-- 2) Decide how portal users become members of an org (manuals:
+-- - This file creates new t
 -- - RLS policies are included.
 -- - A job_number generator is included (per-org counter, concurrent-safe).
 

@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useActingOrg } from '@/lib/actingOrg';
 import FinalizeSummaryModal from './FinalizeSummaryModal';
+import AiCampaignQuery from './AiCampaignQuery';
 import {
   clearSetupState,
   loadSetupState,
@@ -619,7 +620,10 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-stretch">
+      {/* AI Magic Query Bar (MeetingManagerPRO 2.0 Layer) */}
+      <AiCampaignQuery />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-stretch mt-6">
         {/* 1) Locations */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col">
           <div className="flex items-start gap-3">
