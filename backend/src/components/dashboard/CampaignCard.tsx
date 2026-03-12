@@ -15,10 +15,12 @@ import {
   ListChecks,
   Printer,
   Package,
-  Truck
+  Truck,
+  TrendingUp
 } from 'lucide-react';
 import ResponderList from './ResponderList';
 import DeliveryTracking from './DeliveryTracking';
+import PostMeetingROIModal from './PostMeetingROIModal';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -38,6 +40,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [showDelivery, setShowDelivery] = useState(false);
+  const [showRoiForm, setShowRoiForm] = useState(false);
 
   const totalResponders = responders.length;
   const totalGuests = responders.reduce((sum, r) => sum + (r.guests || 0), 0);
@@ -250,6 +253,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </span>
           {showDelivery ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
+        {campaign.status === 'closed' && (
+          <button
+            onClick={() => setShowRoiForm(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-500/10 text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-colors border-l border-white/10"
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span className="text-sm font-medium">
+              Submit ROI Report
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Expanded Responder List */}
@@ -270,6 +284,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         <div className="border-t border-white/10 p-4">
           <DeliveryTracking campaign={campaign} compact={false} />
         </div>
+      )}
+
+      {/* ROI Modal */}
+      {showRoiForm && (
+        <PostMeetingROIModal
+          jobId={campaign.id}
+          jobTitle={`Campaign ${campaign.project_id}`}
+          isOpen={showRoiForm}
+          onClose={() => setShowRoiForm(false)}
+          onSuccess={() => {
+            setShowRoiForm(false);
+            // Optionally, trigger a refresh here if needed
+          }}
+        />
       )}
     </div>
   );
