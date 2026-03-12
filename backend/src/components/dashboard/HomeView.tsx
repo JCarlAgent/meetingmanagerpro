@@ -4,6 +4,7 @@ import { useActingOrg } from '@/lib/actingOrg';
 import { supabase } from '@/lib/supabase';
 import FmoHomeView from '@/components/dashboard/FmoHomeView';
 import AdvisorHomeView from '@/components/dashboard/AdvisorHomeView';
+import WeatherAlertWidget from '@/components/dashboard/WeatherAlertWidget';
 
 export interface HomeViewProps {
   onNavigate?: (view: string) => void;
@@ -95,10 +96,20 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   }
 
   if (isFmo) {
-    return <FmoHomeView orgId={orgId} />;
+    return (
+      <div className="space-y-6">
+        <WeatherAlertWidget />
+        <FmoHomeView orgId={orgId} />
+      </div>
+    );
   }
 
-  return <AdvisorHomeView orgId={orgId} userId={user.id} onNavigate={onNavigate} />;
+  return (
+    <div className="space-y-6">
+      <WeatherAlertWidget />
+      <AdvisorHomeView orgId={orgId} userId={user.id} onNavigate={onNavigate} />
+    </div>
+  );
 };
 
 export default HomeView;

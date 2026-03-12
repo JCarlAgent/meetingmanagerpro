@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
 import PostMeetingROIModal from './PostMeetingROIModal';
+import CampaignMapPreview from './map/CampaignMapPreview';
 
 interface AiProposal {
   targetAudience: { headline: string; subtext: string };
@@ -16,10 +17,16 @@ export default function AiCampaignQuery() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<AiProposal | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  
+  // Data Toll State
   const [isTollLocked, setIsTollLocked] = useState(false);
   const [tollMessage, setTollMessage] = useState('');
   const [violatingJobs, setViolatingJobs] = useState<any[]>([]);
   const [showRoiModal, setShowRoiModal] = useState(false);
+
+  // Refinement State
+  const [isRefining, setIsRefining] = useState(false);
+  const [refinementQuery, setRefinementQuery] = useState('');
 
   const checkDataToll = async () => {
     try {
@@ -44,12 +51,12 @@ export default function AiCampaignQuery() {
     checkDataToll();
   }, []);
 
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent, isRefinement = false) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    const activeQuery = isRefinement ? refinementQuery : query;
+    if (!activeQuery.trim()) return;
 
     setIsProcessing(true);
-    setResult(null);
     setErrorMsg('');
 
     try {
@@ -60,8 +67,13 @@ export default function AiCampaignQuery() {
       }
 
       // 2. Call our new Supabase Edge Function for Gemini
+      const payload: any = { query: activeQuery };
+      if (isRefinement && result) {
+        payload.previousContext = result;
+      }
+
       const response = await supabase.functions.invoke('gemini-optimizer', {
-        body: { query }
+        body: payload
       });
 
       if (response.error) {
@@ -74,6 +86,10 @@ export default function AiCampaignQuery() {
 
       // 3. Set the results!
       setResult(response.data);
+      if (isRefinement) {
+        setIsRefining(false);
+        setRefinementQuery('');
+      }
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'An unexpected error occurred during AI processing.');
@@ -225,14 +241,59 @@ export default function AiCampaignQuery() {
             </div>
           </div>
 
-          <div className="flex justify-end space-x-4 border-t pt-6">
-            <button className="px-6 py-2 text-gray-600 hover:text-gray-900 font-medium transition-colors">
-              Refine Parameters
-            </button>
-            <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm">
-              Approve & Deploy Campaign
-            </button>
+          <div className="mb-8">
+            <CampaignMapPreview 
+              venueHeadline={result.recommendedVenue.headline}
+              polygonDescription={result.recommendedVenue.subtext}
+            />
           </div>
+
+          {isRefining ? (
+            <div className="mt-8 border-t pt-6 bg-gray-50 -mx-8 -mb-8 p-8 rounded-b-2xl">
+              <form onSubmit={(e) => handleSearch(e, true)} className="relative">
+                <input
+                  type="text"
+                  value={refinementQuery}
+                  onChange={(e) => setRefinementQuery(e.target.value)}
+                  placeholder="How should we adjust this campaign? (e.g., 'Change to an Italian restaurant' or 'Focus on higher net worth')"
+                  className="w-full text-lg px-6 py-4 rounded-xl border-2 border-indigo-200 focus:border-indigo-500 focus:ring-0 shadow-sm transition-all text-gray-800 pr-32 bg-white"
+                  disabled={isProcessing}
+                  autoFocus
+                />
+                <div className="absolute right-2 top-2 flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRefining(false);
+                      setRefinementQuery('');
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isProcessing || !refinementQuery.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <div className="flex justify-end space-x-4 border-t pt-6">
+              <button 
+                onClick={() => setIsRefining(true)}
+                className="px-6 py-2 text-gray-600 hover:text-gray-900 font-medium transition-colors"
+              >
+                Refine Parameters
+              </button>
+              <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm">
+                Approve & Deploy Campaign
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
