@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
 
 interface AiProposal {
@@ -15,6 +15,26 @@ export default function AiCampaignQuery() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<AiProposal | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isTollLocked, setIsTollLocked] = useState(false);
+  const [tollMessage, setTollMessage] = useState('');
+
+  useEffect(() => {
+    async function checkDataToll() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        
+        const { data, error } = await supabase.rpc('get_data_toll_violations');
+        if (!error && data && data.locked) {
+          setIsTollLocked(true);
+          setTollMessage(data.message);
+        }
+      } catch (err) {
+        console.error("Checking data toll failed", err);
+      }
+    }
+    checkDataToll();
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,36 +77,56 @@ export default function AiCampaignQuery() {
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8">
       {/* The Magic Bar */}
-      <div className="relative group">
-        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-        <form onSubmit={handleSearch} className="relative flex items-center bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
-          <div className="pl-6 text-indigo-500">
-            <Sparkles className="w-6 h-6" />
+      <div className={`relative group ${isTollLocked ? 'opacity-75' : ''}`}>
+        <div className={`absolute -inset-1 bg-gradient-to-r ${isTollLocked ? 'from-red-500 to-red-600' : 'from-blue-600 to-indigo-600'} rounded-2xl blur opacity-25 ${!isTollLocked && 'group-hover:opacity-40 transition duration-1000 group-hover:duration-200'}`}></div>
+        <form onSubmit={handleSearch} className={`relative flex items-center bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
+          <div className={`pl-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
+            {isTollLocked ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
           </div>
           <input
             type="text"
-            className="w-full px-4 py-6 text-xl text-gray-800 placeholder-gray-400 bg-transparent border-none focus:outline-none focus:ring-0"
-            placeholder="E.g., I want 50 qualified annuity leads in Dallas next month..."
+            className={`w-full px-4 py-6 text-xl bg-transparent border-none focus:outline-none focus:ring-0 ${isTollLocked ? 'text-red-900 placeholder-red-300 cursor-not-allowed' : 'text-gray-800 placeholder-gray-400'}`}
+            placeholder={isTollLocked ? "ROI Reporting Required to Unlock" : "E.g., I want 50 qualified annuity leads in Dallas next month..."}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            disabled={isProcessing}
+            disabled={isProcessing || isTollLocked}
           />
           <button
             type="submit"
-            disabled={isProcessing || !query.trim()}
-            className="flex items-center px-8 py-6 bg-indigo-50 text-indigo-600 font-semibold hover:bg-indigo-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isProcessing || !query.trim() || isTollLocked}
+            className={`flex items-center px-8 py-6 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              isTollLocked 
+                ? 'bg-red-50 text-red-500' 
+                : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+            }`}
           >
             {isProcessing ? (
               <Loader2 className="w-6 h-6 animate-spin" />
             ) : (
               <>
-                <span className="mr-2">Optimize</span>
-                <ArrowRight className="w-5 h-5" />
+                <span className="mr-2">{isTollLocked ? 'Locked' : 'Optimize'}</span>
+                {!isTollLocked && <ArrowRight className="w-5 h-5" />}
               </>
             )}
           </button>
         </form>
       </div>
+
+      {/* Data Toll Error Banner */}
+      {isTollLocked && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="bg-red-100 p-3 rounded-full text-red-600">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-red-900 mb-1">Data Toll Active</h3>
+            <p className="text-red-700">{tollMessage}</p>
+          </div>
+          <button className="mt-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm">
+            Enter Missing ROI Report
+          </button>
+        </div>
+      )}
 
       {/* Loading State Indicators */}
       {isProcessing && (
