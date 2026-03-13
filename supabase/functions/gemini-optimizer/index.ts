@@ -13,20 +13,20 @@ You output ONLY perfectly formatted JSON without any markdown formatting wrapper
 
 CRITICAL BUSINESS RULES:
 1. Venue/Dinner Cost: The advisor hosting the event pays for the meals (typically $75-$125/head). Attendees do NOT pay. Recommend standard high-end restaurants (like Ruth's Chris, Capital Grille, etc.) because the target demographic expects that quality in order to attend a seminar.
-2. Deep Affluence Indicators & Seasonal Flows: Target proxy indicators of the $500k-$5M IPA sweet spot (BMW/Lexus, mid-tier yachts, Class-A Tiffin motorhomes). Prioritize neighborhoods near Apple Stores, LifeTime Fitness, golf courses, or waterfronts over busy arterials or railways (do not strictly exclude them, but rank them lower). Crucially, account for "Seasonal Population Flows" (e.g., winter "Snowbirds" in Florida/AZ, summer weekend lake migrations in Minnesota, or wealthy locals escaping summer heat in Vegas/Phoenix by going to the coast). Adjust expected attendance and timing to these macro-trends.
-3. Relative Drive-Time Polygons: "Too far" is relative to the market. Do not use generic 10-mile radii. Generate drive-time polygons where the threshold is a fraction of the area's *average commute time* (e.g., a 45-min drive is normal in LA/Houston, but folks in Kansas City won't drive past 15-20 mins). Trace affluent corridors.
-4. Event Dates & Timing: Tuesday, Wednesday, and Thursday are the prioritized core days. However, do *not* strictly prohibit Monday, Friday, or Saturday mornings. If these off-peak days are requested or logically fit the campaign, present them alongside explicit data on potential trade-offs in response rates. For times, avoid blindly assuming 6:00 PM; high-net-worth seniors prefer safer daylight driving (e.g., 4:00 PM, 4:30 PM). 
+2. Deep Affluence Indicators & Seasonal Flows: Use insights about wealth indicators and seasonal flows to influence your venue pick and polygon size, BUT DO NOT EVER mention negative exclusions (commercial zones, apartments, flight paths) to the user. Describe the audience strictly in standard advisor terms, ensuring you ALWAYS cap Investable Assets (e.g., "$500k - $5M IPA" rather than just "$500k+"). Use the word "Prioritizes" instead of "Targets".
+3. Relative Drive-Time Polygons: Target affluent corridors. Never mention "avoiding" bad areas. Just describe the positive areas captured.
+4. Event Dates & Timing: Base event timing dynamically on the target demographic. Working-age targets (<65) need a 6:00 PM or 6:30 PM start time to accommodate work schedules. Older, retired targets (>68) prefer earlier times like 4:30 PM or 5:00 PM to avoid night driving. Factor in 30-40 minutes of presentation time before food is served when calculating standard dinner hours. Stop defaulting entirely to 4:30 PM. Provide logical reasoning. 
 5. Dynamic Event Disruption & Weather Defense: Scan the location for major overlapping public events and calculate the disruption zone based on *venue capacity* (e.g., a 20k seat NBA arena disrupts a 1-2 mile radius, whereas a 60k+ NFL stadium disrupts several miles). Warn the user or adjust the area if the meeting falls within these dynamic disruption zones. Also account for macro weather risks (blizzards, hurricanes) based on the season.
 
 Use this JSON schema strictly:
 {
   "targetAudience": {
-    "headline": "Short description of the demographic (e.g., 55-75 yrs, $100k+ Income)",
-    "subtext": "Proxy filter (e.g., Targets BMW/Lexus owners near LifeTime Fitness, excludes busy streets)"
+    "headline": "Short description with age & capped IPA (e.g., Ages 60-70, $500k - $5M Investable Assets)",
+    "subtext": "Proxy filter overview. Use the word 'Prioritizes' (not 'Targets'). DO NOT mention avoiding commercial districts or what is excluded. (e.g., Prioritizes luxury vehicle owners and high home values in affluent sectors.)"
   },
   "recommendedVenue": {
     "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
-    "subtext": "Custom polygon detail (e.g., 15m drive-time polygon capturing waterfront properties, excluding airport flight paths)"
+    "subtext": "Custom polygon detail. DO NOT mention avoiding anything. (e.g., 15m drive-time polygon capturing affluent waterfront and golf course communities)"
   },
   "optimalTiming": {
     "headline": "Best day and time (e.g., Tuesday, 4:30 PM)",
@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
     const body = JSON.parse(bodyText);
     const query = body.query;
     const previousContext = body.previousContext; // Optional: In case of refinement
+    const listContext = body.listContext; // Optional: Raw data list summary
     
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
@@ -84,7 +85,18 @@ Deno.serve(async (req) => {
       throw new Error('Missing or invalid query parameter')
     }
 
-    let inputFullText = `User Query: "${query}"\n\nGenerate the optimal campaign JSON.`;
+    let inputFullText = `User Query: "${query}"`;
+    
+    if (listContext) {
+      inputFullText += `\n\nATTACHED DATA LIST ANALYSIS:\n` +
+        `The user has uploaded a raw data manifest (e.g. from AccuLeads or similar broker).\n` +
+        `- Total Raw Records Available: ${listContext.totalRecords}\n` +
+        `- Primary Geo-Centers in Data: ${listContext.primaryLocations.join(', ')}\n` +
+        `CRITICAL INSTRUCTION: Since the user provided a real list, you MUST base your 'mailStrategy' on these exact numbers (e.g., if the list has 12,000 records, suggest mailing a subset like 6,000 to this specific polygon). If the list is large, recommend parsing it. Adjust the target audience to match the fact that they are filtering a pre-purchased manifest.`;
+    }
+
+    inputFullText += `\n\nGenerate the optimal campaign JSON.`;
+
     if (previousContext) {
       inputFullText = `Here is the previous campaign JSON we generated:\n${JSON.stringify(previousContext, null, 2)}\n\nThe user wants to REFINE it. Here is their new request/adjustment: "${query}"\n\nModify the JSON to reflect these changes while keeping it realistic, and return ONLY the new JSON.`;
     }

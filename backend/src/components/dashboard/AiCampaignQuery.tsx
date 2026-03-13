@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle, FileSpreadsheet, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
 import PostMeetingROIModal from './PostMeetingROIModal';
 import CampaignMapPreview from './map/CampaignMapPreview';
+import Papa from 'papaparse';
 
 interface AiProposal {
   targetAudience: { headline: string; subtext: string };
@@ -28,6 +29,11 @@ export default function AiCampaignQuery() {
   const [isRefining, setIsRefining] = useState(false);
   const [refinementQuery, setRefinementQuery] = useState('');
 
+  // Data List Upload State
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [listSummary, setListSummary] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const checkDataToll = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -51,6 +57,45 @@ export default function AiCampaignQuery() {
     checkDataToll();
   }, []);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadedFile(file);
+    
+    // Parse the CSV to extract geography / demographics for the AI payload
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const rows: any[] = results.data as any[];
+        
+        // Let's grab some metadata from the raw file to guide the AI
+        const count = rows.length;
+        
+        // Find columns that might relate to location or wealth
+        const cities = rows.map(r => r.City || r.CITY || r.city).filter(Boolean);
+        const uniqueCities = [...new Set(cities)];
+        
+        // Aggregate an analysis payload
+        setListSummary({
+          fileName: file.name,
+          totalRecords: count,
+          primaryLocations: uniqueCities.slice(0, 5), // Top 5 sampled cities
+          dataBroker: file.name.toLowerCase().includes('acculeads') ? 'AccuLeads' : 'Unknown Data Broker',
+        });
+      },
+      error: (err) => {
+        console.error("Failed to parse CSV", err);
+      }
+    });
+  };
+
+  const removeUploadedFile = () => {
+    setUploadedFile(null);
+    setListSummary(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSearch = async (e: React.FormEvent, isRefinement = false) => {
     e.preventDefault();
     const activeQuery = isRefinement ? refinementQuery : query;
@@ -67,7 +112,10 @@ export default function AiCampaignQuery() {
       }
 
       // 2. Call our new Supabase Edge Function for Gemini
-      const payload: any = { query: activeQuery };
+      const payload: any = { 
+        query: activeQuery,
+        listContext: listSummary // Injects the real data stats!
+      };
       if (isRefinement && result) {
         payload.previousContext = result;
       }
@@ -103,10 +151,23 @@ export default function AiCampaignQuery() {
       {/* The Magic Bar */}
       <div className={`relative group ${isTollLocked ? 'opacity-75' : ''}`}>
         <div className={`absolute -inset-1 bg-gradient-to-r ${isTollLocked ? 'from-red-500 to-red-600' : 'from-blue-600 to-indigo-600'} rounded-2xl blur opacity-25 ${!isTollLocked && 'group-hover:opacity-40 transition duration-1000 group-hover:duration-200'}`}></div>
+        
+        {/* Uploaded File Chip */}
+        {listSummary && (
+          <div className="absolute -top-4 left-6 z-10 flex items-center bg-indigo-100 text-indigo-800 text-xs font-semibold px-3 py-1 rounded-full shadow-sm border border-indigo-200 transform transition-all">
+            <FileSpreadsheet className="w-3 h-3 mr-1.5" />
+            Analyzing {listSummary.totalRecords.toLocaleString()} records from {listSummary.fileName}
+            <button type="button" onClick={removeUploadedFile} className="ml-2 hover:text-indigo-900 focus:outline-none">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSearch} className={`relative flex items-center bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
           <div className={`pl-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
             {isTollLocked ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
           </div>
+          
           <input
             type="text"
             className={`w-full px-4 py-6 text-xl bg-transparent border-none focus:outline-none focus:ring-0 ${isTollLocked ? 'text-red-900 placeholder-red-300 cursor-not-allowed' : 'text-gray-800 placeholder-gray-400'}`}
@@ -115,6 +176,28 @@ export default function AiCampaignQuery() {
             onChange={(e) => setQuery(e.target.value)}
             disabled={isProcessing || isTollLocked}
           />
+
+          {/* Attach Data List Button */}
+          {!isTollLocked && (
+            <div className="px-2 border-l border-gray-100">
+              <input 
+                type="file" 
+                accept=".csv" 
+                className="hidden" 
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-3 rounded-xl transition-colors flex items-center ${uploadedFile ? 'bg-indigo-50 text-indigo-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
+                title="Attach AccuLeads CSV"
+              >
+                <FileSpreadsheet className="w-6 h-6" />
+              </button>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={isProcessing || !query.trim() || isTollLocked}
