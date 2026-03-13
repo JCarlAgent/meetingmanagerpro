@@ -163,23 +163,30 @@ export default function AiCampaignQuery() {
           </div>
         )}
 
-        <form onSubmit={handleSearch} className={`relative flex items-center bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
-          <div className={`pl-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
+        <form onSubmit={handleSearch} className={`relative flex items-stretch bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
+          <div className={`pl-6 pt-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
             {isTollLocked ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
           </div>
           
-          <input
-            type="text"
-            className={`w-full px-4 py-6 text-xl bg-transparent border-none focus:outline-none focus:ring-0 ${isTollLocked ? 'text-red-900 placeholder-red-300 cursor-not-allowed' : 'text-gray-800 placeholder-gray-400'}`}
-            placeholder={isTollLocked ? "ROI Reporting Required to Unlock" : "E.g., I want 50 qualified annuity leads in Dallas next month..."}
+          <textarea
+            className={`w-full px-4 py-6 text-xl bg-transparent border-none focus:outline-none focus:ring-0 resize-none min-h-[120px] ${isTollLocked ? 'text-red-900 placeholder-red-300 cursor-not-allowed' : 'text-gray-800 placeholder-gray-400'}`}
+            placeholder={isTollLocked ? "ROI Reporting Required to Unlock" : "E.g., I want 50 qualified annuity leads in Dallas next month...\n\n(Press Enter to analyze, Shift+Enter for new line)"}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             disabled={isProcessing || isTollLocked}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (query.trim() && !isProcessing && !isTollLocked) {
+                  handleSearch(e as unknown as React.FormEvent);
+                }
+              }
+            }}
           />
 
           {/* Attach Data List Button */}
           {!isTollLocked && (
-            <div className="px-2 border-l border-gray-100">
+            <div className="px-2 border-l border-gray-100 flex items-center justify-center">
               <input 
                 type="file" 
                 accept=".csv" 
@@ -201,7 +208,7 @@ export default function AiCampaignQuery() {
           <button
             type="submit"
             disabled={isProcessing || !query.trim() || isTollLocked}
-            className={`flex items-center px-8 py-6 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`flex items-center justify-center px-8 py-6 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-full min-h-[120px] ${
               isTollLocked 
                 ? 'bg-red-50 text-red-500' 
                 : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
