@@ -19,12 +19,41 @@ interface CampaignMapPreviewProps {
 
 export default function CampaignMapPreview({ venueHeadline, polygonDescription }: CampaignMapPreviewProps) {
   const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
+  const [isochroneData, setIsochroneData] = useState<[number, number][] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Parse the city name out of the venue or just search the venue
   useEffect(() => {
+    const fetchIsochrone = async (lat: number, lon: number) => {
+      try {
+        // extract time from description (e.g. "15m" or "20 mins") defaulting to 15
+        const match = polygonDescription.match(/(\d+)\s*(?:m\b|min|minute)/i);
+        const minutes = match ? Math.min(Math.max(parseInt(match[1], 10), 5), 60) : 15;
+
+        const reqUrl = `https://valhalla1.openstreetmap.de/isochrone?json=` + encodeURIComponent(JSON.stringify({
+          locations: [{lat, lon}],
+          costing: "auto",
+          contours: [{time: minutes}]
+        }));
+        const res = await fetch(reqUrl);
+        const geojson = await res.json();
+        
+        if (geojson?.features?.length > 0) {
+          const geom = geojson.features[0].geometry;
+          if (geom.type === 'LineString') {
+            setIsochroneData(geom.coordinates.map((c: number[]) => [c[1], c[0]]));
+          } else if (geom.type === 'Polygon') {
+            setIsochroneData(geom.coordinates[0].map((c: number[]) => [c[1], c[0]]));
+          }
+        }
+      } catch (e) {
+        console.error("Isochrone fetch failed", e);
+      }
+    };
+
     async function geocode() {
       setIsLoading(true);
+      setIsochroneData(null);
       try {
         // Try Nominatim with the exact headline first (high success rate if formatted like "Restaurant - City, CA")
         const cleanHeadline = venueHeadline.replace(' - ', ', ');
@@ -32,7 +61,10 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanHeadline)}&format=json&limit=1&email=app@meetingmanagerpro.com`);
           const nomData = await nomRes.json();
           if (nomData && nomData.length > 0) {
-            setCoordinates([parseFloat(nomData[0].lat), parseFloat(nomData[0].lon)]);
+            const lat = parseFloat(nomData[0].lat);
+            const lon = parseFloat(nomData[0].lon);
+            setCoordinates([lat, lon]);
+            await fetchIsochrone(lat, lon);
             setIsLoading(false);
             return;
           }
@@ -66,7 +98,10 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryMatch)}&format=json&limit=1&email=app@meetingmanagerpro.com`);
           const nomData = await nomRes.json();
           if (nomData && nomData.length > 0) {
-            setCoordinates([parseFloat(nomData[0].lat), parseFloat(nomData[0].lon)]);
+            const lat = parseFloat(nomData[0].lat);
+            const lon = parseFloat(nomData[0].lon);
+            setCoordinates([lat, lon]);
+            await fetchIsochrone(lat, lon);
             setIsLoading(false);
             return;
           }
@@ -80,19 +115,24 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         const data = await res.json();
         
         if (data.results && data.results.length > 0) {
-          setCoordinates([data.results[0].latitude, data.results[0].longitude]);
+          const lat = data.results[0].latitude;
+          const lon = data.results[0].longitude;
+          setCoordinates([lat, lon]);
+          await fetchIsochrone(lat, lon);
         } else {
           // Default fallback (e.g. Dallas TX) if geocoding entirely fails
           setCoordinates([32.7767, -96.7970]);
+          await fetchIsochrone(32.7767, -96.7970);
         }
       } catch (e) {
         setCoordinates([32.7767, -96.7970]); // Fallback
+        await fetchIsochrone(32.7767, -96.7970);
       } finally {
         setIsLoading(false);
       }
     }
     geocode();
-  }, [venueHeadline]);
+  }, [venueHeadline, polygonDescription]);
 
   if (isLoading) {
     return (
@@ -104,7 +144,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
 
   if (!coordinates) return null;
 
-  // Generate a mock jagged polygon to simulate an isochrone drive-time shape
+  // Generate a fallback mock jagged polygon to simulate an isochrone drive-time shape if API fails
   const baseLat = coordinates[0];
   const baseLng = coordinates[1];
   const r = 0.05; // rough radius degree scale
@@ -120,14 +160,16 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
     [baseLat + r*0.5, baseLng - r*0.8],
   ];
 
+  const polygonToDraw = isochroneData || mockIsochrone;
+
   return (
     <div className="w-full h-80 rounded-xl overflow-hidden shadow-inner border border-gray-200 relative z-0">
-      <MapContainer center={coordinates} zoom={11} scrollWheelZoom={false} className="w-full h-full">
+      <MapContainer key={`${coordinates[0]}-${coordinates[1]}`} center={coordinates} zoom={11} scrollWheelZoom={false} className="w-full h-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
-        <Polygon positions={mockIsochrone} pathOptions={{ color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.2, weight: 2 }} />
+        <Polygon positions={polygonToDraw} pathOptions={{ color: '#4f46e5', fillColor: '#4f46e5', fillOpacity: 0.2, weight: 2 }} />
         <Marker position={coordinates}>
           <Popup>
             <div className="font-semibold">{venueHeadline}</div>
