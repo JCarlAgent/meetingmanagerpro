@@ -15,7 +15,7 @@ Use this JSON schema strictly:
     "subtext": "Secondary filter (e.g., $500k+ Investable Assets)"
   },
   "recommendedVenue": {
-    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar (e.g., Ruth's Chris Steak House)",
+    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
     "subtext": "General area or drive-zone detail (e.g., Uptown Dallas, 15m Drive Zone)"
   },
   "optimalTiming": {

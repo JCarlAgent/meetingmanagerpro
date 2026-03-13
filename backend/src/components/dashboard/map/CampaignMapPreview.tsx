@@ -26,15 +26,63 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
     async function geocode() {
       setIsLoading(true);
       try {
-        // Strip out the restaurant name, search for the area if possible, or just search the raw venue string.
-        const queryMatch = venueHeadline.split(' - ')[1] || venueHeadline; 
-        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryMatch)}&count=1&format=json`);
+        // Try Nominatim with the exact headline first (high success rate if formatted like "Restaurant - City, CA")
+        const cleanHeadline = venueHeadline.replace(' - ', ', ');
+        try {
+          const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanHeadline)}&format=json&limit=1&email=app@meetingmanagerpro.com`);
+          const nomData = await nomRes.json();
+          if (nomData && nomData.length > 0) {
+            setCoordinates([parseFloat(nomData[0].lat), parseFloat(nomData[0].lon)]);
+            setIsLoading(false);
+            return;
+          }
+        } catch(e) {
+          // ignore
+        }
+
+        // If that fails, try to extract just the city/state part
+        let cityMatch = venueHeadline;
+        if (venueHeadline.includes(' - ')) {
+          cityMatch = venueHeadline.split(' - ').pop() || venueHeadline;
+        } else if (venueHeadline.includes(', ')) {
+          const parts = venueHeadline.split(', ');
+          cityMatch = parts.slice(parts.length >= 2 ? parts.length - 2 : 0).join(', '); // grab last two parts e.g. "Tustin, CA"
+        }
+
+        // Expand common abbreviations
+        let queryMatch = cityMatch.trim();
+        if (queryMatch.toUpperCase() === 'LA') {
+          queryMatch = 'Los Angeles';
+        } else if (queryMatch.toUpperCase() === 'NY' || queryMatch.toUpperCase() === 'NYC') {
+          queryMatch = 'New York City';
+        } else if (queryMatch.toUpperCase() === 'SF') {
+          queryMatch = 'San Francisco';
+        } else if (queryMatch.toUpperCase() === 'VEGAS') {
+          queryMatch = 'Las Vegas';
+        }
+
+        // Try Nominatim with just the city
+        try {
+          const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryMatch)}&format=json&limit=1&email=app@meetingmanagerpro.com`);
+          const nomData = await nomRes.json();
+          if (nomData && nomData.length > 0) {
+            setCoordinates([parseFloat(nomData[0].lat), parseFloat(nomData[0].lon)]);
+            setIsLoading(false);
+            return;
+          }
+        } catch(e) {
+          // Ignore and fall back to open-meteo
+        }
+
+        // Fallback to Open-Meteo with just the city (Open-Meteo hates states, so we take just the word before any comma)
+        const openMeteoQuery = queryMatch.split(',')[0].trim();
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(openMeteoQuery)}&count=1&format=json`);
         const data = await res.json();
         
         if (data.results && data.results.length > 0) {
           setCoordinates([data.results[0].latitude, data.results[0].longitude]);
         } else {
-          // Default fallback (e.g. Dallas TX) if geocoding fails
+          // Default fallback (e.g. Dallas TX) if geocoding entirely fails
           setCoordinates([32.7767, -96.7970]);
         }
       } catch (e) {

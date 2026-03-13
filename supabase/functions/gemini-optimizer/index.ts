@@ -25,7 +25,7 @@ Use this JSON schema strictly:
     "subtext": "Proxy filter (e.g., Targets BMW/Lexus owners near LifeTime Fitness, excludes busy streets)"
   },
   "recommendedVenue": {
-    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar (e.g., Ruth's Chris Steak House)",
+    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
     "subtext": "Custom polygon detail (e.g., 15m drive-time polygon capturing waterfront properties, excluding airport flight paths)"
   },
   "optimalTiming": {
