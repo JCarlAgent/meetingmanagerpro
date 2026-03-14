@@ -76,16 +76,34 @@ export default function AiCampaignQuery() {
         const cities = rows.map(r => r.City || r.CITY || r.city).filter(Boolean);
         const uniqueCities = [...new Set(cities)];
 
-        // Attempt to extract Age and Income metrics if they exist
+        // Enhanced Age Distribution Analysis
         const ages = rows.map(r => parseInt(r.Age || r.AGE || r.age)).filter(a => !isNaN(a));
-        const avgAge = ages.length > 0 ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : null;
+        
+        let ageDistribution = null;
+        if (ages.length > 0) {
+          // Calculate Median instead of Mean to avoid outliers skewing data
+          const sortedAges = [...ages].sort((a, b) => a - b);
+          const medianAge = sortedAges[Math.floor(sortedAges.length / 2)];
+          
+          // Calculate generational buckets to give the AI exact weighting
+          const workingAgePct = Math.round((ages.filter(a => a < 65).length / ages.length) * 100);
+          const earlyRetireePct = Math.round((ages.filter(a => a >= 65 && a <= 70).length / ages.length) * 100);
+          const lateRetireePct = Math.round((ages.filter(a => a > 70).length / ages.length) * 100);
+          
+          ageDistribution = {
+            medianAge,
+            workingAgePct,
+            earlyRetireePct,
+            lateRetireePct
+          };
+        }
         
         // Aggregate an analysis payload
         setListSummary({
           fileName: file.name,
           totalRecords: count,
           primaryLocations: uniqueCities.slice(0, 5), // Top 5 sampled cities
-          averageAge: avgAge,
+          ageDistribution: ageDistribution,
           dataBroker: file.name.toLowerCase().includes('acculeads') ? 'AccuLeads' : 'Unknown Data Broker',
         });
       },
