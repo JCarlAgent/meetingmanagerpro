@@ -75,12 +75,17 @@ export default function AiCampaignQuery() {
         // Find columns that might relate to location or wealth
         const cities = rows.map(r => r.City || r.CITY || r.city).filter(Boolean);
         const uniqueCities = [...new Set(cities)];
+
+        // Attempt to extract Age and Income metrics if they exist
+        const ages = rows.map(r => parseInt(r.Age || r.AGE || r.age)).filter(a => !isNaN(a));
+        const avgAge = ages.length > 0 ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : null;
         
         // Aggregate an analysis payload
         setListSummary({
           fileName: file.name,
           totalRecords: count,
           primaryLocations: uniqueCities.slice(0, 5), // Top 5 sampled cities
+          averageAge: avgAge,
           dataBroker: file.name.toLowerCase().includes('acculeads') ? 'AccuLeads' : 'Unknown Data Broker',
         });
       },

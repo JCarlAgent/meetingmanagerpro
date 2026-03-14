@@ -14,8 +14,8 @@ You output ONLY perfectly formatted JSON without any markdown formatting wrapper
 CRITICAL BUSINESS RULES:
 1. Venue/Dinner Cost: The advisor hosting the event pays for the meals (typically $75-$125/head). Attendees do NOT pay. Recommend standard high-end restaurants (like Ruth's Chris, Capital Grille, etc.) because the target demographic expects that quality in order to attend a seminar.
 2. Deep Affluence Indicators & Seasonal Flows: Use insights about wealth indicators and seasonal flows to influence your venue pick and polygon size, BUT DO NOT EVER mention negative exclusions (commercial zones, apartments, flight paths) to the user. Describe the audience strictly in standard advisor terms, ensuring you ALWAYS cap Investable Assets (e.g., "$500k - $5M IPA" rather than just "$500k+"). Use the word "Prioritizes" instead of "Targets".
-3. Relative Drive-Time Polygons: Target affluent corridors. Never mention "avoiding" bad areas. Just describe the positive areas captured.
-4. Event Dates & Timing: Base event timing dynamically on the target demographic. Working-age targets (<65) need a 6:00 PM or 6:30 PM start time to accommodate work schedules. Older, retired targets (>68) prefer earlier times like 4:30 PM or 5:00 PM to avoid night driving. Factor in 30-40 minutes of presentation time before food is served when calculating standard dinner hours. Stop defaulting entirely to 4:30 PM. Provide logical reasoning. 
+3. Relative Drive-Time Polygons: Target affluent corridors. Never mention "avoiding" bad areas. Just describe the positive areas captured. CRITICAL: If the user specifies a sub-region (e.g., "NW Raleigh" or "North Dallas"), you MUST find a venue explicitly IN that sub-region and keep the drive-time strictly localized to that side of the city. People do not cross metropolitan centers for dinners.
+4. Event Dates & Timing: Base event timing dynamically on the target demographic. Working-age targets (<65) need a 6:00 PM or 6:30 PM start time to accommodate work schedules. Older, retired targets (>68) prefer earlier times like 4:30 PM or 5:00 PM to avoid night driving. Factor in 30-40 minutes of presentation time before food is served when calculating standard dinner hours. Stop defaulting entirely to 4:30 PM. Provide logical reasoning. If the user asks for MULTIPLE meetings (e.g. "two meetings"), you MUST list ALL requested dates/times in the optimalTiming box (e.g., "Tuesday Oct 12 & Thursday Oct 14").
 5. Dynamic Event Disruption & Weather Defense: Scan the location for major overlapping public events and calculate the disruption zone based on *venue capacity* (e.g., a 20k seat NBA arena disrupts a 1-2 mile radius, whereas a 60k+ NFL stadium disrupts several miles). Warn the user or adjust the area if the meeting falls within these dynamic disruption zones. Also account for macro weather risks (blizzards, hurricanes) based on the season.
 
 Use this JSON schema strictly:
@@ -26,15 +26,15 @@ Use this JSON schema strictly:
   },
   "recommendedVenue": {
     "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
-    "subtext": "Custom polygon detail. DO NOT mention avoiding anything. (e.g., 15m drive-time polygon capturing affluent waterfront and golf course communities)"
+    "subtext": "Custom polygon detail tied to the specific sub-region requested. DO NOT mention avoiding anything. (e.g., Localized 12m drive-time polygon capturing affluent waterfront communities in NW Raleigh)"
   },
   "optimalTiming": {
-    "headline": "Best day and time (e.g., Tuesday, 4:30 PM)",
-    "subtext": "Reasoning (e.g., Avoids local NHL game traffic & rush hour, safe daylight driving)"
+    "headline": "Best day(s) and time(s) - must include ALL meetings requested (e.g., Tuesday Oct 12 & Thursday Oct 14 at 5:30 PM)",
+    "subtext": "Reasoning (e.g., Avoids local NHL game traffic & rush hour, accommodates post-work schedules)"
   },
   "mailStrategy": {
-    "headline": "Number of mailers (e.g., 8,500 Mailers)",
-    "subtext": "Estimated attendees based on industry standard 0.5-0.8% response rate (e.g., Estimated 52 Attendees)"
+    "headline": "Number of mailers (e.g., 6,500 highly-targeted mailers)",
+    "subtext": "Expected attendees based on AI demographic parsing and reduced waste, far exceeding base industry standards (e.g., 50 Total Attendees across both dates, projecting a 1.2% response rate due to tight wealth filtering)."
   },
   "confidenceScore": "A high, realistic number (e.g., 92)"
 }
@@ -92,6 +92,7 @@ Deno.serve(async (req) => {
         `The user has uploaded a raw data manifest (e.g. from AccuLeads or similar broker).\n` +
         `- Total Raw Records Available: ${listContext.totalRecords}\n` +
         `- Primary Geo-Centers in Data: ${listContext.primaryLocations.join(', ')}\n` +
+        (listContext.averageAge ? `- Average Age of List: ${listContext.averageAge} years old\n` : '') +
         `CRITICAL INSTRUCTION: Since the user provided a real list, you MUST base your 'mailStrategy' on these exact numbers (e.g., if the list has 12,000 records, suggest mailing a subset like 6,000 to this specific polygon). If the list is large, recommend parsing it. Adjust the target audience to match the fact that they are filtering a pre-purchased manifest.`;
     }
 
