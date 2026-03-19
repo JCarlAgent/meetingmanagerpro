@@ -25,10 +25,18 @@ const initialPlatforms: Platform[] = [
   {
     id: 'facebook',
     name: 'Facebook',
-    description: 'Post directly to your firm\'s Facebook Page to reach the 65+ demographic.',
+    description: "Post directly to your firm's Facebook Page to reach the 65+ demographic.",
     icon: Facebook,
     color: 'text-[#1877F2]',
-    bgColor: 'bg-[#1877F2]    bgColor: 'bg-[#1877F2]    bgColor: 'bg-[#1877F2]    bgColor: 'bg-[#1877F2]    bgColor: 'bg-[#1877F2]    bgColor: 'bg-[#1877F2]    bgColor: 'bg-[#1877rs    bgColor: 'bg-[#1877F2]    bgColor: xt-[#E4405F]',
+    bgColor: 'bg-[#1877F2]/10',
+    connected: false
+  },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    description: 'Share visual invites and event photos with your followers.',
+    icon: Instagram,
+    color: 'text-[#E4405F]',
     bgColor: 'bg-[#E4405F]/10',
     connected: false
   },
@@ -43,16 +51,17 @@ const initialPlatforms: Platform[] = [
   }
 ];
 
-const SocialMediaconst SocialMediaconst SocialMediac{
-    ns    ns    ns    nsla    ns    ns    ns  latform[]>(initialPlatforms);
+const SocialMediaIntegrationsView: React.FC = () => {
+  const [platforms, setPlatforms] = useState<Platform[]>(initialPlatforms);
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
 
   const toggleConnection = (id: string) => {
     const platform = platforms.find(p => p.id === id);
     if (!platform) return;
 
-    if (platform.connected    if (platform.connected    if (platform.connected    if (platform.connected    if (platfod:    if (platform    } else {
-      // Simulate OAuth connection flow
+    if (platform.connected) {
+      setPlatforms(platforms.map(p => p.id === id ? { ...p, connected: false } : p));
+    } else {
       setIsConnecting(id);
       setTimeout(() => {
         setPlatforms(platforms.map(p => p.id === id ? { ...p, connected: true } : p));
@@ -61,13 +70,21 @@ const SocialMediaconst SocialMediaconst SocialMediac{
     }
   };
 
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bo        <h1 className="text-3xl font-bo        <h1 className="text-3xl ="w-8 h-8 text-indigo-600" />
-          Social Med          Social Med                      Social Me"t  t-slate-600 mt-2 text-lg">
+        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+          <Share2 className="w-8 h-8 text-indigo-600" />
+          Social Media Integrations
+        </h1>
+        <p className="text-slate-600 mt-2 text-lg">
           Connect your social accounts to automatically generate and publish AI-crafted meeting invitations.
-          Connect your social accounts to automaticallyte rounded-xl border border-slate-200 shadow-sm overflow-hidden           Connect your social accounts to automaticalr-b border-indigo-100 flex items-start gap-4">
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-8">
+        <div className="p-6 bg-indigo-50 border-b border-indigo-100 flex items-start gap-4">
           <AlertCircle className="w-6 h-6 text-indigo-600 flex-shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-indigo-900 mb-1">Omnichannel Automation</h3>
@@ -78,26 +95,32 @@ const SocialMediaconst SocialMediaconst SocialMediac{
         </div>
 
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md-:grid-cols-2 gap-6">
             {platforms.map(platform => {
               const Icon = platform.icon;
               return (
                 <div 
                   key={platform.id} 
-                  className={`border rounded-xl p-5 flex flex-col transition-all border-slate-200 hover:border-slate-300 hover:shadow-md`}
+                  className="border rounded-xl p-5 flex flex-col transition-all border-slate-200 hover:border-slate-300 hover:shadow-md"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className={`p-3 rounded-lg ${platform.bgColor}`}>
-                                                                                                                                                                                                                                                                                                                                                                                                                     
+                      <Icon className={`w-8 h-8 ${platform.color}`} />
+                    </div>
+                    {platform.connected ? (
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full border border-green-200">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Connected
                       </span>
-                    )                    )      <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200">
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200">
                         Not Connected
                       </span>
                     )}
                   </div>
                   
                   <h3 className="text-lg font-bold text-slate-900 mb-2">{platform.name}</h3>
-                  <p                  <p                  <p                  <p            }</p>
+                  <p className="text-sm text-slate-600 mb-6 flex-grow">{platform.description}</p>
                   
                   <Button 
                     variant={platform.connected ? "outline" : "default"}
@@ -105,7 +128,7 @@ const SocialMediaconst SocialMediaconst SocialMediac{
                     onClick={() => toggleConnection(platform.id)}
                     disabled={isConnecting === platform.id}
                   >
-                    {isConnecting === platform.id ? "Connecting..." : platform.connected ? "Disconnect" : `Connect ${platform.name}`}
+                      {isConnecting === platform.id ? "Connecting..." : platform.connected ? "Disconnect" : `Connect ${platform.name}`}
                   </Button>
                 </div>
               );
