@@ -15,7 +15,8 @@ import {
   X,
   Shield,
   Building2,
-  FileImage
+  FileImage,
+  Share2
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -304,8 +305,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
           )}
         </nav>
 
-        {/* Settings */}
-        <div className="p-3 border-t border-slate-200">
+        {/* Settings & Integrations */}
+        <div className="p-3 border-t border-slate-200 space-y-1">
+          <button
+            onClick={() => onViewChange('integrations')}
+            className={`
+              w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all
+              ${activeView === 'integrations'
+                ? 'bg-red-600/10 text-red-700' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }
+            `}
+          >
+            <Share2 className="w-5 h-5" />
+            <span className="font-medium">Integrations</span>
+          </button>
+          
           <button
             onClick={() => onViewChange('settings')}
             className={`

@@ -20,6 +20,7 @@ import MasterOrganizationsView from './MasterOrganizationsView';
 import MeetingSetupView from './MeetingSetupView';
 import OrgMeetingsView from './OrgMeetingsView';
 import SettingsView from './SettingsView';
+import SocialMediaIntegrationsView from './SocialMediaIntegrationsView';
 import DemographicsUploadView from './DemographicsUploadView';
 import MailingsReportView from './MailingsReportView';
 import ApprovalsArchiveView from './ApprovalsArchiveView';
@@ -203,6 +204,8 @@ const Dashboard: React.FC = () => {
         return <TemplatesView />;
       case 'settings':
         return <SettingsView />;
+      case 'integrations':
+        return <SocialMediaIntegrationsView />;
       default:
         return renderDashboard();
     }
