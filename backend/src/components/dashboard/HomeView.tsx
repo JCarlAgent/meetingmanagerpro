@@ -4,6 +4,7 @@ import { useActingOrg } from '@/lib/actingOrg';
 import { supabase } from '@/lib/supabase';
 import FmoHomeView from '@/components/dashboard/FmoHomeView';
 import AdvisorHomeView from '@/components/dashboard/AdvisorHomeView';
+import ClientDashboard from '@/components/dashboard/ClientDashboard';
 import WeatherAlertWidget from '@/components/dashboard/WeatherAlertWidget';
 
 export interface HomeViewProps {
@@ -99,7 +100,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
     return (
       <div className="space-y-6">
         <WeatherAlertWidget />
-        <FmoHomeView orgId={orgId} />
+        <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} />
       </div>
     );
   }
@@ -107,7 +108,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-6">
       <WeatherAlertWidget />
-      <AdvisorHomeView orgId={orgId} userId={user.id} onNavigate={onNavigate} />
+      <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} />
     </div>
   );
 };
