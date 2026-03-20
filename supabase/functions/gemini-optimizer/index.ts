@@ -27,7 +27,7 @@ Use this JSON schema strictly:
   "recommendedVenue": {
     "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
     "subtext": "Custom polygon detail tied to the specific sub-region requested. DO NOT mention avoiding anything. (e.g., Localized 12m drive-time polygon capturing affluent waterfront communities in NW Raleigh)",
-    "phone": "The publicly available contact phone number for the chosen restaurant so the user can easily call to book (e.g., (555) 123-4567 - provide accurate number if possible, or placeholder if obscure)"
+    "phone": "A standard US phone number format placeholder (e.g. (555) 123-4567)"
   },
   "optimalTiming": {
     "headline": "Best day(s) and time(s) - must include ALL meetings requested (e.g., Tuesday Oct 12 & Thursday Oct 14 at 5:30 PM)",
