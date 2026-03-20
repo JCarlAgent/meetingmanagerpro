@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle, FileSpreadsheet, X } from 'lucide-react';
+import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle, FileSpreadsheet, X, Phone } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
 import PostMeetingROIModal from './PostMeetingROIModal';
 import CampaignMapPreview from './map/CampaignMapPreview';
@@ -7,7 +7,7 @@ import Papa from 'papaparse';
 
 interface AiProposal {
   targetAudience: { headline: string; subtext: string };
-  recommendedVenue: { headline: string; subtext: string };
+  recommendedVenue: { headline: string; subtext: string; phone?: string };
   optimalTiming: { headline: string; subtext: string };
   mailStrategy: { headline: string; subtext: string };
   confidenceScore: string;
@@ -336,7 +336,13 @@ export default function AiCampaignQuery() {
                 Recommended Venue
               </div>
               <p className="font-semibold text-lg text-gray-900">{result.recommendedVenue.headline}</p>
-              <p className="text-sm text-gray-500">{result.recommendedVenue.subtext}</p>
+              <p className="text-sm text-gray-500 mb-2">{result.recommendedVenue.subtext}</p>
+              {result.recommendedVenue.phone && (
+                <div className="flex items-center text-sm font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded w-fit">
+                  <Phone className="w-3.5 h-3.5 mr-1.5" />
+                  <a href={`tel:${result.recommendedVenue.phone}`} className="hover:underline">{result.recommendedVenue.phone}</a>
+                </div>
+              )}
             </div>
 
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">

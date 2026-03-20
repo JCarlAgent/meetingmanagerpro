@@ -26,7 +26,8 @@ Use this JSON schema strictly:
   },
   "recommendedVenue": {
     "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
-    "subtext": "Custom polygon detail tied to the specific sub-region requested. DO NOT mention avoiding anything. (e.g., Localized 12m drive-time polygon capturing affluent waterfront communities in NW Raleigh)"
+    "subtext": "Custom polygon detail tied to the specific sub-region requested. DO NOT mention avoiding anything. (e.g., Localized 12m drive-time polygon capturing affluent waterfront communities in NW Raleigh)",
+    "phone": "The publicly available contact phone number for the chosen restaurant so the user can easily call to book (e.g., (555) 123-4567 - provide accurate number if possible, or placeholder if obscure)"
   },
   "optimalTiming": {
     "headline": "Best day(s) and time(s) - must include ALL meetings requested (e.g., Tuesday Oct 12 & Thursday Oct 14 at 5:30 PM)",
@@ -34,7 +35,7 @@ Use this JSON schema strictly:
   },
   "mailStrategy": {
     "headline": "Number of mailers (e.g., 6,500 highly-targeted mailers)",
-    "subtext": "Expected attendees based on AI demographic parsing and reduced waste, far exceeding base industry standards (e.g., 50 Total Attendees across both dates, projecting a 1.2% response rate due to tight wealth filtering)."
+    "subtext": "Explain the realistic expected attendee goals based on the list size. For finance/retiree direct mail, assume a realistic response rate of 0.4% to 0.8% and calculate expected attendees mathematically."
   },
   "confidenceScore": "A high, realistic number (e.g., 92)"
 }
@@ -88,11 +89,23 @@ Deno.serve(async (req) => {
     let inputFullText = `User Query: "${query}"`;
     
     if (listContext) {
+      let ageDetails = '';
+      if (listContext.ageDistribution) {
+        ageDetails = `- Median Age: ${listContext.ageDistribution.medianAge} years old\n` +
+                     `  - % Working Age (<65): ${listContext.ageDistribution.workingAgePct}%\n` +
+                     `  - % Early Retirees (65-70): ${listContext.ageDistribution.earlyRetireePct}%\n` +
+                     `  - % Late Retirees (70+): ${listContext.ageDistribution.lateRetireePct}%\n` +
+                     `  *CRITICAL AI INSTRUCTION*: Use the age composition to pick meeting times. If highly working-class (<65), prioritize 6:30 PM. If heavily skewed to older retirees, prefer 4:30 PM, or mix both across dates if diverse.\n`;
+      } else if (listContext.averageAge) {
+        // Fallback backward compatibility 
+        ageDetails = `- Average Age of List: ${listContext.averageAge} years old\n`;
+      }
+
       inputFullText += `\n\nATTACHED DATA LIST ANALYSIS:\n` +
         `The user has uploaded a raw data manifest (e.g. from AccuLeads or similar broker).\n` +
         `- Total Raw Records Available: ${listContext.totalRecords}\n` +
         `- Primary Geo-Centers in Data: ${listContext.primaryLocations.join(', ')}\n` +
-        (listContext.averageAge ? `- Average Age of List: ${listContext.averageAge} years old\n` : '') +
+        ageDetails +
         `CRITICAL INSTRUCTION: Since the user provided a real list, you MUST base your 'mailStrategy' on these exact numbers (e.g., if the list has 12,000 records, suggest mailing a subset like 6,000 to this specific polygon). If the list is large, recommend parsing it. Adjust the target audience to match the fact that they are filtering a pre-purchased manifest.`;
     }
 
