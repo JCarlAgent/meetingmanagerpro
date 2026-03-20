@@ -170,7 +170,7 @@ export default function AiCampaignQuery() {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8">
+    <div className="w-full space-y-8">
       {/* The Magic Bar */}
       <div className={`relative group ${isTollLocked ? 'opacity-75' : ''}`}>
         <div className={`absolute -inset-1 bg-gradient-to-r ${isTollLocked ? 'from-red-500 to-red-600' : 'from-blue-600 to-indigo-600'} rounded-2xl blur opacity-25 ${!isTollLocked && 'group-hover:opacity-40 transition duration-1000 group-hover:duration-200'}`}></div>
@@ -186,66 +186,70 @@ export default function AiCampaignQuery() {
           </div>
         )}
 
-        <form onSubmit={handleSearch} className={`relative flex items-stretch bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
-          <div className={`pl-6 pt-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
-            {isTollLocked ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
-          </div>
-          
-          <textarea
-            className={`w-full px-4 py-6 text-xl bg-transparent border-none focus:outline-none focus:ring-0 resize-none min-h-[120px] ${isTollLocked ? 'text-red-900 placeholder-red-300 cursor-not-allowed' : 'text-gray-800 placeholder-gray-400'}`}
-            placeholder={isTollLocked ? "ROI Reporting Required to Unlock" : "E.g., I want 50 qualified annuity leads in Dallas next month...\n\n(Press Enter to analyze, Shift+Enter for new line)"}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            disabled={isProcessing || isTollLocked}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (query.trim() && !isProcessing && !isTollLocked) {
-                  handleSearch(e as unknown as React.FormEvent);
-                }
-              }
-            }}
-          />
-
-          {/* Attach Data List Button */}
-          {!isTollLocked && (
-            <div className="px-2 border-l border-gray-100 flex items-center justify-center">
-              <input 
-                type="file" 
-                accept=".csv" 
-                className="hidden" 
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className={`p-3 rounded-xl transition-colors flex items-center ${uploadedFile ? 'bg-indigo-50 text-indigo-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
-                title="Attach AccuLeads CSV"
-              >
-                <FileSpreadsheet className="w-6 h-6" />
-              </button>
+        <form onSubmit={handleSearch} className={`relative flex flex-col bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
+          <div className="flex items-stretch flex-1">
+            <div className={`pl-6 pt-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
+              {isTollLocked ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
             </div>
-          )}
+            
+            <textarea
+              className={`w-full px-4 py-6 text-xl bg-transparent border-none focus:outline-none focus:ring-0 resize-none min-h-[120px] ${isTollLocked ? 'text-red-900 placeholder-red-300 cursor-not-allowed' : 'text-gray-800 placeholder-gray-400'}`}
+              placeholder={isTollLocked ? "ROI Reporting Required to Unlock" : "E.g., I want 50 qualified annuity leads in Dallas next month...\n\n(Press Enter to analyze, Shift+Enter for new line)"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              disabled={isProcessing || isTollLocked}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (query.trim() && !isProcessing && !isTollLocked) {
+                    handleSearch(e as unknown as React.FormEvent);
+                  }
+                }
+              }}
+            />
 
-          <button
-            type="submit"
-            disabled={isProcessing || !query.trim() || isTollLocked}
-            className={`flex items-center justify-center px-8 py-6 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-full min-h-[120px] ${
-              isTollLocked 
-                ? 'bg-red-50 text-red-500' 
-                : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
-            }`}
-          >
-            {isProcessing ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
-            ) : (
-              <>
-                <span className="mr-2">{isTollLocked ? 'Locked' : 'Optimize'}</span>
-                {!isTollLocked && <ArrowRight className="w-5 h-5" />}
-              </>
+            {/* Attach Data List Button */}
+            {!isTollLocked && (
+              <div className="px-2 border-l border-gray-100 flex items-center justify-center">
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-3 rounded-xl transition-colors flex items-center ${uploadedFile ? 'bg-indigo-50 text-indigo-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2`}
+                  title="Attach AccuLeads CSV"
+                >
+                  <FileSpreadsheet className="w-6 h-6" />
+                </button>
+              </div>
             )}
-          </button>
+          </div>
+
+          <div className="border-t border-gray-100">
+            <button
+              type="submit"
+              disabled={isProcessing || !query.trim() || isTollLocked}
+              className={`w-full flex items-center justify-center px-8 py-4 font-bold text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                isTollLocked 
+                  ? 'bg-red-50 text-red-500' 
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+            >
+              {isProcessing ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <>
+                  <span className="mr-2">{isTollLocked ? 'Locked' : 'Optimize Strategy'}</span>
+                  {!isTollLocked && <ArrowRight className="w-5 h-5" />}
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </div>
 
@@ -316,7 +320,7 @@ export default function AiCampaignQuery() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
               <div className="flex items-center text-gray-500 mb-2">
                 <Users className="w-4 h-4 mr-2" />
