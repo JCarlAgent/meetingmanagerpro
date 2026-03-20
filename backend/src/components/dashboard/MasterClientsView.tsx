@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { clearActingOrg, setActingOrg, useActingOrg } from '@/lib/actingOrg';
-import { Building2, Users, ArrowRight, RefreshCw, UserPlus } from 'lucide-react';
+import { Building2, Users, ArrowRight, RefreshCw, UserPlus, Play } from 'lucide-react';
+import ClientOnboardingModal from './ClientOnboardingModal';
 
 type OrgRow = {
   id: string;
@@ -147,6 +148,7 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
 
   const [success, setSuccess] = useState<string | null>(null);
 
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isAddingIndependent, setIsAddingIndependent] = useState(false);
   const [advisorName, setAdvisorName] = useState('');
   const [advisorEmail, setAdvisorEmail] = useState('');
@@ -460,6 +462,15 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setIsOnboardingOpen(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors mr-2"
+          >
+            <Play className="w-4 h-4" />
+            New Client Engine
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setError(null);
               setSuccess(null);
@@ -729,6 +740,12 @@ const MasterClientsView: React.FC<MasterClientsViewProps> = ({ onNavigate }) => 
           )}
         </section>
       </div>
+
+      <ClientOnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onSuccess={() => load()}
+      />
     </div>
   );
 };
