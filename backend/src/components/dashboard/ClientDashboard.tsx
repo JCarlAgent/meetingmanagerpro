@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ChevronDown, ChevronRight, Building2, Map, BarChart3, Mail, CheckCircle2, XCircle, CalendarClock, DollarSign, CalendarCheck, Users, UsersRound } from 'lucide-react';
+import { 
+  ChevronDown, ChevronRight, Building2, Map, BarChart3, Mail, CheckCircle2, 
+  XCircle, CalendarClock, DollarSign, CalendarCheck, Users, UsersRound, 
+  Search, Phone, Navigation, User, ArrowLeft, Trophy, MapPin 
+} from 'lucide-react';
 import AiCampaignQuery from './AiCampaignQuery';
 
 interface ClientDashboardProps {
@@ -8,6 +12,90 @@ interface ClientDashboardProps {
   isFmo: boolean;
   onNavigate?: (view: string) => void;
 }
+
+// --- Mock Data ---
+const mockActiveCampaigns = [
+  { 
+    id: 101, 
+    title: 'Retirement Strategy Dinner', 
+    date: 'May 15th, 2026', 
+    company: 'Alpha Financial',
+    repName: 'Sarah Jenkins', 
+    repPhone: '(555) 123-4567', 
+    repEmail: 'sarah@example.com', 
+    venueName: "Ruth's Chris Steak House", 
+    city: 'Dallas', 
+    state: 'TX', 
+    daysLeft: 'In 5 Days',
+    status: [true, true, true, true, false] // Demo, List, Design, Paid, Sent
+  },
+  { 
+    id: 102, 
+    title: 'Tax Planning Workshop', 
+    date: 'May 22nd, 2026', 
+    company: 'Beta Advisors',
+    repName: 'Michael Chang', 
+    repPhone: '(555) 987-6543', 
+    repEmail: 'mchang@example.com', 
+    venueName: "Maggiano's Little Italy", 
+    city: 'Austin', 
+    state: 'TX', 
+    daysLeft: 'In 12 Days',
+    status: [true, true, false, false, false]
+  }
+];
+
+const mockCompletedCampaigns = [
+  { 
+    id: 201, 
+    title: 'Estate Planning Seminar', 
+    date: 'February 10th, 2026', 
+    company: 'Beta Advisors',
+    repName: 'Michael Chang', 
+    repPhone: '(555) 987-6543', 
+    repEmail: 'mchang@example.com', 
+    venueName: "Capital Grille", 
+    city: 'Houston', 
+    state: 'TX', 
+    stats: { mailed: '5,000', responses: 42, attendees: 38, appointments: 12 }
+  },
+  { 
+    id: 202, 
+    title: 'Annuity Mastery Lunch', 
+    date: 'January 15th, 2026', 
+    company: 'Alpha Financial',
+    repName: 'Sarah Jenkins', 
+    repPhone: '(555) 123-4567', 
+    repEmail: 'sarah@example.com', 
+    venueName: "Ruth's Chris Steak House", 
+    city: 'Dallas', 
+    state: 'TX', 
+    stats: { mailed: '7,500', responses: 65, attendees: 50, appointments: 22 }
+  }
+];
+
+const topPerformersFMO = [
+  {
+    company: 'Alpha Financial',
+    reps: [
+      { name: 'Sarah Jenkins', city: 'Dallas', state: 'TX', meetings: 8, attendees: 320, appointments: 110 },
+      { name: 'David Smith', city: 'Fort Worth', state: 'TX', meetings: 4, attendees: 150, appointments: 40 }
+    ]
+  },
+  {
+    company: 'Beta Advisors',
+    reps: [
+      { name: 'Michael Chang', city: 'Austin', state: 'TX', meetings: 6, attendees: 240, appointments: 85 },
+      { name: 'Jessica Lee', city: 'Houston', state: 'TX', meetings: 5, attendees: 190, appointments: 60 }
+    ]
+  }
+];
+
+const topPerformersCompany = [
+  { name: 'Sarah Jenkins', city: 'Dallas', state: 'TX', meetings: 8, attendees: 320, appointments: 110 },
+  { name: 'David Smith', city: 'Fort Worth', state: 'TX', meetings: 4, attendees: 150, appointments: 40 },
+  { name: 'Robert Blake', city: 'Plano', state: 'TX', meetings: 2, attendees: 75, appointments: 20 }
+];
 
 export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDashboardProps) {
   // All sections contracted by default.
@@ -18,25 +106,21 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
     numbers: false,
   });
 
-  const toggle = (section: string) => {
-    setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
-  };
-
   const [orgData, setOrgData] = useState<any>(null);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRep, setSelectedRep] = useState<any>(null);
 
   useEffect(() => {
     async function load() {
       const { data: org } = await supabase.from('orgs').select('*').eq('id', orgId).single();
       setOrgData(org || {});
-      
-      const { data: camps } = await supabase.from('jobs').select('*').eq('org_id', orgId).order('created_at', { ascending: false });
-      if (camps) {
-        setCampaigns(camps);
-      }
     }
     load();
   }, [orgId]);
+
+  const toggle = (section: string) => {
+    setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   const AccordionHeader = ({ id, icon: Icon, title }: { id: string, icon: any, title: string }) => {
     const isExpanded = expanded[id];
@@ -62,6 +146,81 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
       </button>
     );
   };
+
+  // --- REP HISTORY OVERLAY VIEW ---
+  if (selectedRep) {
+    return (
+      <div className="w-full bg-white rounded-xl border border-slate-200 overflow-hidden shadow-lg animate-in fade-in zoom-in-95 duration-300 min-h-[600px] flex flex-col">
+        {/* Header Block */}
+        <div className="bg-slate-900 p-6 md:p-10 text-white relative">
+          <button 
+            onClick={() => setSelectedRep(null)} 
+            className="absolute top-6 left-6 flex items-center gap-2 text-slate-300 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" /> Back to Dashboard
+          </button>
+          
+          <div className="mt-8 flex flex-col md:flex-row md:items-center gap-6">
+            <div className="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center text-4xl font-black text-white shrink-0 border-4 border-slate-800">
+              {selectedRep.repName.charAt(0)}
+            </div>
+            <div>
+              <h2 className="text-3xl font-black tracking-tight">{selectedRep.repName}</h2>
+              <p className="text-indigo-300 font-medium text-lg mt-1">{isFmo ? selectedRep.company : orgData?.name || 'Company Agent'}</p>
+              <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-slate-300">
+                <span className="flex items-center gap-1.5"><Phone className="w-4 h-4"/> {selectedRep.repPhone}</span>
+                <span className="flex items-center gap-1.5"><Mail className="w-4 h-4"/> {selectedRep.repEmail}</span>
+                <span className="flex items-center gap-1.5"><Navigation className="w-4 h-4"/> {selectedRep.city}, {selectedRep.state}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* History Body */}
+        <div className="p-6 md:p-10 bg-slate-50 flex-1">
+          <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <CalendarCheck className="w-6 h-6 text-indigo-500" />
+            Complete Meeting History
+          </h3>
+
+          <div className="space-y-4">
+            {/* Show all completed campaigns for this rep (filtered mock data) */}
+            {mockCompletedCampaigns
+              .filter(c => c.repName === selectedRep.repName)
+              .map(camp => (
+              <div key={camp.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-100">
+                  <div>
+                    <h4 className="font-bold text-lg text-slate-900">{camp.title}</h4>
+                    <span className="text-sm font-medium text-slate-500 flex items-center gap-1.5 mt-1"><CalendarClock className="w-4 h-4"/> {camp.date}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-slate-700">{camp.venueName}</p>
+                    <p className="text-xs text-slate-500">{camp.city}, {camp.state}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div className="bg-slate-50 p-3 rounded-lg"><p className="text-xs font-bold text-slate-400 uppercase mb-1">Mailed</p><p className="text-xl font-bold text-slate-800">{camp.stats.mailed}</p></div>
+                  <div className="bg-blue-50 p-3 rounded-lg"><p className="text-xs font-bold text-blue-500 uppercase mb-1">Responses</p><p className="text-xl font-bold text-blue-700">{camp.stats.responses}</p></div>
+                  <div className="bg-purple-50 p-3 rounded-lg"><p className="text-xs font-bold text-purple-500 uppercase mb-1">Attendees</p><p className="text-xl font-bold text-purple-700">{camp.stats.attendees}</p></div>
+                  <div className="bg-amber-50 p-3 rounded-lg"><p className="text-xs font-bold text-amber-500 uppercase mb-1">Appointments</p><p className="text-xl font-bold text-amber-700">{camp.stats.appointments}</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- FILTERED COMPLETED CAMPAIGNS ---
+  const filteredCompleted = mockCompletedCampaigns.filter(c => {
+    const q = searchQuery.toLowerCase();
+    return c.city.toLowerCase().includes(q) 
+        || c.state.toLowerCase().includes(q) 
+        || c.repName.toLowerCase().includes(q)
+        || (isFmo && c.company?.toLowerCase().includes(q));
+  });
 
   return (
     <div className="w-full flex flex-col space-y-4 md:space-y-6 max-w-full overflow-x-hidden">
@@ -112,72 +271,119 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
           <div className="p-0 bg-slate-50/50 animate-in fade-in slide-in-from-top-2 duration-300">
             
             {/* ACTIVE CAMPAIGNS SUBSECTION */}
-            <div className="p-6 md:p-8 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <div className="p-6 md:p-8 border-b border-slate-200 space-y-6">
+              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                 <CalendarClock className="w-6 h-6 text-indigo-500" />
                 Active Campaigns
               </h3>
               
-              {/* Active Campaign horizontal row design */}
-              <div className="flex flex-col xl:flex-row xl:items-center bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm relative pr-4 lg:pr-6 hover:shadow-md transition-shadow">
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
-                
-                {/* Info Block */}
-                <div className="p-5 lg:p-6 flex-shrink-0 min-w-[280px] xl:w-[320px] xl:border-r border-slate-100 flex flex-col justify-center bg-slate-50 xl:bg-white">
-                  <div className="mb-2"><span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600 uppercase tracking-widest border border-red-200">In 5 Days</span></div>
-                  <h4 className="font-bold text-lg text-slate-900 leading-tight">Retirement Strategy Dinner</h4>
-                  <p className="text-sm font-medium text-slate-500 mt-1">May 15th, 2026</p>
-                </div>
-                
-                {/* Horizontal Checklist Block */}
-                <div className="p-5 lg:p-6 flex-1 bg-white xl:bg-transparent border-t xl:border-t-0 border-slate-100 flex items-center">
-                  <div className="flex flex-wrap lg:flex-nowrap items-center w-full justify-between gap-y-4 gap-x-2 text-sm">
-                    <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto"><CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> <span>Demo Data Done</span></div>
-                    <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto"><CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> <span>List Purchased</span></div>
-                    <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto"><CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> <span>Design Chosen</span></div>
-                    <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto"><CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> <span>Mailhouse Paid</span></div>
-                    <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto"><XCircle className="w-5 h-5 text-red-400 shrink-0"/> <span>Mail Sent</span></div>
+              <div className="space-y-4">
+                {mockActiveCampaigns.map(camp => (
+                  <div key={camp.id} className="flex flex-col xl:flex-row xl:items-stretch bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm relative pr-4 lg:pr-6 hover:shadow-md transition-shadow">
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
+                    
+                    {/* Info Block with Rep Info added */}
+                    <div className="p-5 lg:p-6 flex-shrink-0 min-w-[340px] xl:w-[380px] xl:border-r border-slate-100 flex flex-col justify-center bg-slate-50 xl:bg-white">
+                      <div className="mb-2"><span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600 uppercase tracking-widest border border-red-200">{camp.daysLeft}</span></div>
+                      <h4 className="font-bold text-lg text-slate-900 leading-tight">{camp.title}</h4>
+                      <p className="text-sm font-medium text-slate-500 mt-1 flex items-center gap-1.5">{camp.date}</p>
+                      
+                      {/* Rep / Venue Context */}
+                      <div className="mt-4 pt-4 border-t border-slate-200/60">
+                        {isFmo && <p className="text-xs font-bold text-slate-400 mb-1">{camp.company}</p>}
+                        <button onClick={() => setSelectedRep(camp)} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 transition-colors text-left group">
+                          <User className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600" /> {camp.repName} (View profile)
+                        </button>
+                        <div className="text-xs text-slate-600 mt-2 space-y-1.5">
+                          <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400"/> {camp.repPhone} <span className="text-slate-300">|</span> {camp.repEmail}</p>
+                          <p className="flex items-center gap-1.5"><Navigation className="w-3.5 h-3.5 text-slate-400"/> {camp.venueName} — {camp.city}, {camp.state}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Horizontal Checklist Block */}
+                    <div className="p-5 lg:p-6 flex-1 bg-white xl:bg-transparent border-t xl:border-t-0 border-slate-100 flex items-center">
+                      <div className="flex flex-wrap lg:flex-nowrap items-center w-full justify-between gap-y-6 gap-x-2 text-sm">
+                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[0] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Demo Data Done</span></div>
+                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[1] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>List Purchased</span></div>
+                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[2] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Design Chosen</span></div>
+                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[3] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Mailhouse Paid</span></div>
+                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[4] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Mail Sent</span></div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
 
             {/* COMPLETED CAMPAIGNS SUBSECTION */}
-            <div className="p-6 md:p-8">
-              <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <CalendarCheck className="w-6 h-6 text-indigo-500" />
-                Completed Campaigns
-              </h3>
-
-              {/* Completed Campaign horizontal row design */}
-              <div className="flex flex-col xl:flex-row bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                
-                {/* Info Block */}
-                <div className="p-5 lg:p-6 flex-shrink-0 min-w-[280px] xl:w-[320px] border-b xl:border-b-0 xl:border-r border-slate-100 flex flex-col justify-center bg-slate-50 xl:bg-white">
-                  <h4 className="font-bold text-lg text-slate-900 leading-tight">Tax Planning Seminar</h4>
-                  <p className="text-sm font-medium text-slate-500 mt-1">February 10th, 2026</p>
-                </div>
-                
-                {/* Horizontal Stats Block */}
-                <div className="flex-1 grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-slate-100">
-                  <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Mailed</span>
-                    <span className="text-2xl font-bold text-slate-800">5,000</span>
-                  </div>
-                  <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Responses</span>
-                    <span className="text-2xl font-bold text-blue-600">42</span>
-                  </div>
-                  <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Attendees</span>
-                    <span className="text-2xl font-bold text-purple-600">38</span>
-                  </div>
-                  <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Appointments</span>
-                    <span className="text-2xl font-bold text-amber-600">12</span>
-                  </div>
+            <div className="p-6 md:p-8 space-y-6">
+              
+              {/* Header + Search Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <CalendarCheck className="w-6 h-6 text-indigo-500" />
+                  Completed Campaigns
+                </h3>
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder={isFmo ? "Search by city, state, rep, or company..." : "Search by city, state, or rep..."} 
+                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-shadow hover:shadow-md"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
                 </div>
               </div>
+
+              {filteredCompleted.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">No campaigns found matching your search.</div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredCompleted.map(camp => (
+                    <div key={camp.id} className="flex flex-col xl:flex-row bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                      
+                      {/* Info Block with Rep Info */}
+                      <div className="p-5 lg:p-6 flex-shrink-0 min-w-[340px] xl:w-[380px] border-b xl:border-b-0 xl:border-r border-slate-100 flex flex-col justify-center bg-slate-50 xl:bg-white relative">
+                        <h4 className="font-bold text-lg text-slate-900 leading-tight">{camp.title}</h4>
+                        <p className="text-sm font-medium text-slate-500 mt-1">{camp.date}</p>
+                        
+                        <div className="mt-4 pt-4 border-t border-slate-200/60">
+                          {isFmo && <p className="text-xs font-bold text-slate-400 mb-1">{camp.company}</p>}
+                          <button onClick={() => setSelectedRep(camp)} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 transition-colors text-left group">
+                            <User className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600" /> {camp.repName} (View profile)
+                          </button>
+                          <div className="text-xs text-slate-600 mt-2 space-y-1.5">
+                            <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400"/> {camp.repPhone} <span className="text-slate-300">|</span> {camp.repEmail}</p>
+                            <p className="flex items-center gap-1.5"><Navigation className="w-3.5 h-3.5 text-slate-400"/> {camp.venueName} — {camp.city}, {camp.state}</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Horizontal Stats Block */}
+                      <div className="flex-1 grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-slate-100">
+                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Mailed</span>
+                          <span className="text-2xl font-bold text-slate-800">{camp.stats.mailed}</span>
+                        </div>
+                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Responses</span>
+                          <span className="text-2xl font-bold text-blue-600">{camp.stats.responses}</span>
+                        </div>
+                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Attendees</span>
+                          <span className="text-2xl font-bold text-purple-600">{camp.stats.attendees}</span>
+                        </div>
+                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Appointments</span>
+                          <span className="text-2xl font-bold text-amber-600">{camp.stats.appointments}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
             </div>
 
@@ -209,35 +415,34 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                  <Mail className="w-6 h-6 text-slate-400 mb-3 block" />
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Mailed</div>
-                 <div className="text-3xl font-black text-slate-900">10,000</div>
+                 <div className="text-3xl font-black text-slate-900">22,500</div>
                </div>
                <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
                  <Building2 className="w-6 h-6 text-indigo-400 mb-3 block" />
                  <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-1">Total Meetings</div>
-                 <div className="text-3xl font-black text-indigo-900">3</div>
+                 <div className="text-3xl font-black text-indigo-900">4</div>
                </div>
                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
                  <UsersRound className="w-6 h-6 text-blue-400 mb-3 block" />
                  <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Responders</div>
                  <div className="flex items-baseline gap-2">
-                   <div className="text-3xl font-black text-blue-900">114</div>
-                   <div className="text-sm font-semibold text-blue-600/80">1.14% avg</div>
+                   <div className="text-3xl font-black text-blue-900">107</div>
                  </div>
                </div>
                <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
                  <Users className="w-6 h-6 text-purple-400 mb-3 block" />
                  <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Total Attendees</div>
-                 <div className="text-3xl font-black text-purple-900">92</div>
+                 <div className="text-3xl font-black text-purple-900">88</div>
                </div>
                <div className="bg-amber-50 p-6 rounded-xl border border-amber-100 col-span-2 lg:col-span-1">
                  <CalendarCheck className="w-6 h-6 text-amber-400 mb-3 block" />
                  <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Total Appointments</div>
-                 <div className="text-3xl font-black text-amber-900">28</div>
+                 <div className="text-3xl font-black text-amber-900">34</div>
                </div>
              </div>
-             
+
              {/* ROI Calculator Row */}
-             <div className="bg-slate-900 text-white rounded-xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl">
+             <div className="bg-slate-900 text-white rounded-xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl mb-8">
                <div className="flex-1 flex items-center gap-4">
                  <div className="bg-indigo-500/20 p-3 rounded-lg text-indigo-400 border border-indigo-500/30">
                    <DollarSign className="w-6 h-6" />
@@ -254,6 +459,76 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
                  </div>
                  <button className="bg-indigo-500 hover:bg-indigo-400 text-white px-8 py-3 rounded-lg font-bold whitespace-nowrap transition-colors shadow-lg shadow-indigo-500/25">Calculate</button>
                </div>
+             </div>
+             
+             {/* THE SALES BOARD LEADERBOARD */}
+             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="p-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-amber-500" />
+                    Top Performers Leaderboard
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-xs border-b border-slate-200">
+                      <tr>
+                        <th className="px-6 py-4">{isFmo ? "Company & Representatives" : "Representative Name"}</th>
+                        <th className="px-6 py-4">Location</th>
+                        <th className="px-6 py-4 text-center">Meetings</th>
+                        <th className="px-6 py-4 text-center">Attendees</th>
+                        <th className="px-6 py-4 text-center">Appointments</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {isFmo ? (
+                        // FMO View: Grouped by Company
+                        topPerformersFMO.map((compGroup, i) => (
+                          <React.Fragment key={i}>
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={5} className="px-6 py-3 font-bold text-indigo-900 border-l-4 border-indigo-500">
+                                {compGroup.company}
+                              </td>
+                            </tr>
+                            {compGroup.reps.map((rep, j) => (
+                              <tr key={j} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-6 py-4 pl-10">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">{rep.name.charAt(0)}</div>
+                                    <span className="font-semibold text-slate-800">{rep.name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-slate-500 font-medium">{rep.city}, {rep.state}</td>
+                                <td className="px-6 py-4 text-center font-bold text-slate-700">{rep.meetings}</td>
+                                <td className="px-6 py-4 text-center font-bold text-purple-600">{rep.attendees}</td>
+                                <td className="px-6 py-4 text-center font-bold text-amber-600">{rep.appointments}</td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))
+                      ) : (
+                        // Company View: Plain Rep List
+                        topPerformersCompany.map((rep, i) => (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-sm">{rep.name.charAt(0)}</div>
+                                <div>
+                                  <div className="font-bold text-slate-800">{rep.name}</div>
+                                  {i === 0 && <span className="text-[10px] uppercase tracking-wider font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded">#1 Performer</span>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-slate-500 font-medium"><MapPin className="w-3 h-3 inline mr-1 text-slate-400"/>{rep.city}, {rep.state}</td>
+                            <td className="px-6 py-4 text-center"><span className="bg-slate-100 px-3 py-1 rounded text-slate-700 font-bold">{rep.meetings}</span></td>
+                            <td className="px-6 py-4 text-center"><span className="bg-purple-50 text-purple-700 px-3 py-1 rounded font-bold">{rep.attendees}</span></td>
+                            <td className="px-6 py-4 text-center"><span className="bg-amber-50 text-amber-700 px-3 py-1 rounded font-bold">{rep.appointments}</span></td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
              </div>
 
           </div>
