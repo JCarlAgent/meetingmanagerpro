@@ -31,13 +31,32 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
 
   const [markers, setMarkers] = useState<LocationMarker[]>([]);
   const [center, setCenter] = useState(defaultCenter);
-  const [mapZoom, setMapZoom  const [mapZoom, setMapZoom  const [mapZoom, setMapZoom  const [mfalse);
-  const [errorMsg, setErrorMsg] = useState('')  const [errorMsg, setErrorMsg] = useState('')  const [errorM  useEffect(() => {
-                                                              eLocations = async () => {
-      setIsGeocodi      setIsGeoc setErrorMsg('');
-      setMar      setMar          sit location by pipe '|' a d c      setMar      setMar io      setMar  He      setMar      setMar          s).filte      setMar      se     const geoco      setMar      setle.m      setMar          const newMar      setMar      setMar          sit location by pipe '|' a d c      setMar      setMar io      setMar  Hee things like "(e.g., ...)" which AI sometimes output      setMar      setMarame = locName.replace(/\(e\.g\..*?\)/gi, '').trim();
+  const [mapZoom, setMapZoom] = useState(4);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Handle geocoding multiple locations separated by '|'
+  useEffect(() => {
+    if (!isLoaded || !venueHeadline) return;
+
+    const geocodeLocations = async () => {
+      setIsGeocoding(true);
+      setErrorMsg('');
+      setMarkers([]);
+
+      // Split location by pipe '|' and clean up
+      const locationNames = venueHeadline.split('|').map(l => l.trim()).filter(Boolean);
+      
+      const geocoder = new window.google.maps.Geocoder();
+      const newMarkers: LocationMarker[] = [];
+
+      try {
+        for (const locName of locationNames) {
+          // Remove things like "(e.g., ...)" which AI sometimes outputs
+          const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').trim();
           
-          await new Promise<void>((resolve)           await new Promise<void>((resolve)           await neults, status) => {
+          await new Promise<void>((resolve) => {
+            geocoder.geocode({ address: cleanName }, (results, status) => {
               if (status === 'OK' && results && results.length > 0) {
                 const geom = results[0].geometry.location;
                 newMarkers.push({
@@ -48,20 +67,43 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
               resolve();
             });
           });
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    rkers.length,
+        }
+
+        if (newMarkers.length > 0) {
+          setMarkers(newMarkers);
+          
+          if (newMarkers.length === 1) {
+            setCenter(newMarkers[0].position);
+            setMapZoom(11); // localized view for 1 spot
+          } else {
+            // Calculate center of multiple markers
+            const latSum = newMarkers.reduce((sum, m) => sum + m.position.lat, 0);
+            const lngSum = newMarkers.reduce((sum, m) => sum + m.position.lng, 0);
+            setCenter({
+              lat: latSum / newMarkers.length,
               lng: lngSum / newMarkers.length
             });
             setMapZoom(9); // zoom out a bit for multiple
           }
         } else {
-          setErrorMsg('Could not pinpoint loc          setErrorMsg('Could not pinpoint loc          se {          setErrorMsg('Could notg error", err);
+          setErrorMsg('Could not pinpoint locations on the map.');
+        }
+
+      } catch (err: any) {
+        console.error("Geocoding error", err);
         setErrorMsg('Error rendering map locations.');
       } finally {
-        setIs        setIs    
-                                          }, [venueHeadline, isLoaded]);
-                                          }, [venueHeadline, isLoaded]);
- not pinpoint loc          se {          setErrorMsg('Could notg error", err);
-rtCircle className="w-6 h-6 mb-2" />
+        setIsGeocoding(false);
+      }
+    };
+
+    geocodeLocations();
+  }, [venueHeadline, isLoaded]);
+
+  if (loadError) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-red-50 text-red-500 p-4">
+        <AlertCircle className="w-6 h-6 mb-2" />
         <p className="text-sm font-medium text-center">Error loading Google Maps</p>
       </div>
     );
@@ -70,18 +112,31 @@ rtCircle className="w-6 h-6 mb-2" />
   if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-500 p-4 rounded-xl border border-gray-200">
-        <MapPin className="w-8 h-8 mb-2         <MapPin className="w-8 h-8 mb-2     -sm font-medium te        <MapPin className="w-8 h-8 mb-2         <MapPin p>
-        <p className="text-x        <p className="text-x        <p className="text-x        <p classNaPI key is configured.</p>
+        <MapPin className="w-8 h-8 mb-2 text-gray-400" />
+        <p className="text-sm font-medium text-center text-gray-600">Google Maps Integration Ready</p>
+        <p className="text-xs text-center mt-1 text-gray-500 max-w-xs">Map will appear here once the API key is configured.</p>
       </div>
     );
   }
 
-  if (!isLoaded || isGeocod  if (!isLoaded || isGeocod  if (!isLoaded || isGeocoll flex flex-col ite  if (!isLoaded || isGeocod slate-50 relative overflow-hidden rounded-xl">
+  if (!isLoaded || isGeocoding) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden rounded-xl">
         <div className="absolute inset-0 bg-blue-500/5 pulse-ring"></div>
         <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
-        <p className="text-sm font-medium text-slate-600 animate-pulse">        <p className="text-sm font-medium text-slate-600 animate-pulse">        <p ame="relative w-full h-[400px] rounded-xl overflow-hidden shadow-inner">
-               p
-                                                                                                                                     UI: false,
+        <p className="text-sm font-medium text-slate-600 animate-pulse">Running spatial analysis...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full h-[400px] rounded-xl overflow-hidden shadow-inner">
+      <GoogleMap
+        mapContainerStyle={containerStyle}
+        center={center}
+        zoom={mapZoom}
+        options={{
+          disableDefaultUI: false,
           zoomControl: true,
           streetViewControl: false,
           mapTypeControl: false,
@@ -101,7 +156,13 @@ rtCircle className="w-6 h-6 mb-2" />
         {markers.map((marker, i) => (
           <React.Fragment key={i}>
             <Marker position={marker.position} title={marker.name} />
-            {/* Draw a simulated 5 mile / ~12 minute drive radius aro            {/* Draw a simulated 5 mile / ~12 minute drive radius aro            {/* Draw a simulated 5 mile / ~12 minute drive radius aro            {/* Draw a simulated 5 mile / ~12 minute drive radius aro            {/* Dra,
+            {/* Draw a simulated 5 mile / ~12 minute drive radius around each point */}
+            <Circle
+              center={marker.position}
+              radius={8046} /* 5 miles in meters */
+              options={{
+                fillColor: '#3b82f6',
+                fillOpacity: 0.15,
                 strokeColor: '#3b82f6',
                 strokeOpacity: 0.5,
                 strokeWeight: 2,
@@ -111,7 +172,9 @@ rtCircle className="w-6 h-6 mb-2" />
         ))}
       </GoogleMap>
       
-      {errorMsg &&       {errorMsg &&       {errolut      {errorMsg &&ht-4 bg-red-100       {errorMsg &&       {errorMsg &&    y-      {errorMsg &&       {errorMsg &&      -cen      {errorM   <AlertCircle className="w-4 h-4 mr-2" />
+      {errorMsg && (
+        <div className="absolute top-4 left-4 right-4 bg-red-100 border border-red-200 text-red-700 px-4 py-2 rounded shadow-sm text-sm z-10 flex items-center">
+          <AlertCircle className="w-4 h-4 mr-2" />
           {errorMsg}
         </div>
       )}
