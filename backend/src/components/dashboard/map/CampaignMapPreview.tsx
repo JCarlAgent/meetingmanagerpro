@@ -51,6 +51,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
       
       const geocoder = new window.google.maps.Geocoder();
       const newMarkers: LocationMarker[] = [];
+      const errorStatuses: string[] = [];
 
       try {
         for (const locName of locationNames) {
@@ -58,7 +59,11 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
           
           await new Promise<void>((resolve) => {
+            let isResolved = false;
+
             geocoder.geocode({ address: cleanName }, (results, status) => {
+              if (isResolved) return;
+              isResolved = true;
               console.log('Geocoding status for', cleanName, ':', status);
               if (status === 'OK' && results && results.length > 0) {
                 const geom = results[0].geometry.location;
@@ -68,12 +73,16 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
                 });
               } else {
                  console.error('Geocoding failed for', cleanName, 'Status:', status);
+                 errorStatuses.push(status || 'UNKNOWN');
               }
               resolve();
             });
             
             // Failsafe timeout to prevent infinite hanging if Geocoder never fires callback
             setTimeout(() => {
+              if (isResolved) return;
+              isResolved = true;
+              errorStatuses.push('TIMEOUT_3S');
               resolve();
             }, 3000);
           });
@@ -96,12 +105,12 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
             setMapZoom(9); // zoom out a bit for multiple
           }
         } else {
-          setErrorMsg('Could not pinpoint locations on the map.');
+          setErrorMsg(`Could not pinpoint locations. Status: ${errorStatuses.join(', ')}`);
         }
 
       } catch (err: any) {
         console.error("Geocoding error", err);
-        setErrorMsg('Error rendering map locations.');
+        setErrorMsg(`Error rendering map locations: ${err.message || err.toString()}`);
       } finally {
         setIsGeocoding(false);
       }
