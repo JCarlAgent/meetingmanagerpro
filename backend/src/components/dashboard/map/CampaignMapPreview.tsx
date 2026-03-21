@@ -156,18 +156,6 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         {markers.map((marker, i) => (
           <React.Fragment key={i}>
             <Marker position={marker.position} title={marker.name} />
-            {/* Draw a simulated 5 mile / ~12 minute drive radius around each point */}
-            <Circle
-              center={marker.position}
-              radius={8046} /* 5 miles in meters */
-              options={{
-                fillColor: '#3b82f6',
-                fillOpacity: 0.15,
-                strokeColor: '#3b82f6',
-                strokeOpacity: 0.5,
-                strokeWeight: 2,
-              }}
-            />
           </React.Fragment>
         ))}
       </GoogleMap>

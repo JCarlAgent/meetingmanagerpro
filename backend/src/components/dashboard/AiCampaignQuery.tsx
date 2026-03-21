@@ -365,9 +365,16 @@ export default function AiCampaignQuery() {
               <p className="font-semibold text-lg text-gray-900">{result.recommendedVenue.headline}</p>
               <p className="text-sm text-gray-500 mb-2">{result.recommendedVenue.subtext}</p>
               {result.recommendedVenue.phone && (
-                <div className="flex items-center text-sm font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded w-fit">
-                  <Phone className="w-3.5 h-3.5 mr-1.5" />
-                  <a href={`tel:${result.recommendedVenue.phone}`} className="hover:underline">{result.recommendedVenue.phone}</a>
+                <div className="flex flex-col gap-1 mt-2">
+                  {result.recommendedVenue.phone.split('|').map((p, idx) => {
+                    const cleanP = p.trim();
+                    return (
+                      <div key={idx} className="flex items-center text-sm font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded w-fit">
+                        <Phone className="w-3.5 h-3.5 mr-1.5" />
+                        <a href={`tel:${cleanP}`} className="hover:underline">{cleanP}</a>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
