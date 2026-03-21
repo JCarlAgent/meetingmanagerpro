@@ -108,6 +108,19 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
 
   const [orgData, setOrgData] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const [activeCampaigns, setActiveCampaigns] = useState(mockActiveCampaigns);
+
+  const toggleCampaignStatus = (campId: number, statusIndex: number) => {
+    setActiveCampaigns(prev => prev.map(camp => {
+      if (camp.id === campId) {
+        const newStatus = [...camp.status];
+        newStatus[statusIndex] = !newStatus[statusIndex];
+        return { ...camp, status: newStatus };
+      }
+      return camp;
+    }));
+  };
   const [selectedRep, setSelectedRep] = useState<any>(null);
 
   useEffect(() => {
@@ -278,7 +291,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
               </h3>
               
               <div className="space-y-4">
-                {mockActiveCampaigns.map(camp => (
+                {activeCampaigns.map(camp => (
                   <div key={camp.id} className="flex flex-col xl:flex-row xl:items-stretch bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm relative pr-4 lg:pr-6 hover:shadow-md transition-shadow">
                     <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
                     
@@ -304,11 +317,24 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
                     {/* Horizontal Checklist Block */}
                     <div className="p-5 lg:p-6 flex-1 bg-white xl:bg-transparent border-t xl:border-t-0 border-slate-100 flex items-center">
                       <div className="flex flex-wrap lg:flex-nowrap items-center w-full justify-between gap-y-6 gap-x-2 text-sm">
-                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[0] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Demo Data Done</span></div>
-                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[1] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>List Purchased</span></div>
-                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[2] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Design Chosen</span></div>
-                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[3] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Mailhouse Paid</span></div>
-                        <div className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto">{camp.status[4] ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0"/> : <XCircle className="w-5 h-5 text-red-400 shrink-0"/>} <span>Mail Sent</span></div>
+                        {[
+                          'Demo Data Done',
+                          'List Purchased',
+                          'Design Chosen',
+                          'Mailhouse Paid',
+                          'Mail Sent'
+                        ].map((label, idx) => (
+                          <button 
+                            key={idx}
+                            onClick={() => toggleCampaignStatus(camp.id, idx)}
+                            className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto hover:bg-slate-50 p-2 -ml-2 rounded-lg transition-colors group text-left"
+                          >
+                            {camp.status[idx] 
+                              ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 group-hover:scale-110 transition-transform"/> 
+                              : <XCircle className="w-5 h-5 text-red-400 shrink-0 group-hover:scale-110 transition-transform"/>}
+                            <span>{label}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
