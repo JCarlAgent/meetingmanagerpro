@@ -54,8 +54,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
 
       try {
         for (const locName of locationNames) {
-          // Remove things like "(e.g., ...)" which AI sometimes outputs
-          const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').trim();
+          // Remove things like "(e.g., ...)" which AI sometimes outputs, and convert " - " to ", " for better geocoding
+          const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
           
           await new Promise<void>((resolve) => {
             geocoder.geocode({ address: cleanName }, (results, status) => {
