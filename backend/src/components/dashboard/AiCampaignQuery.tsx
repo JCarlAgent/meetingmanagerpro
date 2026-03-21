@@ -15,7 +15,7 @@ interface AiProposal {
 
 export default function AiCampaignQuery() {
   const [query, setQuery] = useState('');
-  const [campaignType, setCampaignType] = useState<'financial' | 'medicare'>('financial');
+  const [campaignType, setCampaignType] = useState<'' | 'financial' | 'medicare'>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<AiProposal | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -124,6 +124,11 @@ export default function AiCampaignQuery() {
     e.preventDefault();
     const activeQuery = isRefinement ? refinementQuery : query;
     if (!activeQuery.trim()) return;
+
+    if (!campaignType) {
+      setErrorMsg('Please select a campaign type (Financial or Medicare) before submitting.');
+      return;
+    }
 
     setIsProcessing(true);
     setErrorMsg('');
