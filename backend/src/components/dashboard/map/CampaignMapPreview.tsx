@@ -59,8 +59,13 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
           
           try {
-            // Modern Promise-based Geocoder approach without callbacks
-            const response = await geocoder.geocode({ address: cleanName });
+            // Modern Promise-based Geocoder approach without callbacks, wrapped in a strict 3-second timeout
+            const geocodePromise = geocoder.geocode({ address: cleanName });
+            const timeoutPromise = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('TIMEOUT_3S')), 3000)
+            );
+            
+            const response = await Promise.race([geocodePromise, timeoutPromise]) as google.maps.GeocoderResponse;
             
             if (response.results && response.results.length > 0) {
               const geom = response.results[0].geometry.location;
