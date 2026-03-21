@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, FileText, Mail, MapPin, Phone, QrCode, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/use-toast';
 import { useActingOrg } from '@/lib/actingOrg';
+import OrderListModal from "./OrderListModal";
 import FinalizeSummaryModal from './FinalizeSummaryModal';
-import AiCampaignQuery from './AiCampaignQuery';
+import AiCampaignQuery, { AiProposal } from './AiCampaignQuery';
 import {
   clearSetupState,
   loadSetupState,
@@ -93,8 +95,9 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
 
   const [isFinalizeOpen, setIsFinalizeOpen] = useState(false);
   const [isSavingFinalize, setIsSavingFinalize] = useState(false);
-
+  const [isOrderListOpen, setIsOrderListOpen] = useState(false);
   const isHydratedRef = useRef(false);
+  const setupWindowRef = useRef<HTMLDivElement>(null);
 
   const resetFormState = () => {
     setSelectedTemplateId('');
@@ -452,6 +455,63 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
     if (error) throw error;
   };
 
+  const handleAiAccept = (proposal: AiProposal) => {
+    // 1. Populate Meetings (Venues)
+    const venues = proposal.recommendedVenue.headline.split('|').map(v => v.trim()).filter(Boolean);
+    const newMeetings = venues.map(v => {
+      let name = v;
+      let city = '';
+      let state = '';
+      
+      const dashSplit = v.split('-');
+      if (dashSplit.length > 1) {
+         name = dashSplit[0].trim();
+         const locationPart = dashSplit[dashSplit.length - 1].trim(); 
+         const commaSplit = locationPart.split(',');
+         if (commaSplit.length > 1) {
+            city = commaSplit[0].trim();
+            state = commaSplit[1].trim();
+         } else {
+            city = locationPart;
+         }
+      } else {
+         const commaSplit = v.split(',');
+         if (commaSplit.length > 2) {
+             name = commaSplit[0].trim();
+             city = commaSplit[1].trim();
+             state = commaSplit[2].trim();
+         }
+      }
+
+      return {
+        location_name: name,
+        address1: '',
+        city,
+        state,
+        date: '',
+        time: ''
+      };
+    });
+    setMeetings(newMeetings);
+
+    // 2. Populate Mail Quantity
+    const qtyMatch = proposal.mailStrategy.headline.replace(/,/g, '').match(/\d+/);
+    if (qtyMatch) {
+       setMailQuantity(parseInt(qtyMatch[0], 10));
+    }
+
+    // 3. Populate Demographics Notes
+    setDemographicsNotes(`${proposal.targetAudience.headline}\n\n${proposal.targetAudience.subtext}\n\nVenue Context:\n${proposal.recommendedVenue.subtext}`);
+    
+    // Optional: We can also show a toast notification here
+    toast({ title: 'Success', description: 'Campaign Strategy accepted and populated into Meeting Setup!' });
+    
+    // Scroll down to the form
+    setTimeout(() => {
+      setupWindowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
   const patchJobNotes = async (patch: Record<string, unknown>) => {
     const job = requireJob();
     if (!job) return;
@@ -621,9 +681,9 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       </div>
 
       {/* AI Magic Query Bar (MeetingManagerPRO 2.0 Layer) */}
-      <AiCampaignQuery />
+      <AiCampaignQuery onAcceptCampaign={handleAiAccept} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-stretch mt-6">
+      <div ref={setupWindowRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-stretch mt-6">
         {/* 1) Locations */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col">
           <div className="flex items-start gap-3">
@@ -970,7 +1030,16 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
           </div>
 
           <div className="mt-3">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>
+              <button
+                type="button"
+                onClick={() => setIsOrderListOpen(true)}
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
+              >
+                Order List From Provider
+              </button>
+            </div>
             <textarea
               value={demographicsNotes}
               onChange={(e) => setDemographicsNotes(e.target.value)}
@@ -1106,6 +1175,12 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
             ? { mode: 'printer', notes: demographicsNotes }
             : { mode: 'upload', listName: loadSetupState().demographicsUploadedListName }
         }
+      />
+
+      <OrderListModal
+        open={isOrderListOpen}
+        onClose={() => setIsOrderListOpen(false)}
+        demographicsNotes={demographicsNotes}
       />
     </div>
   );

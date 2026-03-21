@@ -5,7 +5,8 @@ import {
   XCircle, CalendarClock, DollarSign, CalendarCheck, Users, UsersRound, 
   Search, Phone, Navigation, User, ArrowLeft, Trophy, MapPin 
 } from 'lucide-react';
-import AiCampaignQuery from './AiCampaignQuery';
+import AiCampaignQuery, { AiProposal } from './AiCampaignQuery';
+import { patchSetupState } from '@/lib/setupState';
 
 interface ClientDashboardProps {
   orgId: string;
@@ -133,6 +134,62 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
 
   const toggle = (section: string) => {
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handleAiAccept = (proposal: AiProposal) => {
+    const venues = proposal.recommendedVenue.headline.split('|').map(v => v.trim()).filter(Boolean);
+    const newMeetings = venues.map(v => {
+      let name = v;
+      let city = '';
+      let state = '';
+      
+      const dashSplit = v.split('-');
+      if (dashSplit.length > 1) {
+         name = dashSplit[0].trim();
+         const locationPart = dashSplit[dashSplit.length - 1].trim(); 
+         const commaSplit = locationPart.split(',');
+         if (commaSplit.length > 1) {
+            city = commaSplit[0].trim();
+            state = commaSplit[1].trim();
+         } else {
+            city = locationPart;
+         }
+      } else {
+         const commaSplit = v.split(',');
+         if (commaSplit.length > 2) {
+             name = commaSplit[0].trim();
+             city = commaSplit[1].trim();
+             state = commaSplit[2].trim();
+         }
+      }
+
+      return {
+        location_name: name,
+        address1: '',
+        city,
+        state,
+        date: '',
+        time: '18:00'
+      };
+    });
+
+    let mailQuantity = 5000;
+    const qtyMatch = proposal.mailStrategy.headline.replace(/,/g, '').match(/\d+/);
+    if (qtyMatch) {
+       mailQuantity = parseInt(qtyMatch[0], 10);
+    }
+
+    const demographicsNotes = `${proposal.targetAudience.headline}\n\n${proposal.targetAudience.subtext}\n\nVenue Context:\n${proposal.recommendedVenue.subtext}`;
+
+    patchSetupState({
+      meetings: newMeetings,
+      mailQuantity,
+      demographicsNotes
+    });
+
+    if (onNavigate) {
+      onNavigate('setup');
+    }
   };
 
   const AccordionHeader = ({ id, icon: Icon, title }: { id: string, icon: any, title: string }) => {
@@ -424,7 +481,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
           <div className="p-0 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
              {/* Use full-width container internal to AiQuery */}
              <div className="w-full bg-slate-50 p-4 md:p-8 overflow-hidden">
-               <AiCampaignQuery />
+               <AiCampaignQuery onAcceptCampaign={handleAiAccept} />
              </div>
           </div>
         )}

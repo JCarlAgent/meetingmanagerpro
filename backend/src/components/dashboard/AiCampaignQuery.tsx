@@ -5,7 +5,7 @@ import PostMeetingROIModal from './PostMeetingROIModal';
 import CampaignMapPreview from './map/CampaignMapPreview';
 import Papa from 'papaparse';
 
-interface AiProposal {
+export interface AiProposal {
   targetAudience: { headline: string; subtext: string };
   recommendedVenue: { headline: string; subtext: string; phone?: string };
   optimalTiming: { headline: string; subtext: string };
@@ -13,7 +13,11 @@ interface AiProposal {
   confidenceScore: string;
 }
 
-export default function AiCampaignQuery() {
+interface AiCampaignQueryProps {
+  onAcceptCampaign?: (proposal: AiProposal) => void;
+}
+
+export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryProps = {}) {
   const [query, setQuery] = useState('');
   const [campaignType, setCampaignType] = useState<'' | 'financial' | 'medicare'>('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -451,8 +455,14 @@ export default function AiCampaignQuery() {
               >
                 Refine Parameters
               </button>
-              <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm">
-                Approve & Deploy Campaign
+              <button 
+                onClick={() => {
+                  if (onAcceptCampaign && result) {
+                    onAcceptCampaign(result);
+                  }
+                }}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm">
+                Accept Campaign
               </button>
             </div>
           )}
