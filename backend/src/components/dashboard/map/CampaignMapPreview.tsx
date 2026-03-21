@@ -59,15 +59,23 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           
           await new Promise<void>((resolve) => {
             geocoder.geocode({ address: cleanName }, (results, status) => {
+              console.log('Geocoding status for', cleanName, ':', status);
               if (status === 'OK' && results && results.length > 0) {
                 const geom = results[0].geometry.location;
                 newMarkers.push({
                   name: cleanName,
                   position: { lat: geom.lat(), lng: geom.lng() }
                 });
+              } else {
+                 console.error('Geocoding failed for', cleanName, 'Status:', status);
               }
               resolve();
             });
+            
+            // Failsafe timeout to prevent infinite hanging if Geocoder never fires callback
+            setTimeout(() => {
+              resolve();
+            }, 3000);
           });
         }
 
