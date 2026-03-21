@@ -22,11 +22,13 @@ interface CampaignMapPreviewProps {
   polygonDescription?: string;
 }
 
+const libraries: ("places" | "drawing" | "geometry" | "localContext" | "visualization")[] = ['places'];
+
 export default function CampaignMapPreview({ venueHeadline, polygonDescription }: CampaignMapPreviewProps) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
-    libraries: ['places']
+    libraries
   });
 
   const [markers, setMarkers] = useState<LocationMarker[]>([]);
@@ -119,7 +121,17 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
     );
   }
 
-  if (!isLoaded || isGeocoding) {
+  if (!isLoaded) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden rounded-xl">
+        <div className="absolute inset-0 bg-blue-500/5 pulse-ring"></div>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
+        <p className="text-sm font-medium text-slate-600 animate-pulse">Loading Map Engine...</p>
+      </div>
+    );
+  }
+
+  if (isGeocoding) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden rounded-xl">
         <div className="absolute inset-0 bg-blue-500/5 pulse-ring"></div>
