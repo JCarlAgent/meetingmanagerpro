@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, usem 'react';
 import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle, FileSpreadsheet, X, Phone } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
 import PostMeetingROIModal from './PostMeetingROIModal';
@@ -15,6 +15,7 @@ interface AiProposal {
 
 export default function AiCampaignQuery() {
   const [query, setQuery] = useState('');
+  const [campaignType, setCampaignType] = useState<'financial' | 'medicare'>('financial');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<AiProposal | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -137,6 +138,7 @@ export default function AiCampaignQuery() {
       // 2. Call our new Supabase Edge Function for Gemini
       const payload: any = { 
         query: activeQuery,
+        campaignType: campaignType,
         listContext: listSummary // Injects the real data stats!
       };
       if (isRefinement && result) {
@@ -187,6 +189,31 @@ export default function AiCampaignQuery() {
         )}
 
         <form onSubmit={handleSearch} className={`relative flex flex-col bg-white shadow-xl rounded-2xl overflow-hidden border ${isTollLocked ? 'border-red-200' : 'border-gray-100'}`}>
+          <div className="flex bg-gray-50 border-b border-gray-100 p-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setCampaignType('financial')}
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all duration-200 ${
+                campaignType === 'financial' 
+                  ? 'bg-white shadow-sm border border-gray-200 text-indigo-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent'
+              }`}
+            >
+              Financial / Annuity
+            </button>
+            <button
+              type="button"
+              onClick={() => setCampaignType('medicare')}
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all duration-200 ${
+                campaignType === 'medicare' 
+                  ? 'bg-white shadow-sm border border-gray-200 text-teal-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent'
+              }`}
+            >
+              Medicare (T65+)
+            </button>
+          </div>
+          
           <div className="flex items-stretch flex-1">
             <div className={`pl-6 pt-6 ${isTollLocked ? 'text-red-400' : 'text-indigo-500'}`}>
               {isTollLocked ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
