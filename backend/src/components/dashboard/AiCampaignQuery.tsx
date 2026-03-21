@@ -1,4 +1,4 @@
-import React, { useState, useEffect, usem 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, ArrowRight, Loader2, MapPin, Users, Target, Calendar, AlertCircle, FileSpreadsheet, X, Phone } from 'lucide-react';
 import { supabase } from '@/lib/supabase'; // Make sure Supabase is imported for Auth
 import PostMeetingROIModal from './PostMeetingROIModal';
