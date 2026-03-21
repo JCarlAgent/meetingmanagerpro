@@ -58,34 +58,31 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           // Remove things like "(e.g., ...)" which AI sometimes outputs, and convert " - " to ", " for better geocoding
           const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
           
-          await new Promise<void>((resolve) => {
-            let isResolved = false;
-
-            geocoder.geocode({ address: cleanName }, (results, status) => {
-              if (isResolved) return;
-              isResolved = true;
-              console.log('Geocoding status for', cleanName, ':', status);
-              if (status === 'OK' && results && results.length > 0) {
-                const geom = results[0].geometry.location;
-                newMarkers.push({
-                  name: cleanName,
-                  position: { lat: geom.lat(), lng: geom.lng() }
-                });
-              } else {
-                 console.error('Geocoding failed for', cleanName, 'Status:', status);
-                 errorStatuses.push(status || 'UNKNOWN');
-              }
-              resolve();
-            });
+          try {
+            // Modern Promise-based Geocoder approach without callbacks
+            const response = await geocoder.geocode({ address: cleanName });
             
-            // Failsafe timeout to prevent infinite hanging if Geocoder never fires callback
-            setTimeout(() => {
-              if (isResolved) return;
-              isResolved = true;
-              errorStatuses.push('TIMEOUT_3S');
-              resolve();
-            }, 3000);
-          });
+            if (response.results && response.results.length > 0) {
+              const geom = response.results[0].geometry.location;
+              newMarkers.push({
+                name: cleanName,
+                position: { lat: geom.lat(), lng: geom.lng() }
+              });
+            } else {
+              errorStatuses.push('ZERO_RESULTS');
+            }
+          } catch (geoError: any) {
+            console.error('Geocoding promise failed for', cleanName, ':', geoError);
+            
+            // Extract the Google Maps SDK error code (e.g. "REQUEST_DENIED")
+            let code = 'NETWORK_ERROR';
+            if (geoError && geoError.code) {
+              code = geoError.code; 
+            } else if (geoError && geoError.name === 'MapsRequestError') {
+              code = 'MAPS_REQUEST_ERROR'; // Usually indicates adblocker or restricted key
+            }
+            errorStatuses.push(code);
+          }
         }
 
         if (newMarkers.length > 0) {
