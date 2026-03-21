@@ -85,6 +85,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
               code = geoError.code; 
             } else if (geoError && geoError.name === 'MapsRequestError') {
               code = 'MAPS_REQUEST_ERROR'; // Usually indicates adblocker or restricted key
+            } else if (geoError && geoError.message) {
+              code = geoError.message; // Will catch the "TIMEOUT_3S" or any other readable message
             }
             errorStatuses.push(code);
           }
