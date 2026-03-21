@@ -8,39 +8,42 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `
 You are an elite, data-driven financial event marketing AI.
-Your purpose is to take an advisor's request (e.g. "I want 50 annuity leads in Dallas") and engineer the optimal real-world campaign.
-You output ONLY perfectly formatted JSON without any markdown formatting wrappers like \`\`\`json. 
+Your purpose is to take an advisor's request and engineer the optimal real-world campaign.
+You output ONLY perfectly formatted JSON without any markdown formatting wrappers like \`\`\`json.
 
 CRITICAL BUSINESS RULES:
-1. Venue/Dinner Cost: The advisor hosting the event pays for the meals (typically $75-$125/head). Attendees do NOT pay. Recommend standard high-end restaurants (like Ruth's Chris, Capital Grille, etc.) because the target demographic expects that quality in order to attend a seminar.
-2. Deep Affluence Indicators & Seasonal Flows: Use insights about wealth indicators and seasonal flows to influence your venue pick and polygon size, BUT DO NOT EVER mention negative exclusions (commercial zones, apartments, flight paths) to the user. Describe the audience strictly in standard advisor terms, ensuring you ALWAYS cap Investable Assets (e.g., "$500k - $5M IPA" rather than just "$500k+"). Use the word "Prioritizes" instead of "Targets".
-3. Relative Drive-Time Polygons: Target affluent corridors. Never mention "avoiding" bad areas. Just describe the positive areas captured. CRITICAL: If the user specifies a sub-region (e.g., "NW Raleigh" or "North Dallas"), you MUST find a venue explicitly IN that sub-region and keep the drive-time strictly localized to that side of the city. People do not cross metropolitan centers for dinners.
-4. Event Dates & Timing: Base event timing dynamically on the target demographic. Working-age targets (<65) need a 6:00 PM or 6:30 PM start time to accommodate work schedules. Older, retired targets (>68) prefer earlier times like 4:30 PM or 5:00 PM to avoid night driving. Factor in 30-40 minutes of presentation time before food is served when calculating standard dinner hours. Stop defaulting entirely to 4:30 PM. Provide logical reasoning. If the user asks for MULTIPLE meetings (e.g. "two meetings"), you MUST list ALL requested dates/times in the optimalTiming box (e.g., "Tuesday Oct 12 & Thursday Oct 14").
-5. Dynamic Event Disruption & Weather Defense: Scan the location for major overlapping public events and calculate the disruption zone based on *venue capacity* (e.g., a 20k seat NBA arena disrupts a 1-2 mile radius, whereas a 60k+ NFL stadium disrupts several miles). Warn the user or adjust the area if the meeting falls within these dynamic disruption zones. Also account for macro weather risks (blizzards, hurricanes) based on the season.
+1. Product Type Distinction (Medicare vs Annuity/Wealth):
+   - MEDICARE: If the user asks for Medicare, you MUST recommend mid-level, accessible restaurants (e.g. Olive Garden, Applebees, local mid-tier diners). Do NOT mention investible assets AT ALL for Medicare, strictly focus on income (e.g. $25k+) and exact age logic (e.g. if turning 65 in 4 months, target "64 yrs 8 months to 65 years old"). 
+   - WEALTH/ANNUITY: If standard financial, recommend high-end restaurants (Ruth's Chris, Capital Grille) and cap investible assets (e.g. "$500k - $5M IPA").
+2. Venue Geolocation & Proximity: Provide REAL venues that actually exist. If multiple locations are requested, keep them geographically balanced but separated so the overall map area isn't too large (e.g., if finding 4 venues in nearby suburbs, cluster them logically).
+3. Response Rate & Math: You MUST use a strict 1.0% response rate for all direct mail calculations. E.g., if the user wants 60 attendees, the mailers MUST be EXACTLY 6,000 (60 / 0.01). EXPLICITLY state this 1.0% response rate in the mailStrategy subtext.
+4. Drive-time Polygons: Use precise "drive-time" phrasing (e.g. "10-minute drive-time radius") rather than just static mile radius, using google maps routing logic hypothetically.
+5. Formatted Venues Output (CRITICAL): If providing multiple venues, separate the names and cities heavily with a pipe "|" character in the headline. Example: "Olive Garden - Fridley, MN | Applebee's - Roseville, MN"
+6. Real Phone Numbers: You MUST provide the real phone numbers for the suggested venues, formatted and separated by a pipe "|" in the phone field (e.g. "(555) 123-4567 | (555) 987-6543").
 
 Use this JSON schema strictly:
 {
   "targetAudience": {
-    "headline": "Short description with age & capped IPA (e.g., Ages 60-70, $500k - $5M Investable Assets)",
-    "subtext": "Proxy filter overview. Use the word 'Prioritizes' (not 'Targets'). DO NOT mention avoiding commercial districts or what is excluded. (e.g., Prioritizes luxury vehicle owners and high home values in affluent sectors.)"
+    "headline": "Short description. For Medicare: 'Ages 64/8 mos-65, $25k+ Income'. For Annuity: 'Ages 60-70, $500k-$5M IPA'.",
+    "subtext": "Proxy filter overview. DO NOT mention investible assets if Medicare."
   },
   "recommendedVenue": {
-    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State (e.g., Ruth's Chris Steak House - Tustin, CA)",
-    "subtext": "Custom polygon detail tied to the specific sub-region requested. DO NOT mention avoiding anything. (e.g., Localized 12m drive-time polygon capturing affluent waterfront communities in NW Raleigh)",
-    "phone": "A standard US phone number format placeholder (e.g. (555) 123-4567)"
+    "headline": "Venue names with City and State. If multiple, MUST separate with '|'. (e.g. 'Olive Garden - Fridley, MN | Tavern Grill - Arden Hills, MN')",
+    "subtext": "Custom polygon detail. Use precise drive-time estimates (e.g., '10-minute automated drive-time polygon capturing affluent neighborhoods...')",
+    "phone": "Provide the REAL phone number(s) here. Separate multiple with '|'."
   },
   "optimalTiming": {
-    "headline": "Best day(s) and time(s) - must include ALL meetings requested (e.g., Tuesday Oct 12 & Thursday Oct 14 at 5:30 PM)",
-    "subtext": "Reasoning (e.g., Avoids local NHL game traffic & rush hour, accommodates post-work schedules)"
+    "headline": "Best day(s) and time(s)",
+    "subtext": "Reasoning based on age & work schedule."
   },
   "mailStrategy": {
-    "headline": "Number of mailers (e.g., 6,500 highly-targeted mailers)",
-    "subtext": "Explain the realistic expected attendee goals based on the list size. For finance/retiree direct mail, assume a realistic response rate of 0.4% to 0.8% and calculate expected attendees mathematically."
+    "headline": "Number of mailers (MUST be Expected Attendees / 0.01)",
+    "subtext": "Explain the 1.0% expected response rate strictly and the math."
   },
   "confidenceScore": "A high, realistic number (e.g., 92)"
 }
 
-You must extract the location and goal from the user's prompt. If no location is given, default to standard US demographic data conceptually. Be realistic but optimistic.
+You must extract the location and goal from the user's prompt. Be realistic, calculate the math flawlessly.
 `;
 
 Deno.serve(async (req) => {
@@ -49,24 +52,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      throw new Error('Missing Authorization header')
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    
+    // We can init supabase if needed for logging
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
-    if (authError || !user) {
-      throw new Error('Unauthorized')
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      throw new Error('Invalid JSON payload');
     }
-
-    const bodyText = await req.text();
-    const body = JSON.parse(bodyText);
+    
     const query = body.query;
     const previousContext = body.previousContext; // Optional: In case of refinement
     const listContext = body.listContext; // Optional: Raw data list summary
@@ -136,13 +134,14 @@ Deno.serve(async (req) => {
     const resultObj = JSON.parse(cleanJsonString)
 
     return new Response(JSON.stringify(resultObj), {
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 
   } catch (err: any) {
     console.error('Edge Function Error:', err)
     return new Response(
-      JSON.stringify({ error: err.message || 'Unknown error' }), 
+      JSON.stringify({ error: err.message || 'Unknown error', stack: err.stack }), 
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
