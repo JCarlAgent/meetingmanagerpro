@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
       inputFullText = `Here is the previous campaign JSON we generated:\n${JSON.stringify(previousContext, null, 2)}\n\nThe user wants to REFINE it. Here is their new request/adjustment: "${query}"\n\nModify the JSON to reflect these changes while keeping it realistic, and return ONLY the new JSON.`;
     }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

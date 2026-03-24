@@ -19,7 +19,7 @@ interface AiCampaignQueryProps {
 
 export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryProps = {}) {
   const [query, setQuery] = useState('');
-  const [campaignType, setCampaignType] = useState<'' | 'financial' | 'medicare'>('');
+  const [campaignType, setCampaignType] = useState<'' | 'financial' | 'medicare' | 'mailer'>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<AiProposal | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -220,6 +220,17 @@ export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryPro
               }`}
             >
               Medicare (T65+)
+            </button>
+            <button
+              type="button"
+              onClick={() => setCampaignType('mailer')}
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all duration-200 ${
+                campaignType === 'mailer' 
+                  ? 'bg-white shadow-sm border border-gray-200 text-blue-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent'
+              }`}
+            >
+              Mailer Only
             </button>
           </div>
           
