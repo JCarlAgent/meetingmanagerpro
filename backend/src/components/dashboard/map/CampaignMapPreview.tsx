@@ -60,17 +60,13 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           await new Promise(r => setTimeout(r, 100));
         }
         setVenues(newVenues);
-        if (newVenues.length === 0 && venueNames.length > 0) {
-            setErrorMsg("Could not pinpoint locations.");
-        }
-      } catch (err: any) {
+      } catch (err) {
         console.error(err);
-        setErrorMsg(err.message);
+        setErrorMsg("Failed to load map data.");
       } finally {
         setLoading(false);
       }
     }
-
     fetchData();
   }, [venueHeadline]);
 
@@ -87,11 +83,19 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
     );
   }
 
-  if (errorMsg || venues.le  if (err0)  if (errorMsg || venues.le  if (err0)  if (errorMsg || venues.le  if (err0) nt  if (errorMsg || venues.le  if (err0)  if (errorMsged-xl border  if (errorMsg || venues.le MapPin className="w-8 h-8 mb-2 text-gray-400" />
-        <p class        <p class        <p class        <p class         Visualizati        <p class        <          <p class        <p-c        <p class        <p classs">{errorMsg || "Vir        <p class        <s.   /p>
-      </      </      }
+  if (errorMsg || venues.length === 0) {
+    return (
+      <div className="w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200">
+        <MapPin className="w-8 h-8 mb-2 text-gray-400" />
+        <p className="text-gray-600 font-medium">{errorMsg || "No map data available."}</p>
+      </div>
+    );
+  }
 
-  const minLng = Math.mi  const minLng = Math.mi  const minLng = Math.mi  const minLng = Math.mi  const minLng = Math.mi  const m.m  const minLng = v => v.  const minLng maxLat = Math.max(...venues.map(v => v.lat));
+  const minLng = Math.min(...venues.map(v => v.lng));
+  const maxLng = Math.max(...venues.map(v => v.lng));
+  const minLat = Math.min(...venues.map(v => v.lat));
+  const maxLat = Math.max(...venues.map(v => v.lat));
 
   const lngDiff = maxLng - minLng;
   const latDiff = maxLat - minLat;
@@ -102,23 +106,79 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
   if (maxDiff > 0.5) zoom = 9;
   if (maxDiff > 1) zoom = 8;
   if (maxDiff > 2) zoom = 6;
-  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if2,  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDiff < 0.05)  if (maxDi<Sou  if (maxDiff < 0.05) a={venue.isochrone}>
+  if (maxDiff < 0.05) zoom = 12; // zoom in more for tight clusters
+
+  return (
+    <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 relative shadow-sm">
+      <Map
+        mapboxAccessToken={MAPBOX_TOKEN}
+        initialViewState={{
+          longitude: (minLng + maxLng) / 2,
+          latitude: (minLat + maxLat) / 2,
+          zoom: zoom
+        }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle="mapbox://styles/mapbox/light-v11"
+      >
+        {venues.map((venue, idx) => (
+          <React.Fragment key={idx}>
+            <Source id={`isochrone-source-${idx}`} type="geojson" data={venue.isochrone}>
               <Layer
                 id={`isochrone-fill-${idx}`}
                 type="fill"
                 paint={{
                   'fill-color': '#4f46e5',
-                  'fill-opacity': 0.2
+                  'fill-opacity': 0.15
                 }}
               />
               <Layer
-                                                                  "l                                                'line-color': '#4f46e5',
+                id={`isochrone-line-${idx}`}
+                type="line"
+                paint={{
+                  'line-color': '#4f46e5',
                   'line-width': 2,
-                  'line-opacity': 0.6
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       ',                   'circle-stroke-width': 3,
-                  'circle-stroke-color': '#ffffff                  'circ                    'circle-stroke-color':     </React.Fragment>
+                  'line-opacity': 0.5
+                }}
+              />
+            </Source>
+            
+            <Source id={`venue-point-${idx}`} type="geojson" data={{
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Point',
+                coordinates: [venue.lng, venue.lat]
+              }
+            }}>
+              <Layer
+                id={`venue-circle-${idx}`}
+                type="circle"
+                paint={{
+                  'circle-radius': 8,
+                  'circle-color': '#ef4444',
+                  'circle-stroke-width': 2,
+                  'circle-stroke-color': '#ffffff'
+                }}
+              />
+            </Source>
+          </React.Fragment>
         ))}
-                     iv className="absolute top-4 left-4 right-                     iv className="absolute top-4 left-4 right-                     iv className="absolute top-4 left-4 right-             -3                     iv classNarder                     iv className="am                      iv className="absolute top-4 left-4 right-                     iv className="absolute top-4 left-4 right-                     iv className="absolute top-4 left-4 right-             -3                     iv classNarder                     iv className="am                      iv className="absolute top-4 left-4 right-                     iv className="absolute top-4 left-4 right-                     iv className="absolute top-4 left-4 right-             -3                     iv classNarder                     iv className="am                      iv className=-3 bg-indigo-500 rounded border border-white/50 mr-2 opacity-60"></div>
+      </Map>
+
+      <div className="absolute top-4 left-4 right-4 pointer-events-none flex flex-col gap-2">
+         {polygonDescription && (
+            <div className="bg-white/90 backdrop-blur px-4 py-3 rounded-lg shadow-sm border border-gray-100 max-w-lg pointer-events-auto">
+               <h4 className="text-sm font-semibold text-indigo-900 mb-1 flex items-center">
+                  <MapPin className="w-4 h-4 mr-2 text-indigo-500" />
+                  Visualizing Coverage Areas
+               </h4>
+               <p className="text-sm text-gray-600 leading-snug">
+                  {polygonDescription}
+               </p>
+            </div>
+         )}
+         <div className="bg-indigo-600/90 backdrop-blur px-3 py-1.5 rounded-md shadow-sm self-start border border-indigo-500 pointer-events-auto text-xs text-white font-medium flex items-center">
+            <div className="w-3 h-3 bg-indigo-500 rounded border border-white/50 mr-2 opacity-60"></div>
             10-Minute Drive Isochrone
          </div>
       </div>
