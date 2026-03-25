@@ -1,0 +1,31 @@
+
+> vite_react_shadcn_ts@0.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 1773 modules transformed.
+x Build failed in 12.94s
+error during build:
+[vite:esbuild] Transform failed with 1 error:
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/map/CampaignMapPreview.tsx:42:38: ERROR: Syntax error "`"
+file: /Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/map/CampaignMapPreview.tsx:42:38
+
+Syntax error "`"
+40 |            
+41 |            // 1. Geocode
+42 |            const geoRes = await fetch(\`https://api.mapbox.com/geocoding/v5/mapbox.places/\${encodeURICom          const geoRes = await fetch(\`https://api.mapbox.com/geocoding/vlimit=1\`);
+   |                                        ^
+43 |            const geoData = await geoRes.json();
+44 |            if (!geoData.features ||          if (!geoData.features ||                  
+
+    at failureErrorWithLog (/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/node_modules/esbuild/lib/main.js:1472:15)
+    at /Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/node_modules/esbuild/lib/main.js:755:50
+    at responseCallbacks.<computed> (/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/node_modules/esbuild/lib/main.js:622:9)
+    at handleIncomingPacket (/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/node_modules/esbuild/lib/main.js:677:12)
+    at Socket.readFromStdout (/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/node_modules/esbuild/lib/main.js:600:7)
+    at Socket.emit (node:events:524:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)

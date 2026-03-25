@@ -1,0 +1,400 @@
+
+> vite_react_shadcn_ts@0.0.0 lint
+> eslint .
+
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/_lib/supabaseAdmin.ts
+  22:56  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  39:54  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/addMember.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   22:23  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   63:32  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   90:28  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  112:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  112:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  126:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  217:24  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  231:17  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  238:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/create.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   22:23  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   35:40  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   60:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   60:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   77:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  120:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/delete.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   46:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   46:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   66:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  106:18  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  115:17  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  135:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/members.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   57:19  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   57:58  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   60:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   77:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   84:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   84:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   99:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  143:16  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  162:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/setMemberName.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   57:19  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   57:58  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   60:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   75:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   82:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   82:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   97:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  141:40  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  147:21  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  166:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/syncProfiles.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   57:19  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   57:58  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   60:33  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   77:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   92:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   99:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   99:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  114:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  145:60  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  160:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  162:45  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  163:37  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  167:21  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  173:23  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  198:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/admin/orgs/transferMember.ts
+    3:20  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    3:47  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+    9:25  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   22:23  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   26:40  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   67:44  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   67:54  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+   85:15  error    Unexpected any. Specify a different type                                       @typescript-eslint/no-explicit-any
+  182:5   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/ai/optimize.ts
+  85:28  error  Parsing error: Invalid character
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/engine/responseCalculator.ts
+  28:9  error  'finalRate' is never reassigned. Use 'const' instead  prefer-const
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/integrations/workthelead/credentials.ts
+   4:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   4:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  10:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  10:54  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:16  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  74:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/integrations/workthelead/test.ts
+   4:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   4:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:54  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  76:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/notifications/expensesExport.ts
+   91:29   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   99:40   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  106:33   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  135:58   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  140:124  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  142:130  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/api/notifications/setupComplete.ts
+   79:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   79:76  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   79:93  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   80:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   80:49  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   81:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   81:48  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   82:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   82:57  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:49  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   84:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   84:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  174:80  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/AdminUsersView.tsx
+  129:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  547:96  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/AdvisorHomeView.tsx
+  227:25  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  229:46  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  243:38  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  247:34  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  325:54  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  358:34  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  363:46  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  386:6   warning  React Hook useCallback has a missing dependency: 'isIndependent'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  407:28  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  413:32  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  523:28  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  528:27  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  556:82  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  561:27  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  615:28  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  620:29  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  692:34  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  695:20  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  695:51  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  696:69  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+  797:27  error    Unexpected any. Specify a different type                                                                            @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/AiCampaignQuery.tsx
+   30:54  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   39:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   75:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   75:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  148:22  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  175:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/CSVUpload.tsx
+   26:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   50:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  104:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  307:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/ClientDashboard.tsx
+  110:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  125:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  195:75  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/Dashboard.tsx
+  105:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  157:22  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  230:93  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/DeliveryTracking.tsx
+  42:6  warning  React Hook useEffect has a missing dependency: 'fetchTrackingData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/DemographicsUploadView.tsx
+  122:3  error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  127:3  error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  139:3  error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/EventDetailView.tsx
+  166:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/EventsView.tsx
+  75:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/FmoHomeView.tsx
+   135:26  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   223:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   234:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   244:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   249:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   256:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   262:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   289:75  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   303:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   323:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   461:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   468:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   522:61  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   595:61  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   674:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   677:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   682:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   712:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   712:80  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   758:22  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   768:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   777:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   789:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   794:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1085:77  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/HomeView.tsx
+  49:25  error  Unsafe usage of ReturnStatement  no-unsafe-finally
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/MailingsReportView.tsx
+  112:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  117:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  121:22  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render    react-hooks/rules-of-hooks
+  178:23  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render    react-hooks/rules-of-hooks
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/MasterClientsView.tsx
+   70:40   error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  191:28   error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  194:11   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  199:19   error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  208:5    warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  329:73   error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  347:67   error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  359:122  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/MasterOrganizationsView.tsx
+   40:20  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+   41:19  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+   82:40  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  190:9   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  195:9   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  204:30  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  205:31  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  213:28  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  216:11  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  222:64  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  313:61  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  362:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  488:61  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  535:61  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  591:61  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+  765:70  error    Unexpected any. Specify a different type                                                        @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/MeetingSetupView.tsx
+   26:27  error  Unexpected any. Specify a different type                                                                                                                                                   @typescript-eslint/no-explicit-any
+  146:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  197:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  217:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  226:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  230:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  240:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  245:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  298:32  error  Unexpected any. Specify a different type                                                                                                                                                   @typescript-eslint/no-explicit-any
+  320:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  326:3   error  React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render                                                               react-hooks/rules-of-hooks
+  342:60  error  Unexpected any. Specify a different type                                                                                                                                                   @typescript-eslint/no-explicit-any
+  343:26  error  Unexpected any. Specify a different type                                                                                                                                                   @typescript-eslint/no-explicit-any
+  350:45  error  Unexpected any. Specify a different type                                                                                                                                                   @typescript-eslint/no-explicit-any
+  589:28  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+  594:31  error  React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/NewCampaignModal.tsx
+  20:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/OrgMeetingsView.tsx
+  118:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/PostMeetingROIModal.tsx
+  58:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/ReportsView.tsx
+  27:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  27:52  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:74  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  61:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/ResponderList.tsx
+  112:58  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/RespondersView.tsx
+  164:62  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/Sidebar.tsx
+   44:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   44:61  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   45:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   45:62  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   78:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:51  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   92:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   93:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  108:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/TemplateManagerView.tsx
+   39:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   39:74  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   41:67  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   41:98  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   98:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  149:32  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  165:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  185:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  229:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  262:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  262:93  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  297:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  321:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  365:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/TemplatesView.tsx
+   26:74   error    Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   26:105  error    Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   51:32   error    Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   68:19   error    Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   78:6    warning  React Hook useEffect has a missing dependency: 'fetchTemplates'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  125:60   error    Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/WeatherAlertWidget.tsx
+  41:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/dashboard/map/CampaignMapPreview.tsx
+   79:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  115:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/theme-provider.tsx
+  63:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/badge.tsx
+  48:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/button.tsx
+  56:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/form.tsx
+  168:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/navigation-menu.tsx
+  119:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/sidebar.tsx
+  733:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/sonner.tsx
+  31:19  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/components/ui/toggle.tsx
+  45:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/contexts/AppContext.tsx
+  17:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/contexts/AuthContext.tsx
+   33:38  error    Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   34:36  error    Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   35:47  error    Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  192:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/Users/jack/Desktop/Documents/CURRENT WORK/Goals/2025/MeetingsManagerPRO/backend/src/lib/supabase.ts
+  7:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 288 problems (262 errors, 26 warnings)
+  1 error and 13 warnings potentially fixable with the `--fix` option.
+
