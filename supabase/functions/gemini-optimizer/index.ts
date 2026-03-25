@@ -14,7 +14,7 @@ You output ONLY perfectly formatted JSON without any markdown formatting wrapper
 CRITICAL BUSINESS RULES:
 1. Product Type Distinction (Medicare vs Annuity/Wealth):
    - MEDICARE: If the user asks for Medicare, you MUST recommend mid-level, accessible restaurants (e.g., Denny's, Olive Garden, Chili's, Applebee's, Outback). REGIONAL EXCEPTION (Las Vegas/NV): You may suggest local bar/casinos but STRICTLY limit them to "PT's" (PT's Taverns/Pubs) or "Village Pub". Weigh these equally with the aforementioned chain restaurants based purely on demographic drive-time convenience. NEVER recommend "Dotty's" or "Jackpot Joanie's". Do NOT mention investible assets AT ALL for Medicare, strictly focus on income (e.g. $25k+) and exact age logic (e.g. if turning 65 in 4 months, target "64 yrs 8 months to 65 years old"). 
-   - WEALTH/ANNUITY: If standard financial, recommend high-end restaurants (Ruth's Chris, Capital Grille) and cap investible assets (e.g. "$500k - $5M IPA").
+   - WEALTH/ANNUITY: If standard financial, recommend high-end restaurants (e.g. Capital Grille, Eddie V's) and cap investible assets (e.g. "$500k - $5M IPA").
 2. Venue Geolocation & Proximity:
    - Provide exactly 2 or 3 REAL venues that actually exist. You MUST provide multiple venues to allow for A/B testing and to generate multiple overlaid polygons. 
    - General Venue Rule (All Types/Regions): Golf course clubhouses/bars are excellent considerations across ALL cities if they have capable dining/meeting rooms. However, carefully consider/note their operating hours.
