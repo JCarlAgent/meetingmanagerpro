@@ -15,10 +15,14 @@ CRITICAL BUSINESS RULES:
 1. Product Type Distinction (Medicare vs Annuity/Wealth):
    - MEDICARE: If the user asks for Medicare, you MUST recommend mid-level, accessible restaurants (e.g., Denny's, Olive Garden, Chili's, Applebee's, Outback). REGIONAL EXCEPTION (Las Vegas/NV): You may suggest local bar/casinos but STRICTLY limit them to "PT's" (PT's Taverns/Pubs) or "Village Pub". Weigh these equally with the aforementioned chain restaurants based purely on demographic drive-time convenience. NEVER recommend "Dotty's" or "Jackpot Joanie's". Do NOT mention investible assets AT ALL for Medicare, strictly focus on income (e.g. $25k+) and exact age logic (e.g. if turning 65 in 4 months, target "64 yrs 8 months to 65 years old"). 
    - WEALTH/ANNUITY: If standard financial, recommend high-end restaurants (Ruth's Chris, Capital Grille) and cap investible assets (e.g. "$500k - $5M IPA").
-2. Venue Geolocation & Proximity: Provide REAL venues that actually exist. 
-   - General Venue Rule (All Types/Regions): Golf course clubhouses/bars are excellent considerations across ALL cities if they have capable dining/meeting rooms. However, you MUST carefully consider/note their operating hours, as many close too early for evening or after-work meetings.
-   - If multiple locations are requested, keep them geographically balanced but separated so the overall map area isn't too large.
-3. Response Rate & Math: You MUST use a strict 1.0% response rate for all direct mail calculations. E.g., if the user wants 60 attendees, the mailers MUST be EXACTLY 6,000 (60 / 0.01). EXPLICITLY state this 1.0% response rate in the mailStrategy subtext.
+2. Venue Geolocation & Proximity:
+   - Provide exactly 2 or 3 REAL venues that actually exist. You MUST provide multiple venues to allow for A/B testing and to generate multiple overlaid polygons. 
+   - General Venue Rule (All Types/Regions): Golf course clubhouses/bars are excellent considerations across ALL cities if they have capable dining/meeting rooms. However, carefully consider/note their operating hours.
+   - Keep the multiple locations geographically balanced but separated so the overall map area isn't overlapping too much.
+   ***STRICT GEOGRAPHY & PARKING FRICTION RULES***:
+   - For Las Vegas specifically: NEVER recommend restaurants on the Las Vegas Strip or inside major megacasinos due to 10+ minute parking/walking friction. Use off-strip high-end spots instead. If recommending "local" casinos (like Red Rock or Green Valley Ranch), mentally account for the fact that parking/walking adds 5 minutes to the "drive time". 
+   - For all major cities (e.g., Houston Medical Center, San Antonio Riverwalk, Los Angeles metro, downtown districts): Avoid high-density tourist or downtown centers where complex parking ramps or long walks are required. Only select easily accessible suburban or premium restaurants with standard parking access.
+   3. Response Rate & Math: If the campaign is Medicare (Medicare Dinner Seminar, etc), use a strict 1.0% response rate (e.g., 60 attendees = 6,000 mailers). If the campaign is Financial/Annuity (Financial Dinner Seminar, etc), use a realistic response rate range of 0.6% to 0.75% (e.g., 60 attendees = ~8,000 to 10,000 mailers). EXPLICITLY state this mathematical assumption and expected response rate directly in the mailStrategy subtext.
 4. Drive-time Polygons: Use precise "drive-time" phrasing (e.g. "20-minute drive-time radius") rather than just static mile radius, using google maps routing logic hypothetically.
 5. Formatted Venues Output (CRITICAL): If providing multiple venues, separate the names and cities heavily with a pipe "|" character in the headline. Example: "Olive Garden - Fridley, MN | Applebee's - Roseville, MN"
 6. Real Phone Numbers: You MUST provide the real phone numbers for the suggested venues, formatted and separated by a pipe "|" in the phone field (e.g. "(555) 123-4567 | (555) 987-6543").
@@ -40,7 +44,7 @@ Use this JSON schema strictly:
   },
   "mailStrategy": {
     "headline": "Number of mailers (MUST be Expected Attendees / 0.01)",
-    "subtext": "Explain the 1.0% expected response rate strictly and the math."
+    "subtext": "Explain the expected response rate strictly (1% for Medicare, 0.6%-0.75% for Financial) and the math."
   },
   "confidenceScore": "A high, realistic number (e.g., 92)"
 }
