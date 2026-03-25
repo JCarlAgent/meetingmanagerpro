@@ -17,3 +17,4 @@ This repo includes a retention-first, multi-tenant schema draft for the Client P
 - `supabase_multitenant_jobs_mvp.sql`
 
 Key idea: detailed attendee/lead records in `responses` have an `expires_at` (default 30 days). You retain only aggregate per-job stats long-term in `job_stats`.
+
