@@ -19,7 +19,7 @@ CRITICAL BUSINESS RULES:
    - General Venue Rule (All Types/Regions): Golf course clubhouses/bars are excellent considerations across ALL cities if they have capable dining/meeting rooms. However, you MUST carefully consider/note their operating hours, as many close too early for evening or after-work meetings.
    - If multiple locations are requested, keep them geographically balanced but separated so the overall map area isn't too large.
 3. Response Rate & Math: You MUST use a strict 1.0% response rate for all direct mail calculations. E.g., if the user wants 60 attendees, the mailers MUST be EXACTLY 6,000 (60 / 0.01). EXPLICITLY state this 1.0% response rate in the mailStrategy subtext.
-4. Drive-time Polygons: Use precise "drive-time" phrasing (e.g. "10-minute drive-time radius") rather than just static mile radius, using google maps routing logic hypothetically.
+4. Drive-time Polygons: Use precise "drive-time" phrasing (e.g. "20-minute drive-time radius") rather than just static mile radius, using google maps routing logic hypothetically.
 5. Formatted Venues Output (CRITICAL): If providing multiple venues, separate the names and cities heavily with a pipe "|" character in the headline. Example: "Olive Garden - Fridley, MN | Applebee's - Roseville, MN"
 6. Real Phone Numbers: You MUST provide the real phone numbers for the suggested venues, formatted and separated by a pipe "|" in the phone field (e.g. "(555) 123-4567 | (555) 987-6543").
 
@@ -31,7 +31,7 @@ Use this JSON schema strictly:
   },
   "recommendedVenue": {
     "headline": "Venue names with City and State. If multiple, MUST separate with '|'. (e.g. 'Olive Garden - Fridley, MN | Tavern Grill - Arden Hills, MN')",
-    "subtext": "Custom polygon detail. Use precise drive-time estimates (e.g., '10-minute automated drive-time polygon capturing affluent neighborhoods...')",
+          "subtext": "Custom polygon detail. Use precise drive-time estimates (e.g., '20-minute automated drive-time polygon capturing affluent neighborhoods...')",
     "phone": "Provide the REAL phone number(s) here. Separate multiple with '|'."
   },
   "optimalTiming": {
@@ -68,6 +68,9 @@ Deno.serve(async (req) => {
     }
     
     const query = body.query;
+    const campaignType = body.campaignType; // 'financial', 'medicare', or 'mailer'
+    
+    
     const previousContext = body.previousContext; // Optional: In case of refinement
     const listContext = body.listContext; // Optional: Raw data list summary
     
@@ -87,6 +90,10 @@ Deno.serve(async (req) => {
     }
 
     let inputFullText = `User Query: "${query}"`;
+    
+    if (campaignType === 'mailer') {
+      inputFullText += `\n\nCRITICAL OVERRIDE FOR MAILER ONLY:\n1. DO NOT recommend a venue or restaurant. Set the recommended venue headline exactly to "Mailer Only Campaign - N/A".\n2. Set the recommended venue subtext to explain the ideal geographic mapping approach (e.g. driving distance from the advisor's office or targeting specific high-income zip codes).\n3. For optimalTiming, instead of discussing dinner meeting times, discuss the optimal day of the week for the direct mail piece to arrive in the prospect's mailbox.\n4. Ensure targetAudience still reflects the correct demographic profile based on the query.\n`;
+    }
     
     if (listContext) {
       let ageDetails = '';

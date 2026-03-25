@@ -45,8 +45,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           
           const [lng, lat] = geoData.features[0].center;
 
-          // 2. Isochrone (10 min drive)
-          const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving/${lng},${lat}?contours_minutes=10&polygons=true&access_token=${MAPBOX_TOKEN}`);
+          // 2. Isochrone (20 min drive)
+          const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving/${lng},${lat}?contours_minutes=20&polygons=true&access_token=${MAPBOX_TOKEN}`);
           const isoData = await isoRes.json();
 
           newVenues.push({
@@ -106,7 +106,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
   if (maxDiff > 0.5) zoom = 9;
   if (maxDiff > 1) zoom = 8;
   if (maxDiff > 2) zoom = 6;
-  if (maxDiff < 0.05) zoom = 12; // zoom in more for tight clusters
+  if (maxDiff < 0.05) zoom = 10; // Zoomed out slightly to show full 20 min drive polygon
 
   return (
     <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 relative shadow-sm">
@@ -118,7 +118,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           zoom: zoom
         }}
         style={{ width: '100%', height: '100%' }}
-        mapStyle="mapbox://styles/mapbox/light-v11"
+        mapStyle="mapbox://styles/mapbox/streets-v12"
       >
         {venues.map((venue, idx) => (
           <React.Fragment key={idx}>
@@ -179,7 +179,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
          )}
          <div className="bg-indigo-600/90 backdrop-blur px-3 py-1.5 rounded-md shadow-sm self-start border border-indigo-500 pointer-events-auto text-xs text-white font-medium flex items-center">
             <div className="w-3 h-3 bg-indigo-500 rounded border border-white/50 mr-2 opacity-60"></div>
-            10-Minute Drive Isochrone
+            20-Minute Drive Isochrone
          </div>
       </div>
     </div>
