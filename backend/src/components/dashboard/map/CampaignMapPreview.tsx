@@ -76,11 +76,11 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
               const res = await fetch(supaUrl + '/functions/v1/extract-zip-codes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + supaKey },
-                body: JSON.stringify({ geojson: combinedGeoJSON })
+                body: JSON.stringify({ isochroneGeojson: combinedGeoJSON })
               });
               if (res.ok) {
                 const data = await res.json();
-                if (data && data.zipCodes) setExtractedZips(data.zipCodes);
+                if (data && data.zip_codes) setExtractedZips(data.zip_codes);
               }
             }
           } catch(e) { 
