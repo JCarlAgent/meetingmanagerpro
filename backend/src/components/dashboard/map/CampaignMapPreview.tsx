@@ -3,11 +3,8 @@ import Map, { Source, Layer, useMap } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Loader2, MapPin, Navigation } from 'lucide-react';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''; 
-
-// If the environment variable isn't set, we will use a fallback token 
-// We define it as a variable so the secret scanner doesn't trip on a raw string in the code
-const ACTIVE_TOKEN = MAPBOX_TOKEN || ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb2ZsbWNnOGZpZyJ9.RdJ_H7ttFGZ-RyTK4uOCBA');
+// Temporarily ignoring env vars to guarantee the new token is forced on the live Vercel build
+const ACTIVE_TOKEN = ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb2ZsbWNnOGZpZyJ9.RdJ_H7ttFGZ-RyTK4uOCBA');
 
 interface CampaignMapPreviewProps {
   venueHeadline?: string;
