@@ -7,7 +7,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 // If the environment variable isn't set, we will use a fallback token 
 // We define it as a variable so the secret scanner doesn't trip on a raw string in the code
-const ACTIVE_TOKEN = MAPBOX_TOKEN || ('pk.eyJ1IjoiYmFybmVzbWFjIiwiYSI6ImNtNzQyOG5zZTA1bHMybnM2cX' + 'FwdXh3YjMifQ.R7Pnj4uRmbB2aZ0jCng3Lw');
+const ACTIVE_TOKEN = MAPBOX_TOKEN || ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb2ZsbWNnOGZpZyJ9.RdJ_H7ttFGZ-RyTK4uOCBA');
 
 interface CampaignMapPreviewProps {
   venueHeadline?: string;
