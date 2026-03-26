@@ -42,7 +42,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         setExtractedZips([]);
 
         // Support splitting multiple venues strictly by | to avoid splitting restaurant names that contain " & " (e.g. "Echo & Rig")
-        const locNames = venueHeadline.split('|').map(s => s.trim()).filter(Boolean);
+        const locNames = venueHeadline.split(/\|/).map(s => s.trim()).filter(Boolean);
         const newVenues: VenueData[] = [];
 
         for (const locName of locNames) {
@@ -51,6 +51,10 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           const geoRes = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanName)}.json?access_token=${ACTIVE_TOKEN}&autocomplete=false&limit=1&country=us&_cb=${Date.now()}`);
           const geoData = await geoRes.json();
 
+          if (!geoData.features || geoData.features.length === 0) {
+            console.error("Mapbox returned no features for:", cleanName);
+            setErrorMsg("No physical location found for: " + cleanName);
+          }
           if (geoData.features && geoData.features.length > 0) {
             const [lng, lat] = geoData.features[0].center;
 
@@ -94,7 +98,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         }
       } catch (err) {
         console.error("Geocoding error:", err);
-        setErrorMsg("Failed to load map data.");
+        setErrorMsg("Failed to load map data: " + err.message);
       } finally {
         setLoading(false);
       }
@@ -116,6 +120,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
   }
 
   if (errorMsg || venues.length === 0) {
+    console.log("Map rendering failed: errorMsg=", errorMsg, "venues.length=", venues.length);
     return (
       <div className="w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200">
         <MapPin className="w-8 h-8 mb-2 text-gray-400" />
