@@ -61,6 +61,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
             // Sanity check: filter out hallucinations that Mapbox accidentally geocodes to other continents (e.g. Africa/Europe)
             if (lat < 15 || lat > 72 || lng < -180 || lng > -50) {
               console.warn(`Venue "${cleanName}" geocoded to [${lng}, ${lat}] which isn't in North America. Skipping.`);
+              setErrorMsg("Geocoded outside US: " + cleanName + " [" + lng + ", " + lat + "]");
               continue;
             }
 
@@ -70,6 +71,9 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
 
             if (isoData.features) {
               newVenues.push({ name: cleanName, lng, lat, isochrone: isoData });
+            } else {
+              console.error("Isochrone failed:", isoData);
+              setErrorMsg("Routing failed for: " + cleanName + " (Mapbox Error: " + (isoData.message || "Unknown") + ")");
             }
           }
         }
@@ -124,7 +128,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
     return (
       <div className="w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200">
         <MapPin className="w-8 h-8 mb-2 text-gray-400" />
-        <p className="text-gray-600 font-medium">{errorMsg || "No map data available."}</p>
+        <p className="text-gray-600 font-medium">{errorMsg || "No map data available. (Prompt: " + venueHeadline + ")" }</p>
       </div>
     );
   }
