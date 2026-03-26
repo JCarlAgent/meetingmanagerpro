@@ -19,57 +19,48 @@ interface VenueData {
 
 export default function CampaignMapPreview({ venueHeadline, polygonDescription }: CampaignMapPreviewProps) {
   const [venues, setVenues] = useState<VenueData[]>([]);
-  const [extractedZips, setExtractedZips] = useState<string[]>([]);
-  const [isExtracting, setIsExtracting] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
-      if (!venueHeadline || venueHeadline.includes("N/A") || venueHeadline.toLowerCase().includes("mailer")) {      if (!venueHeadline || venueHeadline.includes}
-      if (!venueHeadline || venueHeadline.includes("N/A"etExtractedZips([]);
-      
+      // Don't try to map "mailer only" descriptions
+      if (!venueHeadline || venueHeadline.includes("N/A") || venueHeadline.toLowerCase().includes("mailer")) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setErrorMsg(null);
       try {
         const venueNames = venueHeadline.split('|').map(v => v.trim()).filter(Boolean);
         const newVenues: VenueData[] = [];
 
         for (const locName of venueNames) {
-          const cleanName = locN          const clea..          consep          con/,          con;
+          const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
           
-                                                                                                                     e)                                                       limit=1`);
+          // 1. Geocode
+          const geoRes = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanName)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=false&limit=1`);
           const geoData = await geoRes.json();
-          if          if          if          if          if          if                  if          if          if     ta.features[0].center;
+          if (!geoData.features || geoData.features.length === 0) continue;
+          
+          const [lng, lat] = geoData.features[0].center;
 
-          const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/${lng          const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/${lng          const isoRes = await fetch(`https://api.mapbox.   name: cleanName,
+          // 2. Isochrone (20 min drive)
+          const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving/${lng},${lat}?contours_minutes=20&polygons=true&access_token=${MAPBOX_TOKEN}`);
+          const isoData = await isoRes.json();
+
+          newVenues.push({
+            name: cleanName,
             lng,
             lat,
-            isochrone: iso               });
-            isochrone: iso               });
-/api.mapbox.com/isochrone/v1/mapbox/driv   /api.mapbox.com/isochrone/v1/mapbox/driv s);/api.mapbox.com/isochrone/v1/mapbox/driv  if (newVenues.length > 0) {
-          setIsExtracting(true);
-          try {
-            const combine         =             const combine         =             const combine         =             const combine         =             const combine         =             const combine         =    en            const combine         =         zytxaqaz.supabase.co';
-            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-            
-            const zipRes = await fetch(supabaseUrl + '/functions/v1/extract-zip-codes', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${supabaseAnonKey}`
-                },
-                body:                { geojson: combinedGeoJSON })
-            });
-            
-            if (zipRes.ok) {
-              const zipData = await zipRes.json();
-              if (zipData && zipData.zipCodes) setExtractedZips(zipData.zipCodes);
-            }
-          } catch(e) {
-                                      ct       s:", e);
-                                      ct       s:", e);
-tedZips(zipData.zipCodes);
-es', {
-     } catch (err) {
+            isochrone: isoData
+          });
+          
+          // Don't overwhelm the free API too fast when mapping multiple spots
+          await new Promise(r => setTimeout(r, 100));
+        }
+        setVenues(newVenues);
+      } catch (err) {
         console.error(err);
         setErrorMsg("Failed to load map data.");
       } finally {
@@ -79,19 +70,24 @@ es', {
     fetchData();
   }, [venueHeadline]);
 
+  if (!venueHeadline || venueHeadline.includes("N/A") || venueHeadline.toLowerCase().includes("mailer")) {
+      return null;
+  }
 
- }, [venueHeadline]);
-e);
- to load map data.");
-", e);
-tedZips(zipData.zipCorCase().includes("tedZips(zipData.zipCorCase().includes("tedZips(zipData.zipCorCase().includes("tedZips(zifutedZips(zipData.zipCorCase()temstedZips(zipData.zipCorCas-gray-50 text-gray-500 rounded-xl border border-gray-200">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-500        <Loader2  <        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 yg       /span>
+  if (loading) {
+    return (
+      <div className="w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-4" />
+        <span className="text-gray-600 font-medium">Mapping Drive-Time Polygons...</span>
       </div>
     );
   }
 
-  if (errorMsg || v  if (errorMsg || v  if (errorMsg || v  if (errorss  if (errorMsg || v  if (errorMsg || v  if (errorMsg || v  if (errorss  if (errorgr  if (errorMed  if (errorMsg || v  y-200">
-        <MapPin className="w-8 h-8 mb-2 text-gray-        <MapPin className="w-8 h-8 mb-2 text-gray-    m">{errorMsg || "No map data available."}</p>
+  if (errorMsg || venues.length === 0) {
+    return (
+      <div className="w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200">
+        <MapPin className="w-8 h-8 mb-2 text-gray-400" />
+        <p className="text-gray-600 font-medium">{errorMsg || "No map data available."}</p>
       </div>
     );
   }
@@ -99,66 +95,93 @@ tedZips(zipData.zipCorCase().includes("tedZips(zipData.zipCorCase().includes("te
   const minLng = Math.min(...venues.map(v => v.lng));
   const maxLng = Math.max(...venues.map(v => v.lng));
   const minLat = Math.min(...venues.map(v => v.lat));
-                      max(...venues.map(v => v.lat));
+  const maxLat = Math.max(...venues.map(v => v.lat));
 
-                                                                                                                                                                                                                                                     oom = 10;
+  const lngDiff = maxLng - minLng;
+  const latDiff = maxLat - minLat;
+
+  // Roughly calculate zoom based on bounding box size
+  const maxDiff = Math.max(lngDiff, latDiff);
+  let zoom = 10;
+  if (maxDiff > 0.5) zoom = 9;
+  if (maxDiff > 1) zoom = 8;
+  if (maxDiff > 2) zoom = 6;
+  if (maxDiff < 0.05) zoom = 10; // Zoomed out slightly to show full 20 min drive polygon
 
   return (
-    <div className="flex flex-col gap-4 text-left">
-      {polygonDescription && (
-        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-     ad  -sm text-left">
-          <h4 className="text-sm font-semibold text-indigo-900 mb-1 flex items-center">
-             <MapPin className="w-4 h-4 mr-2 text-indigo-600" />
-             Strategic Coverage Areas
-          </h4>
-          <p className="text-sm text-indigo-800 leading-snug">{polygonDescription}</p>
-        </div>
-      )}
+    <div className="w-full h-[400px] rounded-xl overflow-hidden border border-gray-200 relative shadow-sm">
+      <Map
+        mapboxAccessToken={MAPBOX_TOKEN}
+        initialViewState={{
+          longitude: (minLng + maxLng) / 2,
+          latitude: (minLat + maxLat) / 2,
+          zoom: zoom
+        }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle="mapbox://styles/mapbox/streets-v12"
+      >
+        {venues.map((venue, idx) => (
+          <React.Fragment key={idx}>
+            <Source id={`isochrone-source-${idx}`} type="geojson" data={venue.isochrone}>
+              <Layer
+                id={`isochrone-fill-${idx}`}
+                type="fill"
+                paint={{
+                  'fill-color': '#4f46e5',
+                  'fill-opacity': 0.15
+                }}
+              />
+              <Layer
+                id={`isochrone-line-${idx}`}
+                type="line"
+                paint={{
+                  'line-color': '#4f46e5',
+                  'line-width': 2,
+                  'line-opacity': 0.5
+                }}
+              />
+            </Source>
+            
+            <Source id={`venue-point-${idx}`} type="geojson" data={{
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Point',
+                coordinates: [venue.lng, venue.lat]
+              }
+            }}>
+              <Layer
+                id={`venue-circle-${idx}`}
+                type="circle"
+                paint={{
+                  'circle-radius': 8,
+                  'circle-color': '#ef4444',
+                  'circle-stroke-width': 2,
+                  'circle-stroke-color': '#ffffff'
+                }}
+              />
+            </Source>
+          </React.Fragment>
+        ))}
+      </Map>
 
-      <div className="w-full h-[400px]       <div className="w-full h-[400px]       <div clad      <div className="w-full h-[400px]       <div clcessToken={MAPBOX_TOKEN}
-          initialViewState={{
-            longitude: (minLng + maxLng) / 2,
-                                                                                                                                                                                   eets-v12"
-        >
-          {venues.map((venue, idx) => (
-            <React.Fragment key={idx}>
-              <Source id={`isochrone-source-${idx}`} type="geojson" data={venue.isochrone}>
-                <Layer
-                  id={`isochrone-fill-${idx}`}
-                  type="fill"
-                  paint={{ 'fill-color': '#4f46e5', 'fill-opacity': 0.15 }}
-                />
-                <Layer
-                  id={`i                  id={`i                            
-                  paint={{ 'line-color': '#4f46e5', 'line-width': 2, 'line-opacity': 0.5 }}
-                />
-              </Source>
-              <Source id={`venue-point-${idx}`} type="geojson" data={{
-                type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [venue.lng, venue.lat] }
-              }}>
-                <Laye                <Laye                <Laye                <Laye                <Laye                <Laye                <Laye                <Laye                <Laye                <Lastroke-color': '#ffffff' }}
-                />
-                                          t.Fragment>
-          ))}
-        </Map>
-        
-        <div className="absolute bottom-4 right-4 pointer-events-no        <div className="absolute bottom-4 rigac        <div className="absoed        <div className="absolute bottom-4 right-4 pointer-events-no       xt        <div clas-e        <div classNam          <div className="absolute bottom-4 right-4 pointer-events-no        de        <div className="absolute bottom-4 right-4 pointer-events-no        <div className=      </div>
-
-      {isExtracting ? (
-                                                                            ow                                                                            ow                                  00 mr-2" />
-                                                                                                                                                                                                                                                  am                 em                                      nter">
-                     n className="w-4 h-4 mr-2 text-emerald-600" />
-               Target Demographic Zip Codes ({extractedZips.length} Matched)
-            </h4>
-            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto w-full pr-2">
-               {extractedZips.map(zip => (
-                 <span key={zip} className="px-2.5 py-1 bg-gray-50 text-gray-700 text-sm rounded-md border border-gray-200 font-medium tracking-tight">
-                   {zip}
-                 </                 </   )}
+      <div className="absolute top-4 left-4 right-4 pointer-events-none flex flex-col gap-2">
+         {polygonDescription && (
+            <div className="bg-white/90 backdrop-blur px-4 py-3 rounded-lg shadow-sm border border-gray-100 max-w-lg pointer-events-auto">
+               <h4 className="text-sm font-semibold text-indigo-900 mb-1 flex items-center">
+                  <MapPin className="w-4 h-4 mr-2 text-indigo-500" />
+                  Visualizing Coverage Areas
+               </h4>
+               <p className="text-sm text-gray-600 leading-snug">
+                  {polygonDescription}
+               </p>
             </div>
-            <p className="text-xs text-gray-400 mt-3">*Excludes commercial/PO Box entries for direct consumer targeting.</p>
+         )}
+         <div className="bg-indigo-600/90 backdrop-blur px-3 py-1.5 rounded-md shadow-sm self-start border border-indigo-500 pointer-events-auto text-xs text-white font-medium flex items-center">
+            <div className="w-3 h-3 bg-indigo-500 rounded border border-white/50 mr-2 opacity-60"></div>
+            20-Minute Drive Isochrone
          </div>
-      ) : null}
+      </div>
     </div>
   );
 }
