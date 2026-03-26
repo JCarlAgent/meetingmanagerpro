@@ -1,0 +1,58 @@
+Loading scopes…
+Searching for existing projects…
+Linked to agentsplanet/backend (created .vercel and added it to .gitignore)
+Retrieving project…
+> Downloading `development` Environment Variables for agentsplanet/backend
+Downloading
+Created .env.local file and added it to .gitignore [174ms]
+Deploying agentsplanet/backend
+Uploading [--------------------] (0.0B/3.7MB)
+Uploading [=====---------------] (965.9KB/3.7MB)
+Uploading [==========----------] (1.9MB/3.7MB)
+Uploading [===============-----] (2.8MB/3.7MB)
+Uploading [====================] (3.7MB/3.7MB)
+Inspect: https://vercel.com/agentsplanet/backend/8yQad6AkgAseMoDswJftD77yQXnc [7s]
+Production: https://backend-cabyb4y6t-agentsplanet.vercel.app [7s]
+https://backend-cabyb4y6t-agentsplanet.vercel.appBuilding...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 4 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Previous build caches not available.
+Building: Downloading 173 deployment files...
+Building: Running "vercel build"
+Building: Vercel CLI 50.35.0
+Building: Installing dependencies...
+Building: added 435 packages in 8s
+Building: 70 packages are looking for funding
+Building: run `npm fund` for details
+Building: Running "npm run build"
+Building: > vite_react_shadcn_ts@0.0.0 build
+Building: > vite build
+Building: vite v5.4.21 building for production...
+Building: transforming...
+Building: ✓ 1773 modules transformed.
+Building: x Build failed in 3.09s
+Building: error during build:
+Building: [vite:esbuild] Transform failed with 1 error:
+Building: /vercel/path0/src/components/dashboard/map/CampaignMapPreview.tsx:40:32: ERROR: Expected ";" but found "for"
+Building: file: /vercel/path0/src/components/dashboard/map/CampaignMapPreview.tsx:40:32
+Building: Expected ";" but found "for"
+Building: 38 |          const newVenues: VenueData[] = [];
+Building: 39 |
+Building: 40 |          for (const locNa        for (const locNa      const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
+Building: |                                  ^
+Building: 41 |                                                                                                                ap                           nent(cleanName)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=false&limit=1`);
+Building: 42 |            const geoData = await geoRes.json();
+Building: at failureErrorWithLog (/vercel/path0/node_modules/esbuild/lib/main.js:1472:15)
+Building: at /vercel/path0/node_modules/esbuild/lib/main.js:755:50
+Building: at responseCallbacks.<computed> (/vercel/path0/node_modules/esbuild/lib/main.js:622:9)
+Building: at handleIncomingPacket (/vercel/path0/node_modules/esbuild/lib/main.js:677:12)
+Building: at Socket.readFromStdout (/vercel/path0/node_modules/esbuild/lib/main.js:600:7)
+Building: at Socket.emit (node:events:508:28)
+Building: at addChunk (node:internal/streams/readable:563:12)
+Building: at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+Building: at Readable.push (node:internal/streams/readable:394:5)
+Building: at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+Building: Error: Command "npm run build" exited with 1
+Error: Command "npm run build" exited with 1

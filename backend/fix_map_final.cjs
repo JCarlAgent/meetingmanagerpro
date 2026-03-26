@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react';
+const fs = require('fs');
+
+const code = `import React, { useState, useEffect } from 'react';
 import Map, { Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Loader2, MapPin, Navigation } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''; 
-
-// We define it as a variable so the secret scanner doesn't trip on a raw string in the code
-// We pass our split string first, to aggressively override any dead tokens stuck in Vercel's env variable cache
-const ACTIVE_TOKEN = ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb2ZsbWNnOGZpZyJ9.RdJ_H7ttFGZ-RyTK4uOCBA') || MAPBOX_TOKEN;
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.eyJ1IjoiYmFybmVzbWFjIiwiYSI6ImNtNzQyOG5zZTA1bHMybnM2cXFwdXh3YjMifQ.R7Pnj4uRmbB2aZ0jCng3Lw';
 
 interface CampaignMapPreviewProps {
   venueHeadline?: string;
@@ -30,7 +27,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
   const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => {
-    if (!venueHeadline || venueHeadline.includes("N/A") || venueHeadline.toLowerCase().includes("mailer")) {
+    if (!venueHeadline     if (!venueHeadline  s("N/A") || venueHeadline.toLowerCase().includes("mailer")) {
       setLoading(false);
       return;
     }
@@ -39,46 +36,33 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
       try {
         setLoading(true);
         setErrorMsg("");
-        setExtractedZips([]);
-
-        // Support splitting multiple venues by | or " AND " or " & " based on AI output formats
-        const locNames = venueHeadline.split(/\|| AND | & /i).map(s => s.trim()).filter(Boolean);
-        const newVenues: VenueData[] = [];
-
-        for (const locName of locNames) {
-          const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
+        setExtractedZip        setExtractedZip        setExtractedZip        setExtractedZip        setExtractedZip        setExtractedZip        setExtractedZip        setExe of locNames) {
+          const cleanName = locName.replace(/\\(e          const cleanName = l(/\\s+-\\s+/, ', ').trim();
           
-          const geoRes = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanName)}.json?access_token=${ACTIVE_TOKEN}&autocomplete=false&limit=1&_cb=${Date.now()}`);
-          const geoData = await geoRes.json();
+          const geoRes = await fetch(\`https://api.mapb          const geoRes = await fetch(\`https://api.mapb          const geoRes = await fetch(\`https://api.mco          const geoRes = await fetch(\`https://api.mapbt geoRes.json();
 
           if (geoData.features && geoData.features.length > 0) {
             const [lng, lat] = geoData.features[0].center;
 
-            // 15 minute drive time polygon
-            const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/${lng},${lat}?contours_minutes=15&polygons=true&access_token=${ACTIVE_TOKEN}&_cb=${Date.now()}`);
+            const isoRes = await fetch(\`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/\${lng},\${lat}?contours_minutes=15&polygons=true&access_token=\${MAPBOX_TOKEN}\`);
             const isoData = await isoRes.json();
 
             if (isoData.features) {
               newVenues.push({ name: cleanName, lng, lat, isochrone: isoData });
-            }
-          }
-        }
-
-        setVenues(newVenues);
-
-        if (newVenues.length > 0) {
-          setIsExtracting(true);
-          try {
-            const combinedGeoJSON = { type: "FeatureCollection", features: newVenues.map(v => v.isochrone.features[0]) };
+                                                                                                                                                                     const combinedGeoJSON = { typ                                                        sochrone.features[0]) };
+            const supaUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lccfprbtmsphesudrpqb.supabase.co';
+            const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
             
-            // Bypass fetch issues entirely by leveraging our official Supabase Client which automatically bundles Auth headers correctly
-            const { data, error } = await supabase.functions.invoke('extract-zip-codes', {
-              body: { isochroneGeojson: combinedGeoJSON }
-            });
-
-            if (error) throw error;
-            if (data && data.zip_codes) {
-              setExtractedZips(data.zip_codes);
+            if (supaKey) {
+              const res = await fetch(supaUrl + '/functions/v1/extract-zip-codes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + supaKey },
+                body: JSON.stringify({ geojson: combinedGeoJSON })
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data && data.zipCodes) setExtractedZips(data.zipCodes);
+              }
             }
           } catch(e) { 
             console.error("Zip extraction error", e); 
@@ -142,13 +126,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           <h4 className="text-sm font-semibold text-indigo-900 mb-1 flex items-center gap-2">
             <MapPin className="w-4 h-4 text-indigo-600" /> Strategic Coverage Areas
           </h4>
-          <p className="text-sm text-indigo-800 leading-relaxed">{description}</p>
-        </div>
-      )}
-
-      <div className="w-full h-[500px] bg-slate-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm relative">
-        <Map
-          mapboxAccessToken={ACTIVE_TOKEN}
+          <p className="text-sm text-indigo-800 leading-relaxed">{desc          <p className="text-sm text-indigo-800 lelass          <p className="text-sm text-indigo-800 leadlo          <p className="text-sm text-indigo-800 lead
+                                                   KEN}
           initialViewState={{
             longitude: (minLng + maxLng) / 2,
             latitude: (minLat + maxLat) / 2,
@@ -159,9 +138,9 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         >
           {venues.map((venue, idx) => (
             <React.Fragment key={idx}>
-              <Source id={`isochrone-source-${idx}`} type="geojson" data={venue.isochrone}>
+              <Source id={              <Source id={              <So" data={venue.isochrone}>
                 <Layer
-                  id={`isochrone-fill-${idx}`}
+                  id={\`isochrone-fill-\${idx}\`}
                   type="fill"
                   paint={{
                     "fill-color": "#4f46e5",
@@ -169,7 +148,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
                   }}
                 />
                 <Layer
-                  id={`isochrone-line-${idx}`}
+                  id={\`isochrone-line-\${idx}\`}
                   type="line"
                   paint={{
                     "line-color": "#4338ca",
@@ -178,44 +157,33 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
                   }}
                 />
               </Source>
-              <Source id={`marker-source-${idx}`} type="geojson" data={{
+              </Source>
+e{\`marker-source-\${idx}\`} type="geojson" data={{
                 type: "FeatureCollection",
-                features: [{ type: "Feature", geometry: { type: "Point", coordinates: [venue.lng, venue.lat] }, properties: {} }]
-              }}>
+                features: [{ type: "Fe                features: [{ type: "Fe          [ven                features: [{ type: "Fe                }}>
                 <Layer
-                  id={`marker-layer-${idx}`}
-                  type="circle"
+                  id={\                  id={\                    type="circle"
                   paint={{
                     "circle-radius": 8,
                     "circle-color": "#ef4444",
                     "circle-stroke-width": 2,
-                    "circle-stroke-color": "#ffffff"
-                  }}
-                />
-              </Source>
-            </React.Fragment>
+                    "circle-stroke-color": "#ff                    "circle-stroke-color": />                    "circle-stroke-coloReact.Fragment>
           ))}
         </Map>
         
-        <div className="absolute bottom-4 right-4 pointer-events-none">
-          <div className="bg-white/90 backdrop-blur px-3 py-1.5 rounded-md shadow flex items-center border border-gray-200 text-xs font-medium text-gray-700 pointer-events-auto">
-            <div className="w-3 h-3 bg-indigo-500 rounded mr-2 opacity-50 border border-indigo-600"></div>
-            15-Min Drive (Traffic)
+        <di        <di        <di        <di        <di    vents-none">
+          <div className="bg-white/90 backdrop-blur px-3 py-1.5 rounded-md shadow flex items-center border border-gray-200 text-          <div className="bg-white/90 backd-a          <div clasdi          <div c h-3 bg-indigo-500 rounded           <div classNa b          <div className="bg-white/90 backdrop-blu(Traffic)
           </div>
         </div>
       </div>
 
       {isExtracting ? (
         <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm text-sm text-gray-600 flex items-center">
-          <Loader2 className="w-4 h-4 animate-spin text-indigo-500 mr-2" />
-          Tracing geographic boundaries to Melissa Data ZIP zones...
-        </div>
+          <Lo          <Lo          <Lo          <Lo          <Lo          <Lo          <Long       phic boundaries to M          <Lo          <Lo        /div>
       ) : extractedZips.length > 0 ? (
         <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
           <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center tracking-tight">
-            <Navigation className="w-4 h-4 text-indigo-600 mr-1.5" /> Covered ZIP Codes within Range
-          </h4>
-          <div className="flex flex-wrap gap-1.5">
+            <Navigation className="w-4 h-4 text-indigo-            <Navigation className="w-4 h-4 text-indigo-            <Na  <div className="flex flex-wrap gap-1.5">
             {extractedZips.map((zip, i) => (
               <span key={i} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                 {zip}
@@ -227,3 +195,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/components/dashboard/map/CampaignMapPreview.tsx', code);
+console.log("File properly written!");
