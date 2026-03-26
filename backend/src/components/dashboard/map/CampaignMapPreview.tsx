@@ -41,8 +41,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         setErrorMsg("");
         setExtractedZips([]);
 
-        // Support splitting multiple venues by | or " AND " or " & " based on AI output formats
-        const locNames = venueHeadline.split(/\|| AND | & /i).map(s => s.trim()).filter(Boolean);
+        // Support splitting multiple venues strictly by | to avoid splitting restaurant names that contain " & " (e.g. "Echo & Rig")
+        const locNames = venueHeadline.split('|').map(s => s.trim()).filter(Boolean);
         const newVenues: VenueData[] = [];
 
         for (const locName of locNames) {
@@ -53,6 +53,12 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
 
           if (geoData.features && geoData.features.length > 0) {
             const [lng, lat] = geoData.features[0].center;
+
+            // Sanity check: filter out hallucinations that Mapbox accidentally geocodes to other continents (e.g. Africa/Europe)
+            if (lat < 15 || lat > 72 || lng < -180 || lng > -50) {
+              console.warn(`Venue "${cleanName}" geocoded to [${lng}, ${lat}] which isn't in North America. Skipping.`);
+              continue;
+            }
 
             // 15 minute drive time polygon
             const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/${lng},${lat}?contours_minutes=15&polygons=true&access_token=${ACTIVE_TOKEN}&_cb=${Date.now()}`);
@@ -131,6 +137,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
   if (maxDiff > 0.5) zoom = 9;
   if (maxDiff > 1) zoom = 8;
   if (maxDiff > 2) zoom = 6;
+  if (maxDiff > 5) zoom = 4;
+  if (maxDiff > 20) zoom = 3;
   if (maxDiff < 0.05) zoom = 11;
 
   const description = polygonDescription && !polygonDescription.includes("N/A") ? polygonDescription : null;
