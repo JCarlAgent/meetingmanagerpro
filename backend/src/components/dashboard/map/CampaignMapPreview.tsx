@@ -48,7 +48,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
         for (const locName of locNames) {
           const cleanName = locName.replace(/\(e\.g\..*?\)/gi, '').replace(/\s+-\s+/, ', ').trim();
           
-          const geoRes = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanName)}.json?access_token=${ACTIVE_TOKEN}&autocomplete=false&limit=1&_cb=${Date.now()}`);
+          const geoRes = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanName)}.json?access_token=${ACTIVE_TOKEN}&autocomplete=false&limit=1&country=us&_cb=${Date.now()}`);
           const geoData = await geoRes.json();
 
           if (geoData.features && geoData.features.length > 0) {
