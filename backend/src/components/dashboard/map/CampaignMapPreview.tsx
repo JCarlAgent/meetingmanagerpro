@@ -66,7 +66,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
             }
 
             // 15 minute drive time polygon
-            const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/${lng},${lat}?contours_minutes=15&polygons=true&access_token=${ACTIVE_TOKEN}&_cb=${Date.now()}`);
+            const isoRes = await fetch(`https://api.mapbox.com/isochrone/v1/mapbox/driving-traffic/${lng},${lat}?contours_minutes=15&polygons=true&access_token=${ACTIVE_TOKEN}`);
             const isoData = await isoRes.json();
 
             if (isoData.features) {
