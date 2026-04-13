@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Map, { Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { Loader2, MapPin, Navigation } from 'lucide-react';
+import { Loader2, MapPin, Navigation, Users, Target, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''; 
@@ -13,6 +13,7 @@ const ACTIVE_TOKEN = ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb
 interface CampaignMapPreviewProps {
   venueHeadline?: string;
   polygonDescription?: string;
+  campaignType?: string;
 }
 
 interface VenueData {
@@ -22,12 +23,22 @@ interface VenueData {
   isochrone: any;
 }
 
-export default function CampaignMapPreview({ venueHeadline, polygonDescription }: CampaignMapPreviewProps) {
+interface MelissaSummary {
+  zipCodesSearched: number;
+  totalAvailableRecords: number;
+  estimatedResponseRate: string;
+  estimatedAttendees: number;
+}
+
+export default function CampaignMapPreview({ venueHeadline, polygonDescription, campaignType }: CampaignMapPreviewProps) {
   const [venues, setVenues] = useState<VenueData[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  const [melissaError, setMelissaError] = useState("");
   const [extractedZips, setExtractedZips] = useState<string[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [melissaSummary, setMelissaSummary] = useState<MelissaSummary | null>(null);
+  const [isMelissaLoading, setIsMelissaLoading] = useState(false);
 
   useEffect(() => {
     if (!venueHeadline || venueHeadline.includes("N/A") || venueHeadline.toLowerCase().includes("mailer")) {
@@ -39,6 +50,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
       try {
         setLoading(true);
         setErrorMsg("");
+        setMelissaError("");
         setExtractedZips([]);
 
         // Support splitting multiple venues strictly by | to avoid splitting restaurant names that contain " & " (e.g. "Echo & Rig")
@@ -92,7 +104,31 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
 
             if (error) throw error;
             if (data && data.zip_codes) {
-              setExtractedZips(data.zip_codes);
+              const finalZips = data.zip_codes;
+              setExtractedZips(finalZips);
+              
+              if (finalZips.length > 0) {
+                setIsMelissaLoading(true);
+                try {
+                  const mlRes = await supabase.functions.invoke('melissa-counts', {
+                    body: { zipCodes: finalZips, campaignType: campaignType || "medicare" }
+                  });
+                  if (mlRes.error) {
+                    console.error("Melissa Edge Function Error:", mlRes.error);
+                    setMelissaError("Melissa Count Failed: " + (mlRes.error.message || mlRes.error));
+                  } else if (mlRes.data && mlRes.data.success) {
+                    setMelissaSummary(mlRes.data.summary);
+                  } else if (mlRes.data && mlRes.data.error) {
+                    console.error("Melissa API error:", mlRes.data.error);
+                    setMelissaError("Melissa API Error: " + mlRes.data.error);
+                  }
+                } catch(err: any) {
+                  console.error("Melissa count network error", err);
+                  setMelissaError("Network error contacting Melissa: " + err.message);
+                } finally {
+                  setIsMelissaLoading(false);
+                }
+              }
             }
           } catch(e) { 
             console.error("Zip extraction error", e); 
@@ -227,18 +263,60 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription }
           <Loader2 className="w-4 h-4 animate-spin text-indigo-500 mr-2" />
           Tracing geographic boundaries to Melissa Data ZIP zones...
         </div>
+      ) : isMelissaLoading ? (
+        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm text-sm text-gray-600 flex items-center">
+          <Loader2 className="w-4 h-4 animate-spin text-indigo-500 mr-2" />
+          Querying Melissa Data API for precise audience counts...
+        </div>
       ) : extractedZips.length > 0 ? (
-        <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
-          <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center tracking-tight">
-            <Navigation className="w-4 h-4 text-indigo-600 mr-1.5" /> Covered ZIP Codes within Range
-          </h4>
-          <div className="flex flex-wrap gap-1.5">
-            {extractedZips.map((zip, i) => (
-              <span key={i} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
-                {zip}
-              </span>
-            ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm text-left">
+            <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center tracking-tight">
+              <Navigation className="w-4 h-4 text-indigo-600 mr-1.5" /> Covered ZIP Codes within Range
+            </h4>
+            <div className="flex flex-wrap gap-1.5">
+              {extractedZips.map((zip, i) => (
+                <span key={i} className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                  {zip}
+                </span>
+              ))}
+            </div>
           </div>
+
+          {melissaSummary && (
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 p-4 rounded-xl shadow-sm text-left">
+              <h4 className="text-sm font-semibold text-indigo-900 mb-3 flex items-center tracking-tight">
+                <Target className="w-4 h-4 text-indigo-600 mr-1.5" /> Audience Viability Metrics
+              </h4>
+              <div className="grid grid-cols-2 gap-4 mb-2">
+                <div>
+                  <div className="text-xs text-indigo-700/80 mb-0.5">Total Prospects Found</div>
+                  <div className="text-lg font-bold text-indigo-950">
+                    {melissaSummary.totalAvailableRecords.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-indigo-700/80 mb-0.5">Est. Room Attendees</div>
+                  <div className="text-lg font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-indigo-500" />
+                    {melissaSummary.estimatedAttendees}
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-indigo-600 flex items-center justify-between border-t border-indigo-100/60 pt-2 mt-2">
+                <span>Data Source: Melissa Data</span>
+                <span className="font-medium text-emerald-600">Response Rate ~{melissaSummary.estimatedResponseRate}</span>
+              </div>
+            </div>
+          )}
+          {melissaError && (
+            <div className="bg-red-50 border border-red-200 p-4 rounded-xl shadow-sm text-left">
+              <h4 className="text-sm font-semibold text-red-900 mb-2 flex items-center tracking-tight">
+                <AlertCircle className="w-4 h-4 text-red-600 mr-1.5" /> Attention Required
+              </h4>
+              <p className="text-sm text-red-700">{melissaError}</p>
+            </div>
+          )}
         </div>
       ) : null}
     </div>

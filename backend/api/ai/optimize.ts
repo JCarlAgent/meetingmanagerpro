@@ -15,7 +15,7 @@ Use this JSON schema strictly:
     "subtext": "Secondary filter (e.g., $500k+ Investable Assets)"
   },
   "recommendedVenue": {
-    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State. If the user asks for multiple venues, YOU MUST SEPARATE THEM WITH A PIPE (|) CHARACTER. (e.g., Ruth's Chris Steak House - Tustin, CA | The Capital Grille - Irvine, CA)",
+    "headline": "Name of a popular, high-end restaurant in the requested area suitable for a seminar, MUST APPEND the City and State. IF AND ONLY IF the user explicitly asks for multiple venues, YOU MUST SEPARATE THEM WITH A PIPE (|) CHARACTER. (e.g., Ruth's Chris Steak House - Tustin, CA | The Capital Grille - Irvine, CA)",
     "subtext": "General area or drive-zone detail (e.g., Uptown Dallas, 15m Drive Zone)"
   },
   "optimalTiming": {
@@ -29,7 +29,7 @@ Use this JSON schema strictly:
   "confidenceScore": "A high, realistic number (e.g., 92)"
 }
 
-You must extract the location and goal from the user's prompt. If no location is given, default to standard US demographic data conceptually. Be realistic but optimistic.
+You must extract the location, goal, and the exact number of venues requested from the user's prompt. If they ask for 1 venue, give 1. If they ask for 2 venues, give 2 separated by a pipe. If no location is given, default to standard US demographic data conceptually. Be realistic but optimistic.
 `;
 
 export const config = { maxDuration: 60 };

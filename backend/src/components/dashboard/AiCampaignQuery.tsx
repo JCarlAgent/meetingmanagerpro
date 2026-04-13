@@ -422,6 +422,7 @@ export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryPro
             <CampaignMapPreview 
               venueHeadline={result.recommendedVenue.headline}
               polygonDescription={result.recommendedVenue.subtext}
+              campaignType={campaignType}
             />
           </div>
 

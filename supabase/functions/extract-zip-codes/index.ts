@@ -28,11 +28,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // 1. Get the polygon feature from the Mapbox Isochrone
-    const polygonFeature = isochroneGeojson.features[0];
-
-    // 2. Calculate the "Bounding Box" (min/max lat and lng) to quickly filter the database down 
-    // from 40k US zip codes to just local ones. Turf.bbox returns [minX, minY, maxX, maxY]
-    const bbox = turf.bbox(polygonFeature);
+    // Create a feature collection of all polygons to get the master bounding box for the DB query
+    const allPolygons = turf.featureCollection(isochroneGeojson.features);
+    const bbox = turf.bbox(allPolygons);
     const minLng = bbox[0];
     const minLat = bbox[1];
     const maxLng = bbox[2];
@@ -58,8 +56,15 @@ serve(async (req) => {
       // Turf expects [longitude, latitude]
       const pt = turf.point([parseFloat(zipObj.lng), parseFloat(zipObj.lat)]);
       
-      // Check if point is inside the polygon
-      if (turf.booleanPointInPolygon(pt, polygonFeature)) {
+      // Check if point is inside ANY of the provided polygons
+      let isInside = false;
+      for (const poly of isochroneGeojson.features) {
+        if (turf.booleanPointInPolygon(pt, poly)) {
+          isInside = true;
+          break;
+        }
+      }
+      if (isInside) {
         exactZips.push(zipObj.zip);
       }
     }

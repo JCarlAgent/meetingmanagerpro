@@ -29,3 +29,12 @@ dist-ssr
 /Dreamhost Invoices/
 /MMPRO_logo.jpg
 /MMPRO_logo_small.png
+
+# Temporary scratch and test scripts
+test-*
+test_*
+fix-*
+fix_*
+runtest*
+patch*
+*.cjs
