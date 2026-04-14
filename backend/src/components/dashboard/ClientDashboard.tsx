@@ -303,15 +303,15 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               <div className="lg:col-span-1">
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-wider pb-1.5 block">Company Rep Name</label>
-                <input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_name || ''} placeholder="e.g. John Doe" />
+                <input id="advisor-name" type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_name || ''} placeholder="e.g. John Doe" />
               </div>
               <div className="lg:col-span-1">
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-wider pb-1.5 block">Title</label>
-                <input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_job_title || ''} placeholder="e.g. Managing Partner" />
+                <input id="advisor-title" type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_job_title || ''} placeholder="e.g. Managing Partner" />
               </div>
               <div className="lg:col-span-1">
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-wider pb-1.5 block">Office / Company Phone</label>
-                <input type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_phone || ''} placeholder="(555) 123-4567" />
+                <input id="advisor-phone" type="text" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_phone || ''} placeholder="(555) 123-4567" />
               </div>
               <div className="lg:col-span-1">
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-wider pb-1.5 block">Direct Phone</label>
@@ -319,16 +319,66 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
               </div>
               <div className="lg:col-span-1 md:col-span-2 lg:col-span-1">
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-wider pb-1.5 block">Email</label>
-                <input type="email" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_email || ''} placeholder="john@example.com" />
+                <input id="advisor-email" type="email" className="w-full p-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.contact_email || ''} placeholder="john@example.com" />
               </div>
               
               <div className="md:col-span-2 lg:col-span-5 pt-2">
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-wider pb-1.5 block">Notes</label>
-                <textarea className="w-full p-3 border border-slate-300 rounded-lg min-h-[100px] text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.notes || ''} placeholder="Internal references, territory exclusions..."></textarea>
+                <textarea id="advisor-notes" className="w-full p-3 border border-slate-300 rounded-lg min-h-[100px] text-sm focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors" defaultValue={orgData?.notes || ''} placeholder="Internal references, territory exclusions..."></textarea>
               </div>
             </div>
             <div className="mt-6 flex justify-end shrink-0">
-              <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow-sm">Save Information</button>
+              <button 
+                onClick={async () => {
+                  const btn = document.getElementById('save-info-btn') as HTMLButtonElement;
+                  const original = btn.innerText;
+                  btn.innerText = 'Saving...';
+                  btn.disabled = true;
+                  
+                  const nameInput = document.getElementById('advisor-name') as HTMLInputElement;
+                  const titleInput = document.getElementById('advisor-title') as HTMLInputElement;
+                  const phoneInput = document.getElementById('advisor-phone') as HTMLInputElement;
+                  const emailInput = document.getElementById('advisor-email') as HTMLInputElement;
+                  const notesInput = document.getElementById('advisor-notes') as HTMLTextAreaElement;
+                  
+                  if (orgData?.id) {
+                    const { error } = await supabase.from('orgs').update({
+                      contact_name: nameInput?.value || null,
+                      contact_job_title: titleInput?.value || null,
+                      contact_phone: phoneInput?.value || null,
+                      contact_email: emailInput?.value || null,
+                      notes: notesInput?.value || null
+                    }).eq('id', orgData.id);
+                    
+                    if (error) {
+                      console.error('Save failed:', error);
+                      alert('Failed to save: ' + error.message);
+                      btn.innerText = 'Error!';
+                      btn.classList.add('bg-red-600', 'hover:bg-red-700');
+                      setTimeout(() => {
+                        btn.innerText = original;
+                        btn.disabled = false;
+                        btn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                      }, 2000);
+                      return;
+                    }
+                  }
+                  
+                  setTimeout(() => {
+                    btn.innerText = 'Saved!';
+                    btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+                    setTimeout(() => {
+                      btn.innerText = original;
+                      btn.disabled = false;
+                      btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+                    }, 2000);
+                  }, 500);
+                }}
+                id="save-info-btn"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow-sm disabled:opacity-50"
+              >
+                Save Information
+              </button>
             </div>
           </div>
         )}
