@@ -141,11 +141,10 @@ Deno.serve(async (req) => {
     let success = false;
     
     // Tier A Fallback Strategy: 
-    // Models to try in order (Primary -> Secondary -> Tertiary mapping).
+    // Models to try in order (Primary -> Secondary).
     const models = [
       'gemini-2.5-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro'
+      'gemini-1.5-flash'
     ];
     
     const MAX_RETRIES_PER_MODEL = 3;
