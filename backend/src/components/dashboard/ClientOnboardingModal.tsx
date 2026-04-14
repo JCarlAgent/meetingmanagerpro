@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Building2, User, ChevronRight, Activity, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 type Step = 'type' | 'engine' | 'details' | 'confirm';
 
@@ -18,18 +19,21 @@ export default function ClientOnboardingModal({ isOpen, onClose, onSuccess }: Cl
   const [targetType, setTargetType] = useState<ClientTargetType>(null);
   const [clientName, setClientName] = useState('');
   const [clientEmail, setClientEmail] = useState('');
+  const [serverError, setServerError] = useState<string | null>(null);
   
   const [isDeploying, setIsDeploying] = useState(false);
 
   if (!isOpen) return null;
 
   const handleNext = () => {
+    setServerError(null);
     if (step === 'type') setStep('engine');
     else if (step === 'engine') setStep('details');
     else if (step === 'details') setStep('confirm');
   };
 
   const handleBack = () => {
+    setServerError(null);
     if (step === 'engine') setStep('type');
     else if (step === 'details') setStep('engine');
     else if (step === 'confirm') setStep('details');
@@ -37,11 +41,26 @@ export default function ClientOnboardingModal({ isOpen, onClose, onSuccess }: Cl
 
   const handleDeploy = async () => {
     setIsDeploying(true);
-    setTimeout(() => {
-      setIsDeploying(false);
+    setServerError(null);
+    try {
+      const { data, error } = await supabase.from('orgs').insert({
+        name: clientName,
+        slug: clientName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+        contact_email: clientEmail
+      }).select().single();
+
+      if (error) {
+        throw error;
+      }
+      
       if (onSuccess) onSuccess();
       onClose();
-    }, 2000);
+    } catch (err: any) {
+      console.error(err);
+      setServerError(err.message || 'Failed to onboard client');
+    } finally {
+      setIsDeploying(false);
+    }
   };
 
   return (
@@ -57,6 +76,12 @@ export default function ClientOnboardingModal({ isOpen, onClose, onSuccess }: Cl
           </button>
         </div>
         <div className="p-6 overflow-y-auto flex-1">
+          {serverError && (
+             <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-start gap-3 text-red-700">
+               <X className="w-5 h-5 shrink-0" />
+               <p className="text-sm font-medium">{serverError}</p>
+             </div>
+          )}
           {/* Progress bar and UI placeholder text */}
           <div className="flex items-center justify-between mb-8 relative">
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-100 rounded-full -z-10"></div>
