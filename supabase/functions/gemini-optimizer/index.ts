@@ -127,20 +127,92 @@ Deno.serve(async (req) => {
     }
 
     // Explicitly targeting Gemini 2.5 Flash to bypass the 20/day quota limits of the v3 beta
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {             
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: { text: SYSTEM_PROMPT } },
-        contents: [ { parts: [{ text: inputFullText }] } ],
-        generationConfig: { response_mime_type: "application/json", temperature: 0.2 }
-      })
-    })
+    const payloadBody = JSON.stringify({
+      system_instruction: { parts: { text: SYSTEM_PROMPT } },
+      contents: [ { parts: [{ text: inputFullText }] } ],
+      generationConfig: { response_mime_type: "application/json", temperature: 0.2 }
+    });
 
-    const data = await response.json()
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     
-    if (!response.ok) {
-      throw new Error('Google AI Error: ' + JSON.stringify(data))
+    let response: any;
+    let data: any;
+    let finalError: any = null;
+    let success = false;
+    
+    // Tier A Fallback Strategy: 
+    // Models to try in order (Primary -> Secondary -> Tertiary mapping).
+    const models = [
+      'gemini-2.5-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro'
+    ];
+    
+    const MAX_RETRIES_PER_MODEL = 3;
+
+    for (const model of models) {
+      let attempts = 0;
+      
+      while (attempts < MAX_RETRIES_PER_MODEL) {
+        attempts++;
+        try {
+          console.log(`[AI Optimizer] Attempting model: ${model}, try ${attempts}/${MAX_RETRIES_PER_MODEL}`);
+          
+          response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {             
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payloadBody
+          });
+          
+          data = await response.json();
+          
+          if (response.ok) {
+            success = true;
+            break;
+          }
+          
+          const status = response.status;
+          const isOverloaded = status === 503 || status === 429 || (data.error && data.error.code === 503);
+          
+          if (!isOverloaded && status !== 500) {
+            // Not a temporary capacity issue, it's a hard error (e.g. 400 Bad Request, auth failure)
+            finalError = data;
+            break; // Break the while loop for this model
+          }
+          
+          // It's a temporary error, prepare to retry
+          console.warn(`[AI Optimizer] ${model} returned ${status}. High demand or rate limit.`);
+          finalError = data;
+          
+        } catch (fetchErr) {
+          console.error(`[AI Optimizer] Fetch exception on ${model}:`, fetchErr);
+          finalError = fetchErr;
+        }
+
+        if (attempts < MAX_RETRIES_PER_MODEL) {
+          // Exponential backoff + Jitter
+          // Roughly: 1s, 2s, 4s + a little random extra
+          const baseDelay = Math.pow(2, attempts - 1) * 1000;
+          const jitter = Math.floor(Math.random() * 500); 
+          const waitTime = baseDelay + jitter;
+          console.log(`[AI Optimizer] Waiting ${waitTime}ms before next retry...`);
+          await sleep(waitTime);
+        }
+      }
+      
+      if (success) {
+        break; // Stop iterating through models
+      } else if (!finalError || (finalError.error && finalError.error.code !== 503 && finalError.error.code !== 429)) {
+        // If it was a non-503/429 error, we shouldn't necessarily keep trying other models unless we want to.
+        // Actually, for maximum resilience on format errors, let's keep trying.
+        console.log(`[AI Optimizer] Exhausted retries or hit hard error on ${model}. Moving to next model if available.`);
+      }
+    }
+    
+    if (!success) {
+      // All models and retries have failed
+      console.error('[AI Optimizer] ALL AI MODELS FAILED', finalError);
+      throw new Error('Google AI Error: Service Currently Unavailable due to high demand. Please try again in a few moments. Details: ' + JSON.stringify(finalError));
     }
 
     const aiText = data.candidates[0].content.parts[0].text
