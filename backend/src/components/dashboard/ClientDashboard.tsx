@@ -61,7 +61,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const handleAiAccept = (proposal: AiProposal) => {
+  const handleAiAccept = (proposal: AiProposal, campaignName?: string, listContext?: any) => {
     const venues = proposal.recommendedVenue.headline.split('|').map(v => v.trim()).filter(Boolean);
     const newMeetings = venues.map(v => {
       let name = v;
@@ -99,17 +99,30 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
     });
 
     let mailQuantity = 5000;
-    const qtyMatch = proposal.mailStrategy.headline.replace(/,/g, '').match(/\d+/);
-    if (qtyMatch) {
-       mailQuantity = parseInt(qtyMatch[0], 10);
+    if (listContext && listContext.totalRecords) {
+       // If an actual list was uploaded and sensed, use its exact count
+       mailQuantity = listContext.totalRecords;
+    } else {
+       // Otherwise fallback to theoretical parsed from AI
+       const qtyMatch = proposal.mailStrategy.headline.replace(/,/g, '').match(/\d+/);
+       if (qtyMatch) {
+          mailQuantity = parseInt(qtyMatch[0], 10);
+       }
     }
 
     const demographicsNotes = `${proposal.targetAudience.headline}\n\n${proposal.targetAudience.subtext}\n\nVenue Context:\n${proposal.recommendedVenue.subtext}`;
 
+    // Ensure we check the 'upload' option and set the uploaded list name if present
+    const isListUploaded = !!listContext;
+
     patchSetupState({
+      campaignTitle: campaignName,
       meetings: newMeetings,
       mailQuantity,
-      demographicsNotes
+      demographicsNotes,
+      rsvpMethods: { call_center: true, qr_code: true }, // Auto-select standard methods
+      demographicsMode: isListUploaded ? 'upload' : 'printer',
+      demographicsUploadedListName: isListUploaded ? listContext.fileName : undefined
     });
 
     if (onNavigate) {

@@ -14,7 +14,7 @@ export interface AiProposal {
 }
 
 interface AiCampaignQueryProps {
-  onAcceptCampaign?: (proposal: AiProposal) => void;
+  onAcceptCampaign?: (proposal: AiProposal, campaignName?: string, listContext?: any) => void;
 }
 
 export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryProps = {}) {
@@ -33,6 +33,10 @@ export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryPro
   // Refinement State
   const [isRefining, setIsRefining] = useState(false);
   const [refinementQuery, setRefinementQuery] = useState('');
+
+  // Acceptance Naming State
+  const [isNaming, setIsNaming] = useState(false);
+  const [campaignName, setCampaignName] = useState('');
 
   // Data List Upload State
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -459,6 +463,43 @@ export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryPro
                 </div>
               </form>
             </div>
+          ) : isNaming ? (
+            <div className="mt-8 border-t pt-6 bg-indigo-50 -mx-8 -mb-8 p-8 rounded-b-2xl">
+              <div className="flex flex-col space-y-4">
+                <label className="font-semibold text-indigo-900 text-lg">Name Your Campaign</label>
+                <input
+                  type="text"
+                  value={campaignName}
+                  onChange={(e) => setCampaignName(e.target.value)}
+                  placeholder="E.g., Ruth's Chris Steakhouse - Spring Retreat"
+                  className="w-full text-lg px-6 py-4 rounded-xl border-2 border-indigo-200 focus:border-indigo-500 focus:ring-0 shadow-sm transition-all text-gray-800 bg-white"
+                  autoFocus
+                />
+                <div className="flex justify-end space-x-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNaming(false);
+                    }}
+                    className="px-6 py-3 text-gray-600 hover:text-gray-900 font-medium transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!campaignName.trim()}
+                    onClick={() => {
+                      if (onAcceptCampaign && result) {
+                         onAcceptCampaign(result, campaignName.trim(), listSummary);
+                      }
+                    }}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    Confirm & Setup Meeting
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="flex justify-end space-x-4 border-t pt-6">
               <button 
@@ -469,9 +510,10 @@ export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryPro
               </button>
               <button 
                 onClick={() => {
-                  if (onAcceptCampaign && result) {
-                    onAcceptCampaign(result);
-                  }
+                  // Default name: Venue Name - Month
+                  const defaultName = result ? `${result.recommendedVenue.headline.split('|')[0].trim()} - ${new Date().toLocaleString('default', { month: 'long' })} Campaign` : '';
+                  setCampaignName(defaultName);
+                  setIsNaming(true);
                 }}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm">
                 Accept Campaign

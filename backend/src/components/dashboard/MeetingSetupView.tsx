@@ -183,6 +183,13 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
         const storedJobId = window.localStorage.getItem('mmp_selected_job_id');
         if (storedJobId) setSelectedJobId(storedJobId);
       }
+      
+      // Auto-populate new campaign title from setup state if provided (e.g., from AI accept)
+      if (typeof saved.campaignTitle === 'string' && saved.campaignTitle) {
+        setNewJobTitle(saved.campaignTitle);
+        // We will trigger auto-creation via another effect once org data loads
+        window.localStorage.setItem('mmp_auto_create_job', 'true');
+      }
 
       if (typeof saved.templateId === 'string') setSelectedTemplateId(saved.templateId);
       if (Array.isArray(saved.meetings)) setMeetings(saved.meetings as MeetingDraft[]);
@@ -419,6 +426,16 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       setIsCreatingJob(false);
     }
   };
+
+  useEffect(() => {
+    const shouldAutoCreate = window.localStorage.getItem('mmp_auto_create_job') === 'true';
+    if (shouldAutoCreate && newJobTitle && user && (user.is_master_admin ? actingOrg : user.org_id)) {
+      window.localStorage.removeItem('mmp_auto_create_job');
+      patchSetupState({ campaignTitle: undefined });
+      createJob();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, actingOrg, newJobTitle]);
 
   const getSelectedJob = () => jobs.find((j) => j.id === selectedJobId) || null;
 
