@@ -15,88 +15,13 @@ interface ClientDashboardProps {
 }
 
 // --- Mock Data ---
-const mockActiveCampaigns = [
-  { 
-    id: 101, 
-    title: 'Retirement Strategy Dinner', 
-    date: 'May 15th, 2026', 
-    company: 'Alpha Financial',
-    repName: 'Sarah Jenkins', 
-    repPhone: '(555) 123-4567', 
-    repEmail: 'sarah@example.com', 
-    venueName: "Ruth's Chris Steak House", 
-    city: 'Dallas', 
-    state: 'TX', 
-    daysLeft: 'In 5 Days',
-    status: [true, true, true, true, false] // Demo, List, Design, Paid, Sent
-  },
-  { 
-    id: 102, 
-    title: 'Tax Planning Workshop', 
-    date: 'May 22nd, 2026', 
-    company: 'Beta Advisors',
-    repName: 'Michael Chang', 
-    repPhone: '(555) 987-6543', 
-    repEmail: 'mchang@example.com', 
-    venueName: "Maggiano's Little Italy", 
-    city: 'Austin', 
-    state: 'TX', 
-    daysLeft: 'In 12 Days',
-    status: [true, true, false, false, false]
-  }
-];
+const mockActiveCampaigns: any[] = [];
 
-const mockCompletedCampaigns = [
-  { 
-    id: 201, 
-    title: 'Estate Planning Seminar', 
-    date: 'February 10th, 2026', 
-    company: 'Beta Advisors',
-    repName: 'Michael Chang', 
-    repPhone: '(555) 987-6543', 
-    repEmail: 'mchang@example.com', 
-    venueName: "Capital Grille", 
-    city: 'Houston', 
-    state: 'TX', 
-    stats: { mailed: '5,000', responses: 42, attendees: 38, appointments: 12 }
-  },
-  { 
-    id: 202, 
-    title: 'Annuity Mastery Lunch', 
-    date: 'January 15th, 2026', 
-    company: 'Alpha Financial',
-    repName: 'Sarah Jenkins', 
-    repPhone: '(555) 123-4567', 
-    repEmail: 'sarah@example.com', 
-    venueName: "Ruth's Chris Steak House", 
-    city: 'Dallas', 
-    state: 'TX', 
-    stats: { mailed: '7,500', responses: 65, attendees: 50, appointments: 22 }
-  }
-];
+const mockCompletedCampaigns: any[] = [];
 
-const topPerformersFMO = [
-  {
-    company: 'Alpha Financial',
-    reps: [
-      { name: 'Sarah Jenkins', city: 'Dallas', state: 'TX', meetings: 8, attendees: 320, appointments: 110 },
-      { name: 'David Smith', city: 'Fort Worth', state: 'TX', meetings: 4, attendees: 150, appointments: 40 }
-    ]
-  },
-  {
-    company: 'Beta Advisors',
-    reps: [
-      { name: 'Michael Chang', city: 'Austin', state: 'TX', meetings: 6, attendees: 240, appointments: 85 },
-      { name: 'Jessica Lee', city: 'Houston', state: 'TX', meetings: 5, attendees: 190, appointments: 60 }
-    ]
-  }
-];
+const topPerformersFMO: any[] = [];
 
-const topPerformersCompany = [
-  { name: 'Sarah Jenkins', city: 'Dallas', state: 'TX', meetings: 8, attendees: 320, appointments: 110 },
-  { name: 'David Smith', city: 'Fort Worth', state: 'TX', meetings: 4, attendees: 150, appointments: 40 },
-  { name: 'Robert Blake', city: 'Plano', state: 'TX', meetings: 2, attendees: 75, appointments: 20 }
-];
+const topPerformersCompany: any[] = [];
 
 export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDashboardProps) {
   // All sections contracted by default.
@@ -548,29 +473,29 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                  <Mail className="w-6 h-6 text-slate-400 mb-3 block" />
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Mailed</div>
-                 <div className="text-3xl font-black text-slate-900">22,500</div>
+                 <div className="text-3xl font-black text-slate-900">0</div>
                </div>
                <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
                  <Building2 className="w-6 h-6 text-indigo-400 mb-3 block" />
                  <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-1">Total Meetings</div>
-                 <div className="text-3xl font-black text-indigo-900">4</div>
+                 <div className="text-3xl font-black text-indigo-900">0</div>
                </div>
                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
                  <UsersRound className="w-6 h-6 text-blue-400 mb-3 block" />
                  <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Responders</div>
                  <div className="flex items-baseline gap-2">
-                   <div className="text-3xl font-black text-blue-900">107</div>
+                   <div className="text-3xl font-black text-blue-900">0</div>
                  </div>
                </div>
                <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
                  <Users className="w-6 h-6 text-purple-400 mb-3 block" />
                  <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Total Attendees</div>
-                 <div className="text-3xl font-black text-purple-900">88</div>
+                 <div className="text-3xl font-black text-purple-900">0</div>
                </div>
                <div className="bg-amber-50 p-6 rounded-xl border border-amber-100 col-span-2 lg:col-span-1">
                  <CalendarCheck className="w-6 h-6 text-amber-400 mb-3 block" />
                  <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Total Appointments</div>
-                 <div className="text-3xl font-black text-amber-900">34</div>
+                 <div className="text-3xl font-black text-amber-900">0</div>
                </div>
              </div>
 
