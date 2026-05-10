@@ -17,7 +17,7 @@ import {
 interface NewCampaignModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => Promise<any>;
 }
 
 interface EventData {
@@ -49,6 +49,7 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
       }
     ] as EventData[]
   });
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const templates = [
     { id: 'financial', name: 'Financial Planning', description: 'Retirement & wealth management seminars' },
@@ -89,9 +90,15 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
     setFormData({ ...formData, events: newEvents });
   };
 
-  const handleSubmit = () => {
-    onSubmit(formData);
-    onClose();
+  const handleSubmit = async () => {
+    try {
+      setSubmitError(null);
+      await onSubmit(formData);
+      onClose();
+    } catch (err: unknown) {
+      console.error('Create campaign error:', err);
+      setSubmitError((err as any)?.message || 'Failed to create campaign. Please try again.');
+    }
   };
 
   if (!isOpen) return null;
@@ -367,6 +374,13 @@ const NewCampaignModal: React.FC<NewCampaignModalProps> = ({ isOpen, onClose, on
             </div>
           )}
         </div>
+
+        {/* Inline submit error */}
+        {submitError && (
+          <div className="px-6 pb-2">
+            <div className="text-sm text-red-400">{submitError}</div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-slate-900/50">

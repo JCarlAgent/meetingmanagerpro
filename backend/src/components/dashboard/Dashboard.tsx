@@ -105,25 +105,90 @@ const Dashboard: React.FC = () => {
   const handleCreateCampaign = async (data: any) => {
     try {
       const projectId = Math.floor(50000 + Math.random() * 10000).toString();
+
+      const orgId = user?.is_master_admin ? (actingOrgId ?? null) : (user?.org_id ?? null);
+      if (!orgId) {
+        throw new Error('No org found for your user. Ask an admin to add you to an org.');
+      }
+
+      // Allocate job number
+      const { data: jobNumberData, error: allocErr } = await supabase.rpc('allocate_job_number', { p_org_id: orgId });
+      if (allocErr) throw allocErr;
+      const jobNumber = String(jobNumberData ?? '');
+      if (!jobNumber) throw new Error('Failed to allocate job number');
+
+      // Insert canonical job
+      const { data: insertedJob, error: jobInsErr } = await supabase
+        .from('jobs')
+        .insert({
+          org_id: orgId,
+          created_by_user_id: user?.id,
+          job_number: jobNumber,
+          status: 'pending',
+          title: `Campaign ${projectId}`,
+        })
+        .select('id')
+        .single();
+      if (jobInsErr) throw jobInsErr;
+      const jobId = (insertedJob as any).id;
+
+      // Insert job_meetings for each event
+      for (const event of data.events || []) {
+        if (event.venue_name && event.event_date) {
+          const startsAt = event.event_time
+            ? new Date(`${event.event_date}T${event.event_time}`).toISOString()
+            : new Date(event.event_date).toISOString();
+
+          const { error: jmErr } = await supabase.from('job_meetings').insert({
+            job_id: jobId,
+            starts_at: startsAt,
+            location_name: event.venue_name,
+            address1: event.venue_address,
+            city: event.venue_city,
+            state: event.venue_state,
+          });
+          if (jmErr) throw jmErr;
+        }
+      }
+
+      // Legacy campaigns/events insert (preserve backward compatibility)
       const { data: newCampaign } = await supabase.from('campaigns').insert({
-        user_id: user?.id, project_id: projectId, status: 'pending',
-        mail_quantity: data.mail_quantity, template_type: data.template_type,
-        mail_piece_size: data.mail_piece_size, mail_piece_type: data.mail_piece_type,
-        toll_free_number: '800-786-8104', landing_page_url: `https://rsvp.meetingmanagerpro.com/${projectId}`,
+        user_id: user?.id,
+        project_id: projectId,
+        status: 'pending',
+        mail_quantity: data.mail_quantity,
+        template_type: data.template_type,
+        mail_piece_size: data.mail_piece_size,
+        mail_piece_type: data.mail_piece_type,
+        toll_free_number: '800-786-8104',
+        landing_page_url: `https://rsvp.meetingmanagerpro.com/${projectId}`,
       }).select().single();
+
       if (newCampaign) {
-        for (const event of data.events) {
+        for (const event of data.events || []) {
           if (event.venue_name && event.event_date) {
-            await supabase.from('events').insert({
-              campaign_id: newCampaign.id, venue_name: event.venue_name, venue_address: event.venue_address,
-              venue_city: event.venue_city, venue_state: event.venue_state,
-              event_date: event.event_date, event_time: event.event_time, max_capacity: event.max_capacity,
+            const { error: evErr } = await supabase.from('events').insert({
+              campaign_id: (newCampaign as any).id,
+              venue_name: event.venue_name,
+              venue_address: event.venue_address,
+              venue_city: event.venue_city,
+              venue_state: event.venue_state,
+              event_date: event.event_date,
+              event_time: event.event_time,
+              max_capacity: event.max_capacity,
             });
+            if (evErr) throw evErr;
           }
         }
       }
-      fetchData();
-    } catch (error) { console.error('Error:', error); }
+
+      // Refresh UI after successful save
+      await fetchData();
+
+    } catch (error) {
+      console.error('Error creating campaign/job:', error);
+      throw error;
+    }
   };
 
   const filteredCampaigns = campaigns.filter(c => {
@@ -281,13 +346,17 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="flex">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} activeView={activeView}
-          onViewChange={(view) => { if (view === 'new-campaign') { setShowNewCampaign(true); } else { setActiveView(view); } setSidebarOpen(false); }} />
-        <div className="flex-1 min-h-screen">
-          <Header onMenuClick={() => setSidebarOpen(true)} />
-          <main className="p-4 lg:p-6">{renderContent()}</main>
+    <div className="min-h-screen bg-slate-50 print:bg-white print:m-0 print:p-0">
+      <div className="flex print:m-0 print:p-0">
+        <div className="print:hidden">
+          <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} activeView={activeView}
+            onViewChange={(view) => { if (view === 'new-campaign') { setShowNewCampaign(true); } else { setActiveView(view); } setSidebarOpen(false); }} />
+        </div>
+        <div className="flex-1 min-h-screen print:min-h-0 print:m-0 print:p-0">
+          <div className="print:hidden">
+            <Header onMenuClick={() => setSidebarOpen(true)} />
+          </div>
+          <main className="p-4 lg:p-6 print:p-0 print:m-0">{renderContent()}</main>
         </div>
       </div>
       <NewCampaignModal isOpen={showNewCampaign} onClose={() => setShowNewCampaign(false)} onSubmit={handleCreateCampaign} />
