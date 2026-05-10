@@ -121,23 +121,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
       : []),
     {
       title: 'Plan',
+      // Reduced to only Home to remove duplicated/legacy entries.
       items: [
         { id: 'home', label: 'Home', icon: Home },
-        ...(!isViewOnlyAdvisor
-          ? [
-              { id: 'setup', label: 'Meeting Setup', icon: LayoutDashboard },
-              { id: 'templates', label: 'Templates', icon: FileText },
-              { id: 'uploads', label: 'Demographics CSV', icon: Upload },
-            ]
-          : []),
-      ],
-    },
-    {
-      title: 'Launch',
-      items: [
-        { id: 'campaigns', label: 'Campaigns', icon: FolderKanban },
-        { id: 'meetings', label: 'Meetings', icon: Calendar },
-        { id: 'events', label: 'Events', icon: Calendar },
       ],
     },
     {
