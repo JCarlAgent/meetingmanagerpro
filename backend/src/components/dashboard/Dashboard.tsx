@@ -76,10 +76,76 @@ const Dashboard: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      // Fetch legacy campaigns/events first (fallback)
       const { data: c } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
-      setCampaigns(c || []);
       const { data: e } = await supabase.from('events').select('*').order('event_date', { ascending: true });
-      setEvents(e || []);
+
+      // Determine org scope (same pattern used elsewhere)
+      const orgId = user?.is_master_admin ? (actingOrgId ?? null) : (user?.org_id ?? null);
+
+      // Try to fetch canonical jobs + job_meetings for this org. If found, prefer them for display.
+      let jobsData: any[] | null = null;
+      let jobMeetings: any[] = [];
+      if (orgId) {
+        const { data: jobs } = await supabase.from('jobs').select('*').eq('org_id', orgId).order('created_at', { ascending: false });
+        jobsData = jobs || null;
+        if (jobsData && jobsData.length > 0) {
+          const jobIds = jobsData.map((j: any) => j.id);
+          const { data: jm } = await supabase.from('job_meetings').select('*').in('job_id', jobIds).order('starts_at', { ascending: true });
+          jobMeetings = jm || [];
+        }
+      }
+
+      if (jobsData && jobsData.length > 0) {
+        // Map jobs -> campaign-like objects expected by the dashboard UI
+        const jobsAsCampaigns = (jobsData || []).map((j: any) => ({
+          id: j.id,
+          user_id: j.created_by_user_id ?? null,
+          project_id: j.job_number ?? '',
+          status: j.status ?? 'pending',
+          mail_quantity: 0,
+          template_type: 'financial',
+          mail_piece_size: '',
+          mail_piece_type: '',
+          toll_free_number: '',
+          landing_page_url: '',
+          artwork_status: 'pending',
+          list_status: 'pending',
+          prepped_status: false,
+          produced_status: false,
+          paid_at: null,
+          created_at: j.created_at,
+          updated_at: j.updated_at,
+        }));
+
+        // Map job_meetings -> event-like objects
+        const jobMeetEvents = (jobMeetings || []).map((m: any) => {
+          const d = m.starts_at ? new Date(m.starts_at) : null;
+          return {
+            id: m.id,
+            campaign_id: m.job_id,
+            venue_name: m.location_name || '',
+            venue_address: m.address1 || '',
+            venue_city: m.city || '',
+            venue_state: m.state || '',
+            event_date: d ? d.toISOString().slice(0, 10) : '',
+            event_time: d ? d.toISOString().slice(11, 16) : '',
+            event_type: '',
+            max_capacity: 0,
+            status: 'open',
+            created_at: m.created_at,
+          };
+        });
+
+        setCampaigns(jobsAsCampaigns as unknown as Campaign[]);
+        setEvents(jobMeetEvents as unknown as Event[]);
+      } else {
+        // Fallback to legacy campaigns/events
+        setCampaigns(c || []);
+        setEvents(e || []);
+      }
+
+      // Responders unchanged
       const { data: r } = await supabase.from('responders').select('*').order('created_at', { ascending: false });
       setResponders(r || []);
     } catch (error) { console.error('Error:', error); }
