@@ -4,21 +4,14 @@ import { useActingOrg } from '@/lib/actingOrg';
 import { supabase } from '@/lib/supabase';
 import FmoHomeView from '@/components/dashboard/FmoHomeView';
 import AdvisorHomeView from '@/components/dashboard/AdvisorHomeView';
+import ClientDashboard from '@/components/dashboard/ClientDashboard';
 import WeatherAlertWidget from '@/components/dashboard/WeatherAlertWidget';
-import CampaignCard from './CampaignCard';
-import StatsOverview from './StatsOverview';
-import AiCampaignQuery from './AiCampaignQuery';
-import { Campaign, Event } from '@/types';
 
 export interface HomeViewProps {
   onNavigate?: (view: string) => void;
-  onOpenNewCampaign?: () => void;
-  // Optional: allow Dashboard to pass data for lightweight previews
-  campaigns?: Campaign[];
-  events?: Event[];
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ onNavigate, onOpenNewCampaign, campaigns = [], events = [] }) => {
+const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   const { user } = useAuth();
   const { actingOrgId } = useActingOrg();
 
@@ -102,82 +95,20 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, onOpenNewCampaign, camp
       </div>
     );
   }
-  // Render a three-section admin home: Campaigns | Campaign Builder | Meeting Numbers
-  const activeCampaigns = campaigns.filter(c => c.status === 'active' || c.status === 'pending');
-  const completedCampaigns = campaigns.filter(c => c.status === 'closed');
 
-  const getCampaignEvents = (id: string) => events.filter(e => e.campaign_id === id);
-
-  const [showAiBuilder, setShowAiBuilder] = useState(false);
+  if (isFmo) {
+    return (
+      <div className="space-y-6">
+        <WeatherAlertWidget />
+        <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <WeatherAlertWidget />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 1. Campaigns */}
-        <section className="col-span-1 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Campaigns</h3>
-          <p className="text-sm text-slate-500 mt-1">Active and completed campaigns (canonical jobs preferred).</p>
-
-          <div className="mt-4 space-y-4">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-700">Active Campaigns</h4>
-              {activeCampaigns.length === 0 ? (
-                <div className="text-sm text-slate-500 mt-2">No active campaigns. <button onClick={onOpenNewCampaign} className="text-indigo-600 hover:underline">Create one</button></div>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {activeCampaigns.slice(0, 3).map(c => (
-                    <CampaignCard key={c.id} campaign={c} events={getCampaignEvents(c.id)} responders={[]} onUpdateCampaign={() => {}} onUpdateResponder={() => {}} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4">
-              <h4 className="text-sm font-semibold text-slate-700">Completed Campaigns</h4>
-              {completedCampaigns.length === 0 ? (
-                <div className="text-sm text-slate-500 mt-2">No completed campaigns yet. <button onClick={onNavigate ? () => onNavigate('campaigns') : undefined} className="text-indigo-600 hover:underline">View all</button></div>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {completedCampaigns.slice(0, 3).map(c => (
-                    <CampaignCard key={c.id} campaign={c} events={getCampaignEvents(c.id)} responders={[]} onUpdateCampaign={() => {}} onUpdateResponder={() => {}} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* 2. Campaign Builder */}
-        <section className="col-span-1 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Campaign Builder</h3>
-          <p className="text-sm text-slate-500 mt-1">Create campaigns manually or use the AI-assisted builder.</p>
-
-          <div className="mt-4 flex flex-col gap-3">
-            <button onClick={onOpenNewCampaign} className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg">New Campaign (Manual)</button>
-
-            <button onClick={() => setShowAiBuilder(s => !s)} className="w-full border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{showAiBuilder ? 'Hide AI Builder' : 'Open AI Builder'}</button>
-
-            {showAiBuilder && (
-              <div className="mt-3 w-full bg-slate-50 p-4 rounded-lg">
-                <AiCampaignQuery />
-              </div>
-            )}
-
-            <div className="text-xs text-slate-500 mt-2">AI builder will later expose filters for age, income, SPA, drive-time, and POI types.</div>
-          </div>
-        </section>
-
-        {/* 3. Meeting Numbers */}
-        <aside className="col-span-1 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Meeting Numbers</h3>
-          <p className="text-sm text-slate-500 mt-1">High-level placeholders for recent results, attendance, and top performers.</p>
-          <div className="mt-4">
-            <StatsOverview campaigns={campaigns} events={events} responders={[]} />
-          </div>
-        </aside>
-      </div>
+      <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} />
     </div>
   );
 };
