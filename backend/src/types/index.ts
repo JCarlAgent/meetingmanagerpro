@@ -68,6 +68,9 @@ export interface Responder {
   confirmed: boolean;
   attended: boolean;
   notes: string;
+  income?: string;
+  age?: string;
+  ipa?: string;
   created_at: string;
   updated_at: string;
 }

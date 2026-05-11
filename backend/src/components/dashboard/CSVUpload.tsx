@@ -92,6 +92,11 @@ const CSVUpload: React.FC<CSVUploadProps> = ({ campaigns, events, onUploadComple
           'zip_code': 'zip',
           'guests': 'guests',
           'guest_count': 'guests',
+          'income': 'income',
+          'estimated_income': 'income',
+          'age': 'age',
+          'ipa': 'ipa',
+          'assets': 'ipa',
           'notes': 'notes',
           'comments': 'notes',
         };

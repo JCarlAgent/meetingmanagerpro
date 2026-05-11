@@ -30,6 +30,9 @@ const AddResponderModal: React.FC<AddResponderModalProps> = ({
     zip: '',
     guests: 0,
     notes: '',
+    income: '',
+    age: '',
+    ipa: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -61,6 +64,9 @@ const AddResponderModal: React.FC<AddResponderModalProps> = ({
         zip: formData.zip,
         guests: formData.guests,
         notes: formData.notes,
+        income: formData.income,
+        age: formData.age,
+        ipa: formData.ipa,
         response_source: 'manual',
         confirmed: false,
         attended: false,
@@ -82,6 +88,9 @@ const AddResponderModal: React.FC<AddResponderModalProps> = ({
         zip: '',
         guests: 0,
         notes: '',
+        income: '',
+        age: '',
+        ipa: '',
       });
     } catch (err) {
       console.error('Error adding responder:', err);
@@ -257,6 +266,40 @@ const AddResponderModal: React.FC<AddResponderModalProps> = ({
                 min="0"
                 max="10"
               />
+            </div>
+
+            {/* Demographics */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Estimated Income</label>
+                <input
+                  type="text"
+                  value={formData.income}
+                  onChange={(e) => setFormData({ ...formData, income: e.target.value })}
+                  className="w-full bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  placeholder="$100k+"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Age</label>
+                <input
+                  type="text"
+                  value={formData.age}
+                  onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                  className="w-full bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  placeholder="65+"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">IPA (Assets)</label>
+                <input
+                  type="text"
+                  value={formData.ipa}
+                  onChange={(e) => setFormData({ ...formData, ipa: e.target.value })}
+                  className="w-full bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  placeholder="$500k+"
+                />
+              </div>
             </div>
 
             {/* Notes */}

@@ -272,7 +272,7 @@ const Dashboard: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'home':
-        return <HomeView onNavigate={(view) => setActiveView(view)} />;
+        return <HomeView onNavigate={(view) => setActiveView(view)} campaigns={campaigns} events={events} />;
       case 'master-clients':
         if (user?.is_master_admin && actingOrgId) {
           return <HomeView onNavigate={(view) => setActiveView(view)} />;

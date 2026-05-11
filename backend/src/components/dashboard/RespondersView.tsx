@@ -14,7 +14,8 @@ import {
   X,
   QrCode,
   PhoneCall,
-  UserPlus
+  UserPlus,
+  Printer
 } from 'lucide-react';
 
 interface RespondersViewProps {
@@ -35,6 +36,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [printMode, setPrintMode] = useState<'none' | 'notes' | 'signin'>('none');
 
   const filteredResponders = responders.filter(r => {
     if (statusFilter === 'confirmed' && !r.confirmed) return false;
@@ -115,9 +117,9 @@ const RespondersView: React.FC<RespondersViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${printMode !== 'none' ? 'print:!p-0 print:!space-y-0 print:!w-full print:!h-full' : ''}`}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <Users className="w-6 h-6 text-red-400" />
           <h2 className="text-xl font-semibold text-white">All Responders</h2>
@@ -126,17 +128,117 @@ const RespondersView: React.FC<RespondersViewProps> = ({
           </span>
         </div>
 
-        <button
-          onClick={exportToCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              setPrintMode('notes');
+              setTimeout(() => window.print(), 100);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            <span className="hidden sm:inline">Print Notes</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              setPrintMode('signin');
+              setTimeout(() => window.print(), 100);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            <span className="hidden sm:inline">Print Sign-in</span>
+          </button>
+
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 bg-slate-800/50 rounded-xl border border-white/10 p-4">
+      {printMode !== 'none' && (
+        <div className="hidden print:block text-black bg-white min-h-screen p-8 absolute top-0 left-0 w-full z-50">
+          <div className="mb-8 border-b-2 border-black pb-4">
+            <h1 className="text-3xl font-bold text-black mb-2">
+              {printMode === 'notes' ? 'Advisor Notes & Demographics' : 'Event Sign-in Sheet'}
+            </h1>
+            <p className="text-gray-600">Printed on {new Date().toLocaleDateString()}</p>
+          </div>
+          
+          <div className="w-full">
+            {printMode === 'notes' ? (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr>
+                    <th className="border-b border-black py-2 font-semibold">Name & Contact</th>
+                    <th className="border-b border-black py-2 font-semibold w-1/4">Demographics</th>
+                    <th className="border-b border-black py-2 font-semibold w-1/2">Meeting Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResponders.map(r => (
+                    <tr key={r.id} className="border-b border-gray-300">
+                      <td className="py-6 align-top">
+                        <div className="font-bold text-lg">{r.first_name} {r.last_name}</div>
+                        <div className="text-sm text-gray-600 font-mono mt-1">{r.phone || 'No phone'}</div>
+                      </td>
+                      <td className="py-6 align-top">
+                        {r.income && <div><span className="font-semibold">Income:</span> {r.income}</div>}
+                        {r.age && <div><span className="font-semibold">Age:</span> {r.age}</div>}
+                        {r.ipa && <div><span className="font-semibold">IPA:</span> {r.ipa}</div>}
+                        {!r.income && !r.age && !r.ipa && <span className="text-gray-400 italic">No demo data</span>}
+                      </td>
+                      <td className="py-6">
+                        {/* Huge blank space for writing notes */}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-black py-4 px-4 font-semibold text-lg">Attendee Name</th>
+                    <th className="border border-black py-4 px-4 font-semibold text-lg w-24 text-center">Guests</th>
+                    <th className="border border-black py-4 px-4 font-semibold w-1/2 text-lg">Signature / Arrival Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResponders.map(r => (
+                    <tr key={r.id}>
+                      <td className="border border-black py-6 px-4 align-middle">
+                        <div className="font-bold text-xl">{r.first_name} {r.last_name}</div>
+                      </td>
+                      <td className="border border-black py-6 px-4 text-center text-xl font-bold align-middle">
+                        {r.guests > 1 ? `+${r.guests - 1}` : ''}
+                      </td>
+                      <td className="border border-black py-6 px-4 align-bottom">
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Append some blank rows for walk-ins */}
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={`blank-${i}`}>
+                      <td className="border border-black py-8 px-4"></td>
+                      <td className="border border-black py-8 px-4"></td>
+                      <td className="border border-black py-8 px-4"></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Filters (Hidden during print) */}
+      <div className="flex flex-wrap items-center gap-3 bg-slate-800/50 rounded-xl border border-white/10 p-4 print:hidden">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -171,7 +273,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
       </div>
 
       {/* Table */}
-      <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden">
+      <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden print:hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
