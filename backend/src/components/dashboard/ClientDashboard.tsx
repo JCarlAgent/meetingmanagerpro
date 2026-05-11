@@ -12,6 +12,8 @@ interface ClientDashboardProps {
   orgId: string;
   isFmo: boolean;
   onNavigate?: (view: string) => void;
+  campaigns?: any[];
+  events?: any[];
 }
 
 // --- Mock Data ---
@@ -23,7 +25,7 @@ const topPerformersFMO: any[] = [];
 
 const topPerformersCompany: any[] = [];
 
-export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDashboardProps) {
+export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = [], events = [] }: ClientDashboardProps) {
   // All sections contracted by default.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     company: false,
@@ -36,6 +38,36 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
   const [searchQuery, setSearchQuery] = useState('');
 
   const [activeCampaigns, setActiveCampaigns] = useState(mockActiveCampaigns);
+
+  // If parent provides campaigns/events, use them as the source of truth for active campaigns
+  useEffect(() => {
+    try {
+      if (Array.isArray(campaigns) && campaigns.length > 0) {
+        const safeEvents = Array.isArray(events) ? events : [];
+        const mapped = campaigns.map((c: any) => {
+          const event = safeEvents.find((e: any) => e && e.campaign_id === c.id) || null;
+          return {
+            id: c.id,
+            title: c.project_id || c.title || '',
+            date: event && event.event_date ? `${event.event_date}` : '',
+            venueName: event?.venue_name || '',
+            city: event?.venue_city || event?.city || '',
+            state: event?.venue_state || event?.state || '',
+            repName: '',
+            repPhone: '',
+            repEmail: '',
+            company: '',
+            status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
+            daysLeft: c.daysLeft || '',
+            stats: c.stats || { mailed: 0, responses: 0, attendees: 0, appointments: 0 }
+          };
+        });
+        setActiveCampaigns(mapped);
+      }
+    } catch (err) {
+      console.error('Error mapping campaigns/events in ClientDashboard:', err);
+    }
+  }, [campaigns, events]);
 
   const toggleCampaignStatus = (campId: number, statusIndex: number) => {
     setActiveCampaigns(prev => prev.map(camp => {
