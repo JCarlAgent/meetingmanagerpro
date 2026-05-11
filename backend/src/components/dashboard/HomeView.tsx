@@ -9,11 +9,9 @@ import WeatherAlertWidget from '@/components/dashboard/WeatherAlertWidget';
 
 export interface HomeViewProps {
   onNavigate?: (view: string) => void;
-  campaigns?: any[];
-  events?: any[];
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) => {
+const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   const { user } = useAuth();
   const { actingOrgId } = useActingOrg();
 
@@ -98,11 +96,11 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) =>
     );
   }
 
-    if (isFmo) {
+  if (isFmo) {
     return (
       <div className="space-y-6">
         <WeatherAlertWidget />
-        <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} />
+        <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} />
       </div>
     );
   }
@@ -110,7 +108,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) =>
   return (
     <div className="space-y-6">
       <WeatherAlertWidget />
-      <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} />
+      <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} />
     </div>
   );
 };

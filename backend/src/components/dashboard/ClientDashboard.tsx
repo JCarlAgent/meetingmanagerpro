@@ -12,8 +12,6 @@ interface ClientDashboardProps {
   orgId: string;
   isFmo: boolean;
   onNavigate?: (view: string) => void;
-  campaigns?: any[];
-  events?: any[];
 }
 
 // --- Mock Data ---
@@ -37,33 +35,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate }: ClientDash
   const [orgData, setOrgData] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [activeCampaigns, setActiveCampaigns] = useState<any[]>(mockActiveCampaigns);
-
-  // If parent provides campaigns/events, use them as the source of truth for active campaigns
-  useEffect(() => {
-    if (Array.isArray(campaigns) && campaigns.length > 0) {
-      // Map the campaign shape to the client dashboard expected shape (minimal fields)
-      const mapped = campaigns.map((c: any) => {
-        const event = (events || []).find((e: any) => e.campaign_id === c.id) || null;
-        return {
-          id: c.id,
-          title: c.project_id || c.title || '',
-          date: event ? `${event.event_date}` : '',
-          venueName: event?.venue_name || '',
-          city: event?.venue_city || event?.city || '',
-          state: event?.venue_state || event?.state || '',
-          repName: '',
-          repPhone: '',
-          repEmail: '',
-          company: '',
-          status: [true, false, false, false, false],
-          daysLeft: '',
-          stats: { mailed: 0, responses: 0, attendees: 0, appointments: 0 }
-        };
-      });
-      setActiveCampaigns(mapped);
-    }
-  }, [campaigns, events]);
+  const [activeCampaigns, setActiveCampaigns] = useState(mockActiveCampaigns);
 
   const toggleCampaignStatus = (campId: number, statusIndex: number) => {
     setActiveCampaigns(prev => prev.map(camp => {
