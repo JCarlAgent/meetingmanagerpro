@@ -76,9 +76,9 @@ const Dashboard: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch legacy campaigns/events first (fallback)
-      const { data: c } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
-      const { data: e } = await supabase.from('events').select('*').order('event_date', { ascending: true });
+      // Legacy tables may be absent in some Supabase projects; skip querying them to avoid 404s.
+      const c: any[] | null = null;
+      const e: any[] | null = null;
 
       // Determine org scope (same pattern used elsewhere)
       const orgId = user?.is_master_admin ? (actingOrgId ?? null) : (user?.org_id ?? null);
