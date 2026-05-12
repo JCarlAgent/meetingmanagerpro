@@ -11,6 +11,7 @@ export interface HomeViewProps {
   onNavigate?: (view: string) => void;
   campaigns?: any[];
   events?: any[];
+  onUpdateCampaignStatus?: (id: string, newStatus: boolean[]) => Promise<void> | void;
 }
 
 const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) => {
@@ -102,7 +103,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) =>
     return (
       <div className="space-y-6">
         <WeatherAlertWidget />
-        <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} />
+        <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} onUpdateCampaignStatus={onUpdateCampaignStatus} />
       </div>
     );
   }
@@ -110,7 +111,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) =>
   return (
     <div className="space-y-6">
       <WeatherAlertWidget />
-      <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} />
+      <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} onUpdateCampaignStatus={onUpdateCampaignStatus} />
     </div>
   );
 };

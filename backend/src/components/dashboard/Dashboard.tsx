@@ -146,11 +146,41 @@ const Dashboard: React.FC = () => {
           const delivered_quantity = jobStatsByJobId.get(j.id)?.delivered_count ?? 0;
           const responder_count = jobStatsByJobId.get(j.id)?.responses_total ?? 0;
 
+          // Safely parse existing notes which we will use to persist checklist state.
+          let notesObj: any = {};
+          try {
+            if (j.notes) {
+              notesObj = typeof j.notes === 'string' ? JSON.parse(j.notes) : j.notes;
+            }
+          } catch (err) {
+            notesObj = { text: j.notes || '' };
+          }
+
+          // Derived items (should be read-only): List Purchased (1), Mail Sent (4)
+          const derivedListPurchased = (mailingListByJobId.get(j.id) ?? 0) > 0;
+          const derivedMailSent = !!(printOrdersByJobId.get(j.id) || (jobStatsByJobId.get(j.id)?.mailed_count));
+
+          // Stored checklist items (if any)
+          const storedItems: any[] = (notesObj?.checklist && Array.isArray(notesObj.checklist.items)) ? notesObj.checklist.items : [];
+
+          // Build final status array: [Demo Data Done, List Purchased, Design Chosen, Mailhouse Paid, Mail Sent]
+          const statusArray: boolean[] = [];
+          // 0: Demo Data Done (manual)
+          statusArray[0] = storedItems.length > 0 && typeof storedItems[0] === 'boolean' ? storedItems[0] : false;
+          // 1: List Purchased (derived)
+          statusArray[1] = derivedListPurchased;
+          // 2: Design Chosen (manual)
+          statusArray[2] = storedItems.length > 2 && typeof storedItems[2] === 'boolean' ? storedItems[2] : false;
+          // 3: Mailhouse Paid (manual)
+          statusArray[3] = storedItems.length > 3 && typeof storedItems[3] === 'boolean' ? storedItems[3] : false;
+          // 4: Mail Sent (derived)
+          statusArray[4] = derivedMailSent;
+
           return {
             id: j.id,
             user_id: j.created_by_user_id ?? null,
             project_id: j.job_number ?? '',
-            status: j.status ?? 'pending',
+            status: statusArray,
             mail_quantity,
             template_type: 'financial',
             mail_piece_size: '',
@@ -224,6 +254,56 @@ const Dashboard: React.FC = () => {
       setCampaigns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     } catch (error) {
       console.error('Error:', error);
+    }
+  };
+
+  // Persist checklist updates to canonical jobs.notes (JSON blob). Only manual indexes are written back.
+  const handleUpdateCampaignStatus = async (id: string, newStatus: boolean[]) => {
+    try {
+      // Optimistically update local state
+      setCampaigns(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
+
+      // Read existing job notes
+      const { data: jobRow, error: jobErr } = await supabase.from('jobs').select('notes').eq('id', id).single();
+      if (jobErr) {
+        console.warn('Could not read job notes for persistence', jobErr);
+      }
+
+      let notesObj: any = {};
+      try {
+        if (jobRow && jobRow.notes) notesObj = typeof jobRow.notes === 'string' ? JSON.parse(jobRow.notes) : jobRow.notes;
+      } catch (err) {
+        notesObj = { text: jobRow?.notes ?? '' };
+      }
+
+      if (!notesObj) notesObj = {};
+      if (!notesObj.checklist) notesObj.checklist = {};
+      const existingItems = Array.isArray(notesObj.checklist.items) ? notesObj.checklist.items : [];
+
+      // Manual indexes we persist: 0 (Demo Data Done), 2 (Design Chosen), 3 (Mailhouse Paid)
+      const manualIndexes = [0, 2, 3];
+      manualIndexes.forEach(i => {
+        existingItems[i] = !!newStatus[i];
+      });
+      notesObj.checklist.items = existingItems;
+
+      // Write back to jobs.notes as JSON string
+      try {
+        await supabase.from('jobs').update({ notes: JSON.stringify(notesObj) }).eq('id', id);
+      } catch (err) {
+        console.error('Failed to persist checklist to jobs.notes', err);
+      }
+
+      // Preserve legacy campaigns behavior (attempt update if legacy table exists)
+      try {
+        if (campaignsTableExistsRef.current) {
+          await supabase.from('campaigns').update({ status: newStatus }).eq('id', id);
+        }
+      } catch (err) {
+        console.warn('Legacy campaigns update failed (status), continuing', err);
+      }
+    } catch (err) {
+      console.error('Error in handleUpdateCampaignStatus', err);
     }
   };
 
@@ -346,15 +426,15 @@ const Dashboard: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'home':
-        return <HomeView onNavigate={(view) => setActiveView(view)} campaigns={campaigns} events={events} />;
+        return <HomeView onNavigate={(view) => setActiveView(view)} campaigns={campaigns} events={events} onUpdateCampaignStatus={handleUpdateCampaignStatus} />;
       case 'master-clients':
         if (user?.is_master_admin && actingOrgId) {
-          return <HomeView onNavigate={(view) => setActiveView(view)} />;
+          return <HomeView onNavigate={(view) => setActiveView(view)} onUpdateCampaignStatus={handleUpdateCampaignStatus} />;
         }
         return <MasterClientsView onNavigate={(view) => setActiveView(view)} />;
       case 'master-orgs':
         if (user?.is_master_admin && actingOrgId) {
-          return <HomeView onNavigate={(view) => setActiveView(view)} />;
+          return <HomeView onNavigate={(view) => setActiveView(view)} onUpdateCampaignStatus={handleUpdateCampaignStatus} />;
         }
         return <MasterOrganizationsView />;
       case 'setup':

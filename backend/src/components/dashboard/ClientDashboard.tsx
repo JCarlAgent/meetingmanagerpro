@@ -14,6 +14,7 @@ interface ClientDashboardProps {
   onNavigate?: (view: string) => void;
   campaigns?: any[];
   events?: any[];
+  onUpdateCampaignStatus?: (id: string, newStatus: boolean[]) => Promise<void> | void;
 }
 
 // --- Mock Data ---
@@ -69,15 +70,54 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
     }
   }, [campaigns, events]);
 
-  const toggleCampaignStatus = (campId: number, statusIndex: number) => {
+  const toggleCampaignStatus = async (campId: string, statusIndex: number) => {
+    // Derived indexes (read-only): 1=List Purchased, 4=Mail Sent
+    const derivedIndexes = [1, 4];
+    if (derivedIndexes.includes(statusIndex)) return; // do not allow toggle for derived items
+
+    // Optimistically update UI
+    let newStatus: boolean[] = [];
     setActiveCampaigns(prev => prev.map(camp => {
       if (camp.id === campId) {
-        const newStatus = [...camp.status];
-        newStatus[statusIndex] = !newStatus[statusIndex];
-        return { ...camp, status: newStatus };
+        const ns = [...camp.status];
+        ns[statusIndex] = !ns[statusIndex];
+        newStatus = ns;
+        return { ...camp, status: ns };
       }
       return camp;
     }));
+
+    // Persist to parent if handler provided
+    try {
+      if (onUpdateCampaignStatus) {
+        await onUpdateCampaignStatus(campId, newStatus);
+      }
+    } catch (err) {
+      console.error('Failed to persist checklist status', err);
+      // Revert UI on failure by reloading campaigns prop mapping
+      if (Array.isArray(campaigns) && campaigns.length > 0) {
+        const safeEvents = Array.isArray(events) ? events : [];
+        const mapped = campaigns.map((c: any) => {
+          const event = safeEvents.find((e: any) => e && e.campaign_id === c.id) || null;
+          return {
+            id: c.id,
+            title: c.project_id || c.title || '',
+            date: event && event.event_date ? `${event.event_date}` : '',
+            venueName: event?.venue_name || '',
+            city: event?.venue_city || event?.city || '',
+            state: event?.venue_state || event?.state || '',
+            repName: '',
+            repPhone: '',
+            repEmail: '',
+            company: '',
+            status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
+            daysLeft: c.daysLeft || '',
+            stats: c.stats || { mailed: 0, responses: 0, attendees: 0, appointments: 0 }
+          };
+        });
+        setActiveCampaigns(mapped);
+      }
+    }
   };
   const [selectedRep, setSelectedRep] = useState<any>(null);
 

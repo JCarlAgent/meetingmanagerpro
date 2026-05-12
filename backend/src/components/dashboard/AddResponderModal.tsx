@@ -18,6 +18,19 @@ const AddResponderModal: React.FC<AddResponderModalProps> = ({
   events,
   onSuccess
 }) => {
+  const [overrideOpen, setOverrideOpen] = useState<{ campaignId?: string; eventId?: string } | null>(null);
+
+  // Listen for global open events so child components can trigger this modal without changing parent code.
+  React.useEffect(() => {
+    const handler = (e: any) => {
+      const d = e?.detail || {};
+      setOverrideOpen({ campaignId: d.campaignId || '', eventId: d.eventId || '' });
+      // prefill formData when possible
+      setFormData(prev => ({ ...prev, campaign_id: d.campaignId || prev.campaign_id, event_id: d.eventId || prev.event_id }));
+    };
+    window.addEventListener('open-add-responder', handler as EventListener);
+    return () => window.removeEventListener('open-add-responder', handler as EventListener);
+  }, []);
   const [formData, setFormData] = useState({
     campaign_id: '',
     event_id: '',
@@ -100,7 +113,8 @@ const AddResponderModal: React.FC<AddResponderModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  const effectiveOpen = Boolean(isOpen || overrideOpen);
+  if (!effectiveOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

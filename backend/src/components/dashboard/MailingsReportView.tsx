@@ -215,7 +215,7 @@ const MailingsReportView: React.FC = () => {
               ))}
             </select>
             {selectedJob && (
-              <p className="mt-2 text-xs text-slate-500">Showing mailings for {formatJobLabel(selectedJob)}.</p>
+              <p className="mt-2 text-xs text-slate-500">Mailing history for Job {formatJobLabel(selectedJob)}.</p>
             )}
           </div>
 

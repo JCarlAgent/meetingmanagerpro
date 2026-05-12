@@ -405,7 +405,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
         {filteredResponders.length === 0 && (
           <div className="text-center py-12">
             <Users className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-white">No responders found</p>
+            <p className="text-slate-600">No responders found</p>
           </div>
         )}
       </div>

@@ -28,6 +28,8 @@ interface CampaignCardProps {
   responders: Responder[];
   onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void;
   onUpdateCampaign: (campaignId: string, updates: Partial<Campaign>) => void;
+  // optional callback to open add responder UI; if not provided the component will emit a global event
+  onAddResponder?: (campaignId: string) => void;
 }
 
 const CampaignCard: React.FC<CampaignCardProps> = ({ 
@@ -123,7 +125,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         </div>
 
         {/* Campaign Details Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           {/* Quantity */}
           <div className="bg-slate-900/50 rounded-lg p-3">
             <div className="text-xs text-slate-400 uppercase mb-1">Quantity</div>
@@ -135,7 +137,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           <div className="bg-slate-900/50 rounded-lg p-3">
             <div className="text-xs text-slate-400 uppercase mb-1">Venue</div>
             <div className="text-lg font-semibold text-white truncate">{events[0]?.venue_name || 'TBD'}</div>
-            <div className="text-xs text-slate-500">{events[0]?.venue_city}, {events[0]?.venue_state}</div>
+            <div className="text-sm text-slate-200">{events[0]?.venue_city || ''}{events[0]?.venue_city && events[0]?.venue_state ? ', ' : ''}{events[0]?.venue_state || ''}</div>
           </div>
 
           {/* Responders */}
@@ -153,36 +155,44 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </div>
         </div>
 
-        {/* Event Dates */}
-        <div className="flex flex-wrap gap-2 mt-4">
-          {events.map((event) => (
-            <div 
-              key={event.id}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all ${
-                event.status === 'closed' 
-                  ? 'bg-slate-700/50 border-slate-600' 
-                  : event.status === 'full'
-                  ? 'bg-amber-500/10 border-amber-500/30'
-                  : 'bg-green-500/10 border-green-500/30'
-              }`}
-              onClick={() => setSelectedEventId(selectedEventId === event.id ? null : event.id)}
-            >
-              <div className="text-center">
-                <div className="text-xs text-slate-400">{getMonthName(event.event_date)}</div>
-                <div className="text-lg font-bold text-white">{getDay(event.event_date)}</div>
-                <div className="text-xs text-slate-500">{getDayOfWeek(event.event_date)}</div>
-              </div>
-              <div className="border-l border-white/10 pl-2">
-                <div className="text-sm text-white">{formatTime(event.event_time)}</div>
-                <div className={`text-xs uppercase font-semibold ${
-                  event.status === 'closed' ? 'text-slate-400' : 
-                  event.status === 'full' ? 'text-amber-400' : 'text-green-400'
-                }`}>
-                  {event.status}
+        {/* Meetings List */}
+        <div className="mt-4">
+          <h4 className="text-sm text-slate-300 uppercase mb-2">Meetings</h4>
+          <div className="space-y-2">
+            {events.length === 0 && (
+              <div className="bg-white text-slate-900 rounded-lg p-3">No meetings scheduled</div>
+            )}
+            {events.map((event) => (
+              <div key={event.id} className="bg-white text-slate-900 rounded-lg p-3 flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">{event.venue_name || 'TBD'}</div>
+                  <div className="text-sm text-slate-600">{event.venue_city}{event.venue_city && event.venue_state ? ', ' : ''}{event.venue_state}</div>
+                  <div className="text-sm text-slate-700 mt-1">{event.event_date} {event.event_time ? `• ${formatTime(event.event_time)}` : ''}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-slate-500 mb-1">{event.status || 'open'}</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedEventId(selectedEventId === event.id ? null : event.id)}
+                      className="px-2 py-1 bg-slate-800 text-white rounded-md text-sm"
+                    >
+                      View Responders
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (onAddResponder) return onAddResponder(campaign.id);
+                        // emit global event for host to catch and open modal
+                        window.dispatchEvent(new CustomEvent('open-add-responder', { detail: { campaignId: campaign.id, eventId: event.id } }));
+                      }}
+                      className="px-2 py-1 bg-green-600 text-white rounded-md text-sm"
+                    >
+                      Add Responder
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* Status Icons */}
