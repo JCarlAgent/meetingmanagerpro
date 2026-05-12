@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Map, { Source, Layer } from 'react-map-gl';
+import Map, { Source, Layer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Loader2, MapPin, Navigation, Users, Target, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
