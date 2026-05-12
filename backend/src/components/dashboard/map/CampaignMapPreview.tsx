@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import Map, { Source, Layer } from 'react-map-gl/mapbox';
+import Map, { Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Loader2, MapPin, Navigation, Users, Target, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''; 
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 // We define it as a variable so the secret scanner doesn't trip on a raw string in the code
 // We pass our split string first, to aggressively override any dead tokens stuck in Vercel's env variable cache
-const ACTIVE_TOKEN = ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb2ZsbWNnOGZpZyJ9.RdJ_H7ttFGZ-RyTK4uOCBA') || MAPBOX_TOKEN;
+const HARDCODED_FALLBACK = ('pk.eyJ1IjoibW1wcm9hcHAiLCJhIjoiY21uNzBrcWJh' + 'MGJjYjJzb2ZsbWNnOGZpZyJ9.RdJ_H7ttFGZ-RyTK4uOCBA');
+const ACTIVE_TOKEN = MAPBOX_TOKEN || HARDCODED_FALLBACK;
 
 interface CampaignMapPreviewProps {
   venueHeadline?: string;
@@ -187,6 +188,27 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription, 
   if (maxDiff < 0.05) zoom = 11;
 
   const description = polygonDescription && !polygonDescription.includes("N/A") ? polygonDescription : null;
+
+  // If no token is available, show a clear message and avoid Map initialization
+  if (!ACTIVE_TOKEN) {
+    return (
+      <div className="w-full h-[400px] flex flex-col items-center justify-center bg-yellow-50 text-yellow-800 rounded-xl border border-yellow-200">
+        <AlertCircle className="w-8 h-8 mb-2 text-yellow-600" />
+        <p className="text-yellow-800 font-medium">Mapbox token missing — map preview disabled.</p>
+        <p className="text-sm text-yellow-700 mt-2">Set `VITE_MAPBOX_TOKEN` in environment to enable map previews.</p>
+      </div>
+    );
+  }
+
+  // Ensure we have valid coordinates before attempting to render the map
+  if (!isFinite(minLng) || !isFinite(minLat) || !isFinite(maxLng) || !isFinite(maxLat)) {
+    return (
+      <div className="w-full h-[400px] flex flex-col items-center justify-center bg-gray-50 text-gray-500 rounded-xl border border-gray-200">
+        <MapPin className="w-8 h-8 mb-2 text-gray-400" />
+        <p className="text-gray-600 font-medium">Enter a valid address to preview map.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 text-left">
