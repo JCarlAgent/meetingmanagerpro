@@ -79,7 +79,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
     let newStatus: boolean[] = [];
     setActiveCampaigns(prev => prev.map(camp => {
       if (camp.id === campId) {
-        const ns = [...camp.status];
+        const ns = Array.isArray(camp.status) ? [...camp.status] : [false, false, false, false, false];
         ns[statusIndex] = !ns[statusIndex];
         newStatus = ns;
         return { ...camp, status: ns };
@@ -446,7 +446,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                             onClick={() => toggleCampaignStatus(camp.id, idx)}
                             className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto hover:bg-slate-50 p-2 -ml-2 rounded-lg transition-colors group text-left"
                           >
-                            {camp.status[idx] 
+                            {!!camp.status?.[idx] 
                               ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 group-hover:scale-110 transition-transform"/> 
                               : <XCircle className="w-5 h-5 text-red-400 shrink-0 group-hover:scale-110 transition-transform"/>}
                             <span>{label}</span>

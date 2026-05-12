@@ -180,11 +180,14 @@ const Dashboard: React.FC = () => {
           // 4: Mail Sent (derived)
           statusArray[4] = derivedMailSent;
 
-          return {
+          // Normalize to fixed-length boolean array to avoid undefined accesses elsewhere
+          const normalizedStatus = [0, 1, 2, 3, 4].map(i => !!statusArray[i]);
+
+            return {
             id: j.id,
             user_id: j.created_by_user_id ?? null,
             project_id: j.job_number ?? '',
-            status: statusArray,
+            status: normalizedStatus,
             mail_quantity,
             template_type: 'financial',
             mail_piece_size: '',
@@ -264,8 +267,9 @@ const Dashboard: React.FC = () => {
   // Persist checklist updates to canonical jobs.notes (JSON blob). Only manual indexes are written back.
   const handleUpdateCampaignStatus = async (id: string, newStatus: boolean[]) => {
     try {
-      // Optimistically update local state
-      setCampaigns(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
+      // Normalize incoming status and optimistically update local state
+      const normalizedNew = (Array.isArray(newStatus) ? newStatus : []).slice(0,5).map(Boolean);
+      setCampaigns(prev => prev.map(c => c.id === id ? { ...c, status: normalizedNew } : c));
 
       // Read existing job notes
       const { data: jobRow, error: jobErr } = await supabase.from('jobs').select('notes').eq('id', id).single();
@@ -289,7 +293,7 @@ const Dashboard: React.FC = () => {
       // Manual indexes we persist: 0 (Demo Data Done), 2 (Design Chosen), 3 (Mailhouse Paid)
       const manualIndexes = [0, 2, 3];
       manualIndexes.forEach(i => {
-        existingItems[i] = !!newStatus[i];
+        existingItems[i] = !!normalizedNew[i];
       });
       notesObj.checklist.items = existingItems;
 

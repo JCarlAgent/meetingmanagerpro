@@ -14,7 +14,7 @@ export interface HomeViewProps {
   onUpdateCampaignStatus?: (id: string, newStatus: boolean[]) => Promise<void> | void;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events }) => {
+const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events, onUpdateCampaignStatus }) => {
   const { user } = useAuth();
   const { actingOrgId } = useActingOrg();
 
