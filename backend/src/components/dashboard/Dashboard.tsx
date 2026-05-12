@@ -271,17 +271,16 @@ const Dashboard: React.FC = () => {
       const normalizedNew = (Array.isArray(newStatus) ? newStatus : []).slice(0,5).map(Boolean);
       setCampaigns(prev => prev.map(c => c.id === id ? { ...c, status: normalizedNew } : c));
 
-      // Read existing job notes
-      const { data: jobRow, error: jobErr } = await supabase.from('jobs').select('notes').eq('id', id).single();
-      if (jobErr) {
-        console.warn('Could not read job notes for persistence', jobErr);
-      }
+      // Read existing job notes (capture Supabase response for diagnostics)
+      const { data: job, error: jobErr } = await supabase.from('jobs').select('id, notes').eq('id', id).maybeSingle();
+      // eslint-disable-next-line no-console
+      console.log('[checklist] selected job', { id, job, jobErr });
 
       let notesObj: any = {};
       try {
-        if (jobRow && jobRow.notes) notesObj = typeof jobRow.notes === 'string' ? JSON.parse(jobRow.notes) : jobRow.notes;
+        if (job && job.notes) notesObj = typeof job.notes === 'string' ? JSON.parse(job.notes) : job.notes;
       } catch (err) {
-        notesObj = { text: jobRow?.notes ?? '' };
+        notesObj = { text: job?.notes ?? '' };
       }
 
       if (!notesObj) notesObj = {};
@@ -297,11 +296,22 @@ const Dashboard: React.FC = () => {
       });
       notesObj.checklist.items = existingItems;
 
-      // Write back to jobs.notes as JSON string
-      try {
-        await supabase.from('jobs').update({ notes: JSON.stringify(notesObj) }).eq('id', id);
-      } catch (err) {
-        console.error('Failed to persist checklist to jobs.notes', err);
+      // Write back to jobs.notes as JSON string (capture response)
+      const { data: updatedRows, error: updateErr } = await supabase
+        .from('jobs')
+        .update({ notes: JSON.stringify(notesObj) })
+        .eq('id', id)
+        .select('id, notes');
+      // eslint-disable-next-line no-console
+      console.log('[checklist] update result', { id, updatedRows, updateErr });
+
+      if (updateErr) {
+        // Propagate error so callers (and UI) know persistence failed
+        throw updateErr;
+      }
+      if (!updatedRows || (Array.isArray(updatedRows) && updatedRows.length === 0)) {
+        // eslint-disable-next-line no-console
+        console.warn('[checklist] update returned no rows', { id });
       }
 
       // Preserve legacy campaigns behavior (attempt update if legacy table exists)
