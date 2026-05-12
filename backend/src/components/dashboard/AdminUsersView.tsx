@@ -250,8 +250,8 @@ const AdminUsersView: React.FC = () => {
             <Shield className="w-6 h-6 text-red-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">User Management</h1>
-            <p className="text-slate-400 text-sm">Add, edit, and manage system users</p>
+            <h1 className="text-2xl font-bold text-slate-900">User Management</h1>
+              <p className="text-slate-600 text-sm">Add, edit, and manage system users</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -274,49 +274,49 @@ const AdminUsersView: React.FC = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-slate-800/50 rounded-xl border border-white/10 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500/20 rounded-lg">
               <Users className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{users.length}</p>
-              <p className="text-xs text-slate-400">Total Users</p>
+              <p className="text-2xl font-bold text-slate-900">{users.length}</p>
+              <p className="text-xs text-slate-600">Total Users</p>
             </div>
           </div>
         </div>
-        <div className="bg-slate-800/50 rounded-xl border border-white/10 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-500/20 rounded-lg">
               <Shield className="w-5 h-5 text-red-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{users.filter(u => u.is_admin).length}</p>
-              <p className="text-xs text-slate-400">Administrators</p>
+              <p className="text-2xl font-bold text-slate-900">{users.filter(u => u.is_admin).length}</p>
+              <p className="text-xs text-slate-600">Administrators</p>
             </div>
           </div>
         </div>
-        <div className="bg-slate-800/50 rounded-xl border border-white/10 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-green-500/20 rounded-lg">
               <UserCheck className="w-5 h-5 text-green-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">{users.filter(u => !u.is_admin).length}</p>
-              <p className="text-xs text-slate-400">Standard Users</p>
+              <p className="text-2xl font-bold text-slate-900">{users.filter(u => !u.is_admin).length}</p>
+              <p className="text-xs text-slate-600">Standard Users</p>
             </div>
           </div>
         </div>
-        <div className="bg-slate-800/50 rounded-xl border border-white/10 p-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-purple-500/20 rounded-lg">
               <Building2 className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white">
+              <p className="text-2xl font-bold text-slate-900">
                 {new Set(users.map(u => u.industry)).size}
               </p>
-              <p className="text-xs text-slate-400">Industries</p>
+              <p className="text-xs text-slate-600">Industries</p>
             </div>
           </div>
         </div>
@@ -330,22 +330,22 @@ const AdminUsersView: React.FC = () => {
           placeholder="Search by email, company, or industry..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-slate-800/50 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+          className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
         />
       </div>
 
       {/* Users Table */}
-      <div className="bg-slate-800/50 rounded-xl border border-white/10 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-white/10">
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-6 py-4">User</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-6 py-4">Industry</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-6 py-4">Phone</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-6 py-4">Role</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-6 py-4">Created</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-6 py-4">Actions</th>
+              <tr className="border-b border-slate-200">
+                <th className="text-left text-xs font-semibold text-slate-700 uppercase tracking-wider px-6 py-4">User</th>
+                <th className="text-left text-xs font-semibold text-slate-700 uppercase tracking-wider px-6 py-4">Industry</th>
+                <th className="text-left text-xs font-semibold text-slate-700 uppercase tracking-wider px-6 py-4">Phone</th>
+                <th className="text-left text-xs font-semibold text-slate-700 uppercase tracking-wider px-6 py-4">Role</th>
+                <th className="text-left text-xs font-semibold text-slate-700 uppercase tracking-wider px-6 py-4">Created</th>
+                <th className="text-right text-xs font-semibold text-slate-700 uppercase tracking-wider px-6 py-4">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -380,12 +380,12 @@ const AdminUsersView: React.FC = () => {
                   <tr key={user.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-full flex items-center justify-center text-white font-semibold">
+                          <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-full flex items-center justify-center text-white font-semibold">
                           {user.company_name.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-white font-medium">{user.company_name}</p>
-                          <p className="text-slate-400 text-sm flex items-center gap-1">
+                          <p className="text-slate-900 font-medium">{user.company_name}</p>
+                          <p className="text-slate-500 text-sm flex items-center gap-1">
                             <Mail className="w-3 h-3" />
                             {user.email}
                           </p>

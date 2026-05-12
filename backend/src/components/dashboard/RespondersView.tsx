@@ -122,7 +122,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <Users className="w-6 h-6 text-red-400" />
-          <h2 className="text-xl font-semibold text-white">All Responders</h2>
+          <h2 className="text-xl font-semibold text-slate-900">All Responders</h2>
           <span className="bg-slate-700 text-white px-2 py-0.5 rounded-full text-sm">
             {filteredResponders.length}
           </span>
@@ -238,7 +238,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
       )}
 
       {/* Filters (Hidden during print) */}
-      <div className="flex flex-wrap items-center gap-3 bg-slate-800/50 rounded-xl border border-white/10 p-4 print:hidden">
+      <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 p-4 print:hidden">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -246,14 +246,14 @@ const RespondersView: React.FC<RespondersViewProps> = ({
             placeholder="Search by name, email, phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900/50 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+            className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
           />
         </div>
 
         <select
           value={campaignFilter}
           onChange={(e) => setCampaignFilter(e.target.value)}
-          className="bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
+          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/50"
         >
           <option value="all">All Campaigns</option>
           {campaigns.map(c => (
@@ -264,7 +264,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as any)}
-          className="bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
+          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/50"
         >
           <option value="all">All Status</option>
           <option value="confirmed">Confirmed</option>
@@ -273,11 +273,11 @@ const RespondersView: React.FC<RespondersViewProps> = ({
       </div>
 
       {/* Table */}
-      <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden print:hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden print:hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-slate-800">
             <thead>
-              <tr className="text-left text-xs text-white uppercase border-b border-white/10">
+              <tr className="text-left text-xs text-slate-700 uppercase border-b border-slate-200">
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Campaign</th>
                 <th className="px-4 py-3">Name</th>
@@ -315,19 +315,19 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-white">{responder.first_name} {responder.last_name}</div>
-                      <div className="text-xs text-white">{responder.city}, {responder.state}</div>
+                      <div className="font-medium text-slate-900">{responder.first_name} {responder.last_name}</div>
+                      <div className="text-xs text-slate-600">{responder.city}, {responder.state}</div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <div className="flex flex-col gap-1">
                         {responder.phone && (
-                          <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-white hover:text-white">
+                          <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-800 hover:text-slate-900">
                             <Phone className="w-3 h-3" />
                             {responder.phone}
                           </a>
                         )}
                         {responder.email && (
-                          <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-white hover:text-white truncate max-w-[150px]">
+                          <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-slate-800 hover:text-slate-900 truncate max-w-[150px]">
                             <Mail className="w-3 h-3" />
                             {responder.email}
                           </a>
@@ -337,20 +337,20 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                     <td className="px-4 py-3 hidden lg:table-cell">
                       {eventInfo ? (
                         <div className="text-sm">
-                          <div className="text-white">{eventInfo.venue}</div>
-                          <div className="text-xs text-white">{eventInfo.date}</div>
+                          <div className="text-slate-900">{eventInfo.venue}</div>
+                          <div className="text-xs text-slate-600">{eventInfo.date}</div>
                         </div>
                       ) : (
-                        <span className="text-white text-sm">Unassigned</span>
+                        <span className="text-slate-600 text-sm">Unassigned</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-white font-medium">{responder.guests}</span>
+                      <span className="text-slate-900 font-medium">{responder.guests}</span>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
                       <div className="flex items-center gap-2">
                         {getSourceIcon(responder.response_source)}
-                        <span className="text-xs text-white capitalize">
+                        <span className="text-xs text-slate-600 capitalize">
                           {responder.response_source.replace('_', ' ')}
                         </span>
                       </div>
@@ -375,11 +375,11 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                       ) : (
                         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => handleStartEditNote(responder)}>
                           {responder.notes ? (
-                            <span className="text-sm text-white truncate max-w-[100px]" title={responder.notes}>
+                            <span className="text-sm text-slate-800 truncate max-w-[100px]" title={responder.notes}>
                               {responder.notes}
                             </span>
                           ) : (
-                            <span className="text-sm text-white italic">Add note...</span>
+                            <span className="text-sm text-slate-600 italic">Add note...</span>
                           )}
                           <Edit3 className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
                         </div>

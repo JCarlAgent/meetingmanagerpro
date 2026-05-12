@@ -175,21 +175,21 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
         <div className="flex items-center gap-3">
           <BarChart3 className="w-6 h-6 text-red-400" />
           <div>
-            <h2 className="text-xl font-semibold text-white">Reports & Analytics</h2>
-            <p className="text-xs text-white">Calendar year: {selectedYear}</p>
+            <h2 className="text-xl font-semibold text-slate-900">Reports & Analytics</h2>
+              <p className="text-xs text-slate-600">Calendar year: {selectedYear}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="text-sm text-white" htmlFor="reportsYear">Year</label>
+          <label className="text-sm text-slate-600" htmlFor="reportsYear">Year</label>
           <select
             id="reportsYear"
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="bg-slate-900/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/30"
           >
             {yearOptions.map((y) => (
-              <option key={y} value={y} className="bg-slate-900 text-white">
+              <option key={y} value={y} className="bg-white text-slate-900">
                 {y}
               </option>
             ))}
@@ -199,7 +199,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <Target className="w-5 h-5 text-red-400" />
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
@@ -208,44 +208,41 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
               {overallResponseRate >= 1 ? 'On Target' : 'Below Target'}
             </span>
           </div>
-          <div className="text-3xl font-bold text-white">{overallResponseRate.toFixed(2)}%</div>
-          <div className="text-sm text-white">Overall Response Rate</div>
-          <div className="mt-2 text-xs text-white">Goal: 1.00%</div>
+          <div className="text-3xl font-bold text-slate-900">{overallResponseRate.toFixed(2)}%</div>
+          <div className="text-sm text-slate-600">Overall Response Rate</div>
+          <div className="mt-2 text-xs text-slate-500">Goal: 1.00%</div>
         </div>
-
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <Users className="w-5 h-5 text-cyan-400" />
           </div>
-          <div className="text-3xl font-bold text-white">{confirmedRate.toFixed(0)}%</div>
-          <div className="text-sm text-white">Confirmation Rate</div>
-          <div className="mt-2 text-xs text-white">{yearResponders.filter(r => r.confirmed).length} confirmed</div>
+          <div className="text-3xl font-bold text-slate-900">{confirmedRate.toFixed(0)}%</div>
+          <div className="text-sm text-slate-600">Confirmation Rate</div>
+          <div className="mt-2 text-xs text-slate-500">{yearResponders.filter(r => r.confirmed).length} confirmed</div>
         </div>
-
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <Calendar className="w-5 h-5 text-purple-400" />
           </div>
-          <div className="text-3xl font-bold text-white">{attendedRate.toFixed(0)}%</div>
-          <div className="text-sm text-white">Attendance Rate</div>
-          <div className="mt-2 text-xs text-white">{yearResponders.filter(r => r.attended).length} attended</div>
+          <div className="text-3xl font-bold text-slate-900">{attendedRate.toFixed(0)}%</div>
+          <div className="text-sm text-slate-600">Attendance Rate</div>
+          <div className="mt-2 text-xs text-slate-500">{yearResponders.filter(r => r.attended).length} attended</div>
         </div>
-
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <TrendingUp className="w-5 h-5 text-green-400" />
           </div>
-          <div className="text-3xl font-bold text-white">{totalMailed.toLocaleString()}</div>
-          <div className="text-sm text-white">Total Mail Pieces</div>
-          <div className="mt-2 text-xs text-white">{yearCampaigns.length} campaigns</div>
+          <div className="text-3xl font-bold text-slate-900">{totalMailed.toLocaleString()}</div>
+          <div className="text-sm text-slate-600">Total Mail Pieces</div>
+          <div className="mt-2 text-xs text-slate-500">{yearCampaigns.length} campaigns</div>
         </div>
       </div>
 
       {/* Charts Row */}
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Campaign Status Distribution */}
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-5">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <PieChart className="w-5 h-5 text-slate-400" />
             Campaign Status
           </h3>
@@ -253,9 +250,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-white">Active</span>
+                <span className="text-slate-700">Active</span>
               </div>
-              <span className="text-white font-semibold">{campaignsByStatus.active}</span>
+              <span className="text-slate-900 font-semibold">{campaignsByStatus.active}</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
@@ -267,9 +264,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                <span className="text-white">Pending</span>
+                <span className="text-slate-700">Pending</span>
               </div>
-              <span className="text-white font-semibold">{campaignsByStatus.pending}</span>
+              <span className="text-slate-900 font-semibold">{campaignsByStatus.pending}</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
@@ -281,9 +278,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-slate-500"></div>
-                <span className="text-white">Closed</span>
+                <span className="text-slate-700">Closed</span>
               </div>
-              <span className="text-white font-semibold">{campaignsByStatus.closed}</span>
+              <span className="text-slate-900 font-semibold">{campaignsByStatus.closed}</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
@@ -295,8 +292,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
         </div>
 
         {/* Response Source Distribution */}
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 p-5">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-slate-400" />
             Response Sources
           </h3>
@@ -304,9 +301,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                <span className="text-white">QR Code</span>
+                <span className="text-slate-700">QR Code</span>
               </div>
-              <span className="text-white font-semibold">{responsesBySource.qr_code}</span>
+              <span className="text-slate-900 font-semibold">{responsesBySource.qr_code}</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
@@ -318,9 +315,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="text-white">Call Center</span>
+                <span className="text-slate-700">Call Center</span>
               </div>
-              <span className="text-white font-semibold">{responsesBySource.call_center}</span>
+              <span className="text-slate-900 font-semibold">{responsesBySource.call_center}</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
@@ -332,9 +329,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-white">Manual Entry</span>
+                <span className="text-slate-700">Manual Entry</span>
               </div>
-              <span className="text-white font-semibold">{responsesBySource.manual}</span>
+              <span className="text-slate-900 font-semibold">{responsesBySource.manual}</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
@@ -347,14 +344,14 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
       </div>
 
       {/* Campaign Performance Table */}
-      <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden">
-        <div className="px-5 py-4 border-b border-white/10">
-          <h3 className="text-lg font-semibold text-white">Campaign Performance</h3>
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200">
+          <h3 className="text-lg font-semibold text-slate-900">Campaign Performance</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-xs text-white uppercase border-b border-white/10">
+              <tr className="text-left text-xs text-slate-700 uppercase border-b border-slate-200">
                 <th className="px-5 py-3">Project ID</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Mailed</th>
@@ -380,8 +377,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ campaigns, events, responders
                       {campaign.status}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-white">{campaign.mailed.toLocaleString()}</td>
-                  <td className="px-5 py-3 text-white">{campaign.responders}</td>
+                  <td className="px-5 py-3 text-slate-900">{campaign.mailed.toLocaleString()}</td>
+                  <td className="px-5 py-3 text-slate-900">{campaign.responders}</td>
                   <td className="px-5 py-3">
                     <span className={`font-semibold ${
                       campaign.responseRate >= 1 ? 'text-green-400' : 'text-amber-400'

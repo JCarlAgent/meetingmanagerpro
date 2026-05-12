@@ -42,6 +42,7 @@ const Dashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const prevActingOrgIdRef = useRef<string | null>(actingOrgId);
+  const campaignsTableExistsRef = useRef<boolean | null>(null);
 
   useEffect(() => { fetchData(); }, [user]);
 
@@ -80,6 +81,14 @@ const Dashboard: React.FC = () => {
       const c: any[] | null = null;
       const e: any[] | null = null;
 
+      // Probe whether legacy `campaigns` table exists so we can safely avoid writes.
+      try {
+        const probe = await supabase.from('campaigns').select('id').limit(1).maybeSingle();
+        campaignsTableExistsRef.current = !probe.error;
+      } catch (err) {
+        campaignsTableExistsRef.current = false;
+      }
+
       // Determine org scope (same pattern used elsewhere)
       const orgId = user?.is_master_admin ? (actingOrgId ?? null) : (user?.org_id ?? null);
 
@@ -97,26 +106,68 @@ const Dashboard: React.FC = () => {
       }
 
       if (jobsData && jobsData.length > 0) {
-        // Map jobs -> campaign-like objects expected by the dashboard UI
-        const jobsAsCampaigns = (jobsData || []).map((j: any) => ({
-          id: j.id,
-          user_id: j.created_by_user_id ?? null,
-          project_id: j.job_number ?? '',
-          status: j.status ?? 'pending',
-          mail_quantity: 0,
-          template_type: 'financial',
-          mail_piece_size: '',
-          mail_piece_type: '',
-          toll_free_number: '',
-          landing_page_url: '',
-          artwork_status: 'pending',
-          list_status: 'pending',
-          prepped_status: false,
-          produced_status: false,
-          paid_at: null,
-          created_at: j.created_at,
-          updated_at: j.updated_at,
-        }));
+        // Enrichment: read supplemental tables to derive mail counts, delivery dates and stats.
+        const jobIds = jobsData.map((j: any) => j.id);
+        let mailingLists: any[] | null = null;
+        let printOrders: any[] | null = null;
+        let stats: any[] | null = null;
+
+        try {
+          const mlRes = await supabase.from('job_mailing_lists').select('job_id, row_count').in('job_id', jobIds);
+          mailingLists = mlRes.data || null;
+        } catch (err) { mailingLists = null; }
+
+        try {
+          const poRes = await supabase.from('print_orders').select('job_id, mailed_at').in('job_id', jobIds).order('mailed_at', { ascending: false });
+          printOrders = poRes.data || null;
+        } catch (err) { printOrders = null; }
+
+        try {
+          const stRes = await supabase.from('job_stats').select('*').in('job_id', jobIds);
+          stats = stRes.data || null;
+        } catch (err) { stats = null; }
+
+        // Build lookup maps for quick enrichment
+        const mailingListByJobId = new Map<string, number>();
+        (mailingLists || []).forEach((ml: any) => { mailingListByJobId.set(ml.job_id, ml.row_count); });
+
+        const printOrdersByJobId = new Map<string, string | null>();
+        // printOrders ordered by mailed_at desc; take first per job
+        (printOrders || []).forEach((po: any) => {
+          if (!printOrdersByJobId.has(po.job_id)) printOrdersByJobId.set(po.job_id, po.mailed_at);
+        });
+
+        const jobStatsByJobId = new Map<string, any>();
+        (stats || []).forEach((s: any) => { jobStatsByJobId.set(s.job_id, s); });
+
+        const jobsAsCampaigns = (jobsData || []).map((j: any) => {
+          const mail_quantity = mailingListByJobId.get(j.id) ?? jobStatsByJobId.get(j.id)?.mailed_count ?? 0;
+          const paid_at = printOrdersByJobId.get(j.id) ?? jobStatsByJobId.get(j.id)?.first_delivery_at ?? null;
+          const delivered_quantity = jobStatsByJobId.get(j.id)?.delivered_count ?? 0;
+          const responder_count = jobStatsByJobId.get(j.id)?.responses_total ?? 0;
+
+          return {
+            id: j.id,
+            user_id: j.created_by_user_id ?? null,
+            project_id: j.job_number ?? '',
+            status: j.status ?? 'pending',
+            mail_quantity,
+            template_type: 'financial',
+            mail_piece_size: '',
+            mail_piece_type: '',
+            toll_free_number: '',
+            landing_page_url: '',
+            artwork_status: 'pending',
+            list_status: 'pending',
+            prepped_status: false,
+            produced_status: false,
+            paid_at,
+            delivered_quantity,
+            responder_count,
+            created_at: j.created_at,
+            updated_at: j.updated_at,
+          };
+        });
 
         // Map job_meetings -> event-like objects
         const jobMeetEvents = (jobMeetings || []).map((m: any) => {
@@ -161,7 +212,15 @@ const Dashboard: React.FC = () => {
 
   const handleUpdateCampaign = async (id: string, updates: Partial<Campaign>) => {
     try {
-      await supabase.from('campaigns').update(updates).eq('id', id);
+      if (campaignsTableExistsRef.current) {
+        try {
+          await supabase.from('campaigns').update(updates).eq('id', id);
+        } catch (err) {
+          console.warn('Legacy campaigns update failed, continuing with local state update', err);
+        }
+      } else {
+        console.warn('Skipping legacy campaigns update: table not present');
+      }
       setCampaigns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     } catch (error) {
       console.error('Error:', error);
@@ -218,34 +277,49 @@ const Dashboard: React.FC = () => {
       }
 
       // Legacy campaigns/events insert (preserve backward compatibility)
-      const { data: newCampaign } = await supabase.from('campaigns').insert({
-        user_id: user?.id,
-        project_id: projectId,
-        status: 'pending',
-        mail_quantity: data.mail_quantity,
-        template_type: data.template_type,
-        mail_piece_size: data.mail_piece_size,
-        mail_piece_type: data.mail_piece_type,
-        toll_free_number: '800-786-8104',
-        landing_page_url: `https://rsvp.meetingmanagerpro.com/${projectId}`,
-      }).select().single();
+      let newCampaign: any = null;
+      if (campaignsTableExistsRef.current) {
+        try {
+          const res = await supabase.from('campaigns').insert({
+            user_id: user?.id,
+            project_id: projectId,
+            status: 'pending',
+            mail_quantity: data.mail_quantity,
+            template_type: data.template_type,
+            mail_piece_size: data.mail_piece_size,
+            mail_piece_type: data.mail_piece_type,
+            toll_free_number: '800-786-8104',
+            landing_page_url: `https://rsvp.meetingmanagerpro.com/${projectId}`,
+          }).select().single();
+          newCampaign = res.data;
+        } catch (err) {
+          console.warn('Skipping legacy campaigns insert due to error', err);
+          newCampaign = null;
+        }
 
-      if (newCampaign) {
-        for (const event of data.events || []) {
-          if (event.venue_name && event.event_date) {
-            const { error: evErr } = await supabase.from('events').insert({
-              campaign_id: (newCampaign as any).id,
-              venue_name: event.venue_name,
-              venue_address: event.venue_address,
-              venue_city: event.venue_city,
-              venue_state: event.venue_state,
-              event_date: event.event_date,
-              event_time: event.event_time,
-              max_capacity: event.max_capacity,
-            });
-            if (evErr) throw evErr;
+        if (newCampaign) {
+          for (const event of data.events || []) {
+            if (event.venue_name && event.event_date) {
+              try {
+                const { error: evErr } = await supabase.from('events').insert({
+                  campaign_id: (newCampaign as any).id,
+                  venue_name: event.venue_name,
+                  venue_address: event.venue_address,
+                  venue_city: event.venue_city,
+                  venue_state: event.venue_state,
+                  event_date: event.event_date,
+                  event_time: event.event_time,
+                  max_capacity: event.max_capacity,
+                });
+                if (evErr) throw evErr;
+              } catch (err) {
+                console.warn('Skipping legacy event insert due to error', err);
+              }
+            }
           }
         }
+      } else {
+        console.warn('Skipping legacy campaigns/events inserts: `campaigns` table not present');
       }
 
       // Refresh UI after successful save
