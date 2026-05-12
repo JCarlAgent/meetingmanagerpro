@@ -74,23 +74,19 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
     // Derived indexes (read-only): 1=List Purchased, 4=Mail Sent
     const derivedIndexes = [1, 4];
     if (derivedIndexes.includes(statusIndex)) return; // do not allow toggle for derived items
+    // Compute new status from current activeCampaigns state (avoid updater race)
+    const current = activeCampaigns.find(c => c.id === campId);
+    if (!current) return;
+    const ns = Array.isArray(current.status) ? [...current.status] : [false, false, false, false, false];
+    ns[statusIndex] = !ns[statusIndex];
 
     // Optimistically update UI
-    let newStatus: boolean[] = [];
-    setActiveCampaigns(prev => prev.map(camp => {
-      if (camp.id === campId) {
-        const ns = Array.isArray(camp.status) ? [...camp.status] : [false, false, false, false, false];
-        ns[statusIndex] = !ns[statusIndex];
-        newStatus = ns;
-        return { ...camp, status: ns };
-      }
-      return camp;
-    }));
+    setActiveCampaigns(prev => prev.map(camp => camp.id === campId ? { ...camp, status: ns } : camp));
 
     // Persist to parent if handler provided
     try {
       if (onUpdateCampaignStatus) {
-        await onUpdateCampaignStatus(campId, newStatus);
+        await onUpdateCampaignStatus(campId, ns);
       }
     } catch (err) {
       console.error('Failed to persist checklist status', err);
