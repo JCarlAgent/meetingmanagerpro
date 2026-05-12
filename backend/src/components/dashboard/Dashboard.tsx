@@ -161,7 +161,11 @@ const Dashboard: React.FC = () => {
           const derivedMailSent = !!(printOrdersByJobId.get(j.id) || (jobStatsByJobId.get(j.id)?.mailed_count));
 
           // Stored checklist items (if any)
-          const storedItems: any[] = (notesObj?.checklist && Array.isArray(notesObj.checklist.items)) ? notesObj.checklist.items : [];
+          const storedItems: any[] = (
+            notesObj && typeof notesObj === 'object' &&
+            notesObj.checklist && typeof notesObj.checklist === 'object' &&
+            Array.isArray((notesObj.checklist as any).items)
+          ) ? (notesObj.checklist as any).items : [];
 
           // Build final status array: [Demo Data Done, List Purchased, Design Chosen, Mailhouse Paid, Mail Sent]
           const statusArray: boolean[] = [];
@@ -277,8 +281,10 @@ const Dashboard: React.FC = () => {
       }
 
       if (!notesObj) notesObj = {};
-      if (!notesObj.checklist) notesObj.checklist = {};
-      const existingItems = Array.isArray(notesObj.checklist.items) ? notesObj.checklist.items : [];
+      if (!notesObj.checklist || typeof notesObj.checklist !== 'object') notesObj.checklist = {};
+      const existingItems = (notesObj && typeof notesObj === 'object' &&
+        notesObj.checklist && typeof notesObj.checklist === 'object' &&
+        Array.isArray((notesObj.checklist as any).items)) ? (notesObj.checklist as any).items : [];
 
       // Manual indexes we persist: 0 (Demo Data Done), 2 (Design Chosen), 3 (Mailhouse Paid)
       const manualIndexes = [0, 2, 3];
