@@ -26,7 +26,7 @@ const topPerformersFMO: any[] = [];
 
 const topPerformersCompany: any[] = [];
 
-export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = [], events = [] }: ClientDashboardProps) {
+export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = [], events = [], onUpdateCampaignStatus }: ClientDashboardProps) {
   // All sections contracted by default.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     company: false,
