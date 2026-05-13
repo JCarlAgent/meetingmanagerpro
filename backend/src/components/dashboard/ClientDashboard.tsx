@@ -448,7 +448,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                                 if (!ok) return;
                                 try {
                                   // delete related job_meetings then job
-                                  const jmResult = await supabase.from('job_meetings').delete().eq('job_id', camp.id);
+                                  const jmResult = await supabase.from('job_meetings').delete().eq('job_id', camp.id).select('id, job_id');
                                   console.log('[delete] job_meetings result', jmResult);
                                   if (jmResult.error) {
                                     console.error('[delete] job_meetings error', jmResult.error);
@@ -456,11 +456,17 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                                     return;
                                   }
 
-                                  const jobResult = await supabase.from('jobs').delete().eq('id', camp.id);
+                                  const jobResult = await supabase.from('jobs').delete().eq('id', camp.id).select('id, job_number, org_id');
                                   console.log('[delete] jobs result', jobResult);
                                   if (jobResult.error) {
                                     console.error('[delete] jobs error', jobResult.error);
                                     alert('Delete failed: ' + (jobResult.error.message || String(jobResult.error)));
+                                    return;
+                                  }
+
+                                  // If delete returned no rows, warn the user that the canonical job may not have matched
+                                  if (jobResult.data && Array.isArray(jobResult.data) && jobResult.data.length === 0) {
+                                    alert('Delete did not remove the job. The campaign may not be using the expected canonical jobs.id.');
                                     return;
                                   }
 
