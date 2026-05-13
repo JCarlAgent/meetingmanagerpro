@@ -115,6 +115,8 @@ export default function AiCampaignQuery({ onAcceptCampaign }: AiCampaignQueryPro
           ageDistribution: ageDistribution,
           dataBroker: file.name.toLowerCase().includes('acculeads') ? 'AccuLeads' : 'Unknown Data Broker',
         });
+
+        
       },
       error: (err) => {
         console.error("Failed to parse CSV", err);
