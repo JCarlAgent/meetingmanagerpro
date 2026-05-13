@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Removed @vercel/node types to avoid build-time dependency on Vercel typings
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../_lib/supabaseAdmin.js';
 
 function toErrorMessage(err: unknown): string {
@@ -31,7 +31,7 @@ function safeHtml(v: unknown): string {
   });
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;

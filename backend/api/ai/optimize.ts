@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Removed @vercel/node types to avoid build-time dependency on Vercel typings
 import { requireUserIdFromAuthHeader } from '../_lib/supabaseAdmin.js';
 
 // Ensure the system prompt forces Gemini to act strictly as an event marketing expert
@@ -34,7 +34,7 @@ You must extract the location, goal, and the exact number of venues requested fr
 
 export const config = { maxDuration: 60 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;

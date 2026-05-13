@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   ChevronDown, ChevronRight, Building2, Map, BarChart3, Mail, CheckCircle2, 
   XCircle, CalendarClock, DollarSign, CalendarCheck, Users, UsersRound, 
@@ -116,6 +117,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
     }
   };
   const [selectedRep, setSelectedRep] = useState<any>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     async function load() {
@@ -424,6 +426,45 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                           <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400"/> {camp.repPhone} <span className="text-slate-300">|</span> {camp.repEmail}</p>
                           <p className="flex items-center gap-1.5"><Navigation className="w-3.5 h-3.5 text-slate-400"/> {camp.venueName} — {camp.city}, {camp.state}</p>
                         </div>
+                        {/* Admin: Edit/Delete for pending campaigns (conservative rule) */}
+                        {user?.is_master_admin && (!camp.status?.[1] && !camp.status?.[4]) && (
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                // Placeholder edit flow
+                                // eslint-disable-next-line no-console
+                                console.log('Edit pending campaign', camp);
+                                alert('Edit pending campaign flow coming next.');
+                              }}
+                              className="text-xs px-2 py-1 bg-slate-100 rounded text-slate-700 hover:bg-slate-200"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const name = camp.title || camp.project_id || camp.id;
+                                const ok = window.confirm(`Delete pending campaign ${name}? This cannot be undone.`);
+                                if (!ok) return;
+                                try {
+                                  // delete related job_meetings then job
+                                  const jm = await supabase.from('job_meetings').delete().eq('job_id', camp.id);
+                                  if (jm.error) throw jm.error;
+                                  const j = await supabase.from('jobs').delete().eq('id', camp.id);
+                                  if (j.error) throw j.error;
+                                  setActiveCampaigns(prev => prev.filter(ac => ac.id !== camp.id));
+                                  alert('Campaign deleted');
+                                } catch (err: any) {
+                                  console.error('Failed to delete campaign', err);
+                                  alert('Failed to delete campaign: ' + (err?.message || String(err)));
+                                }
+                              }}
+                              className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -446,6 +487,33 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                               ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 group-hover:scale-110 transition-transform"/> 
                               : <XCircle className="w-5 h-5 text-red-400 shrink-0 group-hover:scale-110 transition-transform"/>}
                             <span>{label}</span>
+                            {/* Admin inline Record List control next to List Purchased */}
+                            {idx === 1 && user?.is_master_admin && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const promptText = `Record list for ${camp.title || camp.project_id || camp.id}: enter row count (integer)`;
+                                  const qtyStr = window.prompt(promptText, String(camp.mail_quantity || ''));
+                                  if (!qtyStr) return;
+                                  const row_count = parseInt(qtyStr.replace(/,/g, ''), 10);
+                                  if (Number.isNaN(row_count)) { alert('Invalid number'); return; }
+                                  try {
+                                    const { data, error } = await supabase.from('job_mailing_lists').insert({ job_id: camp.id, row_count }).select();
+                                    if (error) throw error;
+                                    // Update local UI: mark List Purchased and update quantity
+                                    setActiveCampaigns(prev => prev.map(ac => ac.id === camp.id ? { ...ac, status: (Array.isArray(ac.status) ? ac.status.slice() : [false,false,false,false,false]).map((s,i) => i===1 ? true : s), mail_quantity: row_count } : ac));
+                                    alert('List recorded');
+                                  } catch (err: any) {
+                                    console.error('Failed to record list', err);
+                                    alert('Failed to record list: ' + (err?.message || String(err)));
+                                  }
+                                }}
+                                className="ml-3 text-xs px-2 py-1 bg-slate-100 rounded text-slate-700 hover:bg-slate-200"
+                                title="Admin: record list for this campaign"
+                              >
+                                Record List
+                              </button>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -532,7 +600,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
 
       {/* 3. List Builder */}
       <div className="w-full bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <AccordionHeader id="listBuilder" icon={Map} title="List Builder" />
+        <AccordionHeader id="listBuilder" icon={Map} title="Campaign Planner" />
         {expanded.listBuilder && (
           <div className="p-0 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
              {/* Use full-width container internal to AiQuery */}

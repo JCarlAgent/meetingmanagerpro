@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Removed @vercel/node types to avoid build-time dependency on Vercel typings
 import crypto from 'node:crypto';
 import Papa from 'papaparse';
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin.js';
@@ -107,7 +107,7 @@ async function canAccessJob(args: { userId: string; email: string | null; jobId:
   return { ok: false as const, reason: 'advisor_not_owner' };
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
