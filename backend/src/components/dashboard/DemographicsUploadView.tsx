@@ -59,6 +59,7 @@ const DemographicsUploadView: React.FC = () => {
 
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   const [mailedAt, setMailedAt] = useState<string>(() => {
     const d = new Date();
@@ -214,11 +215,15 @@ const DemographicsUploadView: React.FC = () => {
       return;
     }
 
+    console.log('[demographics] upload button/form submitted', { jobId: selectedJobId, filename: file.name });
+    setStatusMessage('Uploading to storage...');
     setIsUploading(true);
     try {
       const fileExt = (file.name.split('.').pop() || 'csv').toLowerCase();
       const objectName = `${uuidv4()}.${fileExt}`;
       const storagePath = `orgs/${orgId}/jobs/${selectedJobId}/demographics/${objectName}`;
+
+      console.log('[demographics] before Supabase storage upload', { storagePath, filename: file.name });
 
       const { error: uploadErr } = await supabase
         .storage
@@ -229,13 +234,20 @@ const DemographicsUploadView: React.FC = () => {
         });
 
       if (uploadErr) {
+        console.log('[demographics] after Supabase storage upload error', uploadErr);
+        setStatusMessage(`Upload failed: ${uploadErr.message || String(uploadErr)}`);
         throw new Error(uploadErr.message || 'Failed to upload to storage');
       }
+
+      console.log('[demographics] after Supabase storage upload success', { storagePath });
+      setStatusMessage('Storage upload complete. Ingesting...');
 
       const token = await getAccessToken();
       if (!token) {
         throw new Error('Not logged in. Please log in again.');
       }
+
+      console.log('[demographics] before POST /api/jobs/demographics/ingest', { jobId: selectedJobId, storagePath });
 
       const resp = await fetch('/api/jobs/demographics/ingest', {
         method: 'POST',
@@ -252,15 +264,22 @@ const DemographicsUploadView: React.FC = () => {
       });
 
       const data = (await resp.json().catch(() => ({}))) as unknown;
+      console.log('[demographics] after ingest response received', { status: resp.status, ok: resp.ok, body: data });
+
       if (!resp.ok) {
         const message =
           typeof (data as { error?: unknown } | null)?.error === 'string'
             ? (data as { error: string }).error
             : 'Ingest failed';
+        console.log('[demographics] after ingest error/catch', message);
+        setStatusMessage(`Upload failed: ${message}`);
         throw new Error(message);
       }
 
       const ingest = data as IngestResponse;
+
+      console.log('[demographics] after ingest success', ingest);
+      setStatusMessage('Upload complete.');
 
       setFile(null);
       patchSetupState({ demographicsUploadedListName: file.name });
@@ -270,6 +289,8 @@ const DemographicsUploadView: React.FC = () => {
         details: ingest,
       });
     } catch (err: unknown) {
+      console.log('[demographics] after ingest error/catch', err);
+      setStatusMessage(`Upload failed: ${getErrorMessage(err)}`);
       setResult({ success: false, message: getErrorMessage(err) || 'Upload failed' });
     } finally {
       setIsUploading(false);
@@ -338,7 +359,12 @@ const DemographicsUploadView: React.FC = () => {
                 ref={fileInputRef}
                 type="file"
                 accept=".csv,text/csv"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  console.log('[demographics] file selected', f?.name ?? null);
+                  setFile(f);
+                  setStatusMessage(f ? `File selected: ${f.name}` : 'No file selected');
+                }}
                 className="hidden"
               />
               <button
@@ -351,6 +377,9 @@ const DemographicsUploadView: React.FC = () => {
               </button>
               <div className="text-sm">
                 <p className="text-slate-900 font-medium">{file ? file.name : 'No file selected'}</p>
+                {statusMessage && (
+                  <p className="text-xs text-slate-600 mt-1">{statusMessage}</p>
+                )}
                 <p className="text-xs text-slate-500">
                   Headers supported: first/last name, address, city, state, zip (common variations).
                 </p>
