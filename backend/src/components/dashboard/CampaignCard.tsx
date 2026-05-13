@@ -214,7 +214,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             {user?.is_master_admin && (
               <button
                 onClick={async () => {
-                  const qtyStr = window.prompt('Enter list row count (integer):', String(campaign.mail_quantity || ''));
+                  const promptText = `Enter purchased demographic row count for ${campaign.title || campaign.project_id || campaign.id}`;
+                  const qtyStr = window.prompt(promptText, String(campaign.mail_quantity || ''));
                   if (!qtyStr) return;
                   const row_count = parseInt(qtyStr.replace(/,/g, ''), 10);
                   if (Number.isNaN(row_count)) { alert('Invalid number'); return; }
@@ -231,7 +232,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                 }}
                 className="ml-2 text-xs px-2 py-1 bg-slate-700/20 rounded text-slate-300 hover:bg-slate-700/30"
               >
-                Record List
+                Record Purchased List
               </button>
             )}
           </div>

@@ -448,10 +448,22 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                                 if (!ok) return;
                                 try {
                                   // delete related job_meetings then job
-                                  const jm = await supabase.from('job_meetings').delete().eq('job_id', camp.id);
-                                  if (jm.error) throw jm.error;
-                                  const j = await supabase.from('jobs').delete().eq('id', camp.id);
-                                  if (j.error) throw j.error;
+                                  const jmResult = await supabase.from('job_meetings').delete().eq('job_id', camp.id);
+                                  console.log('[delete] job_meetings result', jmResult);
+                                  if (jmResult.error) {
+                                    console.error('[delete] job_meetings error', jmResult.error);
+                                    alert('Delete failed: ' + (jmResult.error.message || String(jmResult.error)));
+                                    return;
+                                  }
+
+                                  const jobResult = await supabase.from('jobs').delete().eq('id', camp.id);
+                                  console.log('[delete] jobs result', jobResult);
+                                  if (jobResult.error) {
+                                    console.error('[delete] jobs error', jobResult.error);
+                                    alert('Delete failed: ' + (jobResult.error.message || String(jobResult.error)));
+                                    return;
+                                  }
+
                                   setActiveCampaigns(prev => prev.filter(ac => ac.id !== camp.id));
                                   alert('Campaign deleted');
                                 } catch (err: any) {
@@ -492,7 +504,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                               <button
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  const promptText = `Record list for ${camp.title || camp.project_id || camp.id}: enter row count (integer)`;
+                                  const promptText = `Enter purchased demographic row count for ${camp.title || camp.project_id || camp.id}`;
                                   const qtyStr = window.prompt(promptText, String(camp.mail_quantity || ''));
                                   if (!qtyStr) return;
                                   const row_count = parseInt(qtyStr.replace(/,/g, ''), 10);
@@ -511,7 +523,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                                 className="ml-3 text-xs px-2 py-1 bg-slate-100 rounded text-slate-700 hover:bg-slate-200"
                                 title="Admin: record list for this campaign"
                               >
-                                Record List
+                                Record Purchased List
                               </button>
                             )}
                           </button>
