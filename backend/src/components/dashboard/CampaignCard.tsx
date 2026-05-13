@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Campaign, Event, Responder } from '@/types';
 import { 
   ChevronDown, 
@@ -50,6 +52,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const responseRate = ((totalResponders / campaign.mail_quantity) * 100).toFixed(2);
   const confirmedCount = responders.filter(r => r.confirmed).length;
   const isPaid = Boolean(campaign.paid_at);
+  const { user } = useAuth();
 
   const getStatusBgColor = (status: string) => {
     switch (status) {
@@ -208,6 +211,29 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
               <ListChecks className="w-4 h-4" />
             </div>
             <span className="text-xs text-slate-400">List</span>
+            {user?.is_master_admin && (
+              <button
+                onClick={async () => {
+                  const qtyStr = window.prompt('Enter list row count (integer):', String(campaign.mail_quantity || ''));
+                  if (!qtyStr) return;
+                  const row_count = parseInt(qtyStr.replace(/,/g, ''), 10);
+                  if (Number.isNaN(row_count)) { alert('Invalid number'); return; }
+                  try {
+                    const { data, error } = await supabase.from('job_mailing_lists').insert({ job_id: campaign.id, row_count }).select();
+                    if (error) throw error;
+                    // Optimistically update visible quantity
+                    onUpdateCampaign(campaign.id, { mail_quantity: row_count });
+                    alert('List purchase recorded');
+                  } catch (err: any) {
+                    console.error('Failed to record list', err);
+                    alert('Failed to record list: ' + (err?.message || String(err)));
+                  }
+                }}
+                className="ml-2 text-xs px-2 py-1 bg-slate-700/20 rounded text-slate-300 hover:bg-slate-700/30"
+              >
+                Record List
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className={`p-2 rounded-lg ${campaign.prepped_status ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-400'}`}>

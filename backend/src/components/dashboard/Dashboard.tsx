@@ -113,7 +113,7 @@ const Dashboard: React.FC = () => {
         let stats: any[] | null = null;
 
         try {
-          const mlRes = await supabase.from('job_mailing_lists').select('job_id, row_count').in('job_id', jobIds);
+          const mlRes = await supabase.from('job_mailing_lists').select('job_id, row_count, uploaded_at').in('job_id', jobIds).order('uploaded_at', { ascending: false });
           mailingLists = mlRes.data || null;
         } catch (err) { mailingLists = null; }
 
@@ -129,7 +129,8 @@ const Dashboard: React.FC = () => {
 
         // Build lookup maps for quick enrichment
         const mailingListByJobId = new Map<string, number>();
-        (mailingLists || []).forEach((ml: any) => { mailingListByJobId.set(ml.job_id, ml.row_count); });
+        // mailingLists ordered by uploaded_at desc; record first (most recent) per job
+        (mailingLists || []).forEach((ml: any) => { if (!mailingListByJobId.has(ml.job_id)) mailingListByJobId.set(ml.job_id, ml.row_count); });
 
         const printOrdersByJobId = new Map<string, string | null>();
         // printOrders ordered by mailed_at desc; take first per job
