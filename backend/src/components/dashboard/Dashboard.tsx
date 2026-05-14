@@ -593,7 +593,7 @@ const Dashboard: React.FC = () => {
           <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} activeView={activeView}
             onViewChange={(view) => { if (view === 'new-campaign') { setShowNewCampaign(true); } else { setActiveView(view); } setSidebarOpen(false); }} />
         </div>
-        <div className="flex-1 min-h-screen print:min-h-0 print:m-0 print:p-0">
+        <div className="flex-1 min-h-screen print:min-h-0 print:m-0 print:p-0 lg:ml-64">
           <div className="print:hidden">
             <Header onMenuClick={() => setSidebarOpen(true)} />
           </div>

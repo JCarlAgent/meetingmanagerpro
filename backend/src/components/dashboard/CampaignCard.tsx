@@ -23,6 +23,7 @@ import {
 import ResponderList from './ResponderList';
 import DeliveryTracking from './DeliveryTracking';
 import PostMeetingROIModal from './PostMeetingROIModal';
+import { toErrorMessage } from '@/lib/errors';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -53,6 +54,31 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const confirmedCount = responders.filter(r => r.confirmed).length;
   const isPaid = Boolean(campaign.paid_at);
   const { user } = useAuth();
+
+  // Helper: persist checklist index (0-based) into jobs.notes via same pattern used in Dashboard.handleUpdateCampaignStatus
+  const persistChecklistIndex = async (jobId: string, index: number, value: boolean) => {
+    try {
+      const { data: job } = await supabase.from('jobs').select('id, notes').eq('id', jobId).maybeSingle();
+      let notesObj: any = {};
+      try { if (job && job.notes) notesObj = typeof job.notes === 'string' ? JSON.parse(job.notes) : job.notes; } catch { notesObj = { text: job?.notes ?? '' }; }
+      if (!notesObj) notesObj = {};
+      if (!notesObj.checklist || typeof notesObj.checklist !== 'object') notesObj.checklist = {};
+      const existingItems = (notesObj && typeof notesObj === 'object' && notesObj.checklist && Array.isArray(notesObj.checklist.items)) ? notesObj.checklist.items : [];
+      existingItems[index] = !!value;
+      notesObj.checklist.items = existingItems;
+      const { data: updatedRows, error: updateErr } = await supabase.from('jobs').update({ notes: JSON.stringify(notesObj) }).eq('id', jobId).select('id, notes');
+      if (updateErr) throw updateErr;
+      // Update local campaign status if present
+      const nextStatus = Array.isArray(campaign.status) ? campaign.status.slice() : [false,false,false,false,false];
+      nextStatus[index] = !!value;
+      onUpdateCampaign(campaign.id, { status: nextStatus });
+      return updatedRows;
+    } catch (err: any) {
+      console.error('persistChecklistIndex failed', err);
+      alert('Failed to save checklist: ' + (err?.message || String(err)));
+      return null;
+    }
+  };
 
   const getStatusBgColor = (status: string) => {
     switch (status) {
@@ -236,6 +262,26 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
               </button>
             )}
           </div>
+          {/* Mailhouse Paid action */}
+          <div className="flex items-center gap-2">
+            <div className={`p-2 rounded-lg ${campaign.prepped_status ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-400'}`}>
+              <Printer className="w-4 h-4" />
+            </div>
+            <span className="text-xs text-slate-400">Mailhouse</span>
+            {user?.is_master_admin && (
+              <button
+                onClick={async () => {
+                  if (!confirm('Mark Mailhouse Paid for this campaign?')) return;
+                  // Persist checklist index 3 (Mailhouse Paid)
+                  await persistChecklistIndex(campaign.id, 3, true);
+                  alert('Mailhouse marked paid.');
+                }}
+                className="ml-2 text-xs px-2 py-1 bg-amber-700/10 rounded text-amber-300 hover:bg-amber-700/20"
+              >
+                Record Mailhouse Paid
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <div className={`p-2 rounded-lg ${campaign.prepped_status ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-400'}`}>
               <Printer className="w-4 h-4" />
@@ -290,6 +336,70 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </span>
           {showDelivery ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
+        {user?.is_master_admin && (
+          <div className="flex items-center gap-2 px-2">
+            <button
+              onClick={async () => {
+                try {
+                  const qtyStr = window.prompt('Enter mailed quantity:', String(campaign.stats?.mailed ?? campaign.mail_quantity ?? 0));
+                  if (!qtyStr) return;
+                  const mailedQty = parseInt(qtyStr.replace(/,/g, ''), 10);
+                  if (Number.isNaN(mailedQty)) { alert('Invalid number'); return; }
+                  const dateStr = window.prompt('Enter mailed date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+                  if (!dateStr) return;
+                  const isoDate = new Date(`${dateStr}T00:00:00Z`).toISOString();
+
+                  // Upsert job_stats.mailed_count
+                  const { error: upErr } = await supabase.from('job_stats').upsert({ job_id: campaign.id, mailed_count: mailedQty }, { onConflict: 'job_id' }).select();
+                  if (upErr) throw upErr;
+                  // Insert print_orders(mailed_at)
+                  const { error: poErr } = await supabase.from('print_orders').insert({ job_id: campaign.id, mailed_at: isoDate }).select();
+                  if (poErr) throw poErr;
+
+                  // Mark checklist index 4 (Mail Sent) true
+                  await persistChecklistIndex(campaign.id, 4, true);
+
+                  // Update local campaign UI
+                  onUpdateCampaign(campaign.id, { mail_quantity: mailedQty, paid_at: isoDate, stats: { ...(campaign.stats||{}), mailed: mailedQty, mailed_count: mailedQty } });
+                  alert('Recorded mail sent and updated mailed quantity.');
+                } catch (err: any) {
+                  console.error('Failed to record mail sent', err);
+                  alert('Failed to record mail sent: ' + (err?.message || String(err)));
+                }
+              }}
+              className="text-xs px-2 py-1 bg-sky-700/10 rounded text-sky-300 hover:bg-sky-700/20"
+            >
+              Record Mail Sent
+            </button>
+
+            <button
+              onClick={async () => {
+                try {
+                  const qtyStr = window.prompt('Enter delivered mail quantity:', String(campaign.delivered_quantity ?? campaign.stats?.delivered ?? 0));
+                  if (!qtyStr) return;
+                  const deliveredQty = parseInt(qtyStr.replace(/,/g, ''), 10);
+                  if (Number.isNaN(deliveredQty)) { alert('Invalid number'); return; }
+                  const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+                  if (!dateStr) return;
+                  const isoDate = new Date(`${dateStr}T00:00:00Z`).toISOString();
+                  const { data, error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, delivered_count: deliveredQty, first_delivery_at: isoDate }, { onConflict: 'job_id' }).select();
+                  if (error) throw error;
+                  // Update UI
+                  onUpdateCampaign(campaign.id, { delivered_quantity: deliveredQty, delivered_date: isoDate, stats: { ...(campaign.stats||{}), delivered: deliveredQty } });
+                  // mark Mail Sent checklist index 4 as true as delivery implies mail sent
+                  await persistChecklistIndex(campaign.id, 4, true);
+                  alert('Recorded delivery.');
+                } catch (err: any) {
+                  console.error('Failed to record delivery', err);
+                  alert('Failed to record delivery: ' + (err?.message || String(err)));
+                }
+              }}
+              className="text-xs px-2 py-1 bg-emerald-700/10 rounded text-emerald-300 hover:bg-emerald-700/20"
+            >
+              Record Mail Delivery
+            </button>
+          </div>
+        )}
         {campaign.status === 'closed' && (
           <button
             onClick={() => setShowRoiForm(true)}
