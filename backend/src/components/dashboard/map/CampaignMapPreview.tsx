@@ -15,6 +15,7 @@ interface CampaignMapPreviewProps {
   venueHeadline?: string;
   polygonDescription?: string;
   campaignType?: string;
+  onZipsExtracted?: (zips: string[]) => void;
 }
 
 interface VenueData {
@@ -31,7 +32,7 @@ interface MelissaSummary {
   estimatedAttendees: number;
 }
 
-export default function CampaignMapPreview({ venueHeadline, polygonDescription, campaignType }: CampaignMapPreviewProps) {
+export default function CampaignMapPreview({ venueHeadline, polygonDescription, campaignType, onZipsExtracted }: CampaignMapPreviewProps) {
   const [venues, setVenues] = useState<VenueData[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -107,6 +108,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription, 
             if (data && data.zip_codes) {
               const finalZips = data.zip_codes;
               setExtractedZips(finalZips);
+              onZipsExtracted?.(finalZips);
               
               if (finalZips.length > 0) {
                 setIsMelissaLoading(true);

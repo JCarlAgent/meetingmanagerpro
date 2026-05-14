@@ -48,6 +48,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showRoiForm, setShowRoiForm] = useState(false);
+  const [mapZips, setMapZips] = useState<string[]>([]);
+  const [showAllZips, setShowAllZips] = useState(false);
 
   const totalResponders = responders.length;
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
@@ -241,11 +243,33 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                       <div className="text-sm font-semibold mb-2">Map</div>
                       {events[0]?.venue_name ? (
                         <div className="w-full h-[260px] md:h-[300px] overflow-hidden rounded">
-                          <CampaignMapPreview venueHeadline={`${events[0].venue_name} ${events[0].venue_city || ''}`} campaignType="medicare" />
+                          <CampaignMapPreview venueHeadline={`${events[0].venue_name} ${events[0].venue_city || ''}`} campaignType="medicare" onZipsExtracted={setMapZips} />
                         </div>
                       ) : (
                         <div className="w-full h-[220px] flex items-center justify-center bg-white border rounded">Map pending venue coordinates.</div>
                       )}
+                      {/* Compact ZIP preview */}
+                      <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2">
+                        <div className="text-xs font-semibold text-slate-600 mb-1.5">Target ZIP Codes</div>
+                        {mapZips.length === 0 ? (
+                          <div className="text-xs text-slate-400 italic">Target ZIPs pending</div>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap gap-1">
+                              {(showAllZips ? mapZips : mapZips.slice(0, 10)).map((z, i) => (
+                                <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">{z}</span>
+                              ))}
+                            </div>
+                            {mapZips.length > 10 && (
+                              <button
+                                type="button"
+                                onClick={() => setShowAllZips(v => !v)}
+                                className="mt-1.5 text-[10px] text-indigo-500 hover:text-indigo-700 underline"
+                              >{showAllZips ? 'Show less' : `Show all ${mapZips.length} ZIPs`}</button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
