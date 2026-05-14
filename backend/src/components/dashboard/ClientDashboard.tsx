@@ -48,6 +48,12 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
         const safeEvents = Array.isArray(events) ? events : [];
         const mapped = campaigns.map((c: any) => {
           const event = safeEvents.find((e: any) => e && e.campaign_id === c.id) || null;
+          // job-level values (may come from canonical `jobs` or enriched stats)
+          const mail_quantity = c.mail_quantity ?? (c.mailQuantity ?? 0);
+          const delivered_quantity = c.delivered_quantity ?? c.delivered_count ?? (c.stats?.delivered ?? null) ?? null;
+          const delivered_date = c.first_delivery_at ?? c.firstDeliveryAt ?? c.stats?.first_delivery_at ?? null;
+          const responder_count = c.responder_count ?? c.responses_total ?? c.stats?.responses_total ?? 0;
+
           return {
             id: c.id,
             title: c.project_id || c.title || '',
@@ -55,13 +61,20 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
             venueName: event?.venue_name || '',
             city: event?.venue_city || event?.city || '',
             state: event?.venue_state || event?.state || '',
-            repName: '',
-            repPhone: '',
-            repEmail: '',
-            company: '',
+            // lightweight contact/advisor fields if available
+            repName: c.repName || c.rep_name || '',
+            repPhone: c.repPhone || c.rep_phone || '',
+            repEmail: c.repEmail || c.rep_email || '',
+            company: c.company || c.org_name || '',
+            template_type: c.template_type || c.templateType || c.template || '',
+            confirmation_method: c.confirmation_method || c.confirmationMethod || c.confirmation || null,
+            mail_quantity,
+            delivered_quantity,
+            delivered_date,
+            responder_count,
             status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
             daysLeft: c.daysLeft || '',
-            stats: c.stats || { mailed: 0, responses: 0, attendees: 0, appointments: 0 }
+            stats: c.stats || { mailed: mail_quantity || 0, responses: responder_count || 0, attendees: 0, appointments: 0 }
           };
         });
         setActiveCampaigns(mapped);
@@ -419,6 +432,21 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                       {/* Rep / Venue Context */}
                       <div className="mt-4 pt-4 border-t border-slate-200/60">
                         {isFmo && <p className="text-xs font-bold text-slate-400 mb-1">{camp.company}</p>}
+                        {/* Operational fields: template, confirmation, mail counts, responders */}
+                        <div className="mt-2 text-sm text-slate-600 space-y-1">
+                          {camp.template_type && (
+                            <div>Template: <span className="font-medium text-slate-900">{camp.template_type}</span></div>
+                          )}
+                          {camp.confirmation_method && (
+                            <div>Confirmation: <span className="font-medium text-slate-900">{camp.confirmation_method}</span></div>
+                          )}
+                          <div>Purchased list: <span className="font-medium text-slate-900">{(camp.mail_quantity ?? 0).toLocaleString()}</span></div>
+                          <div>Mailed quantity: <span className="font-medium text-slate-900">{(camp.stats?.mailed ?? camp.mail_quantity ?? 0).toLocaleString()}</span></div>
+                          {camp.delivered_quantity != null && (
+                            <div>Delivered: <span className="font-medium text-slate-900">{String(camp.delivered_quantity)}</span>{camp.delivered_date ? ` on ${new Date(camp.delivered_date).toLocaleDateString()}` : ''}</div>
+                          )}
+                          <div>Responders: <span className="font-medium text-slate-900">{camp.responder_count ?? camp.stats?.responses ?? 0}</span></div>
+                        </div>
                         <button onClick={() => setSelectedRep(camp)} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 transition-colors text-left group">
                           <User className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600" /> {camp.repName} (View profile)
                         </button>
@@ -446,6 +474,18 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                                 const name = camp.title || camp.project_id || camp.id;
                                 const ok = window.confirm(`Delete pending campaign ${name}? This cannot be undone.`);
                                 if (!ok) return;
+                                // Diagnostic: log the campaign object and related id fields before attempting delete
+                                // eslint-disable-next-line no-console
+                                console.log('[delete] camp object before delete', camp);
+                                // eslint-disable-next-line no-console
+                                console.log('[delete] attempted delete ids', {
+                                  campId: camp.id,
+                                  title: (camp as any).title,
+                                  projectId: (camp as any).project_id,
+                                  jobId: (camp as any).job_id,
+                                  campaignId: (camp as any).campaign_id,
+                                });
+
                                 try {
                                   // delete related job_meetings then job
                                   const jmResult = await supabase.from('job_meetings').delete().eq('job_id', camp.id).select('id, job_id');
@@ -480,6 +520,35 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                               className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
                             >
                               Delete
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  const qtyStr = window.prompt('Enter delivered mail quantity:', String(camp.delivered_quantity ?? camp.stats?.mailed ?? 0));
+                                  if (!qtyStr) return;
+                                  const deliveredQty = parseInt(qtyStr.replace(/,/g, ''), 10);
+                                  if (Number.isNaN(deliveredQty)) { alert('Invalid number'); return; }
+                                  const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+                                  if (!dateStr) return;
+                                  const isoDate = new Date(`${dateStr}T00:00:00Z`).toISOString();
+
+                                  // Upsert into job_stats by job_id
+                                  const payload: any = { job_id: camp.id, delivered_count: deliveredQty, first_delivery_at: isoDate };
+                                  const { data, error } = await supabase.from('job_stats').upsert(payload as any, { onConflict: 'job_id' }).select();
+                                  if (error) throw error;
+
+                                  // Update local UI
+                                  setActiveCampaigns(prev => prev.map(ac => ac.id === camp.id ? { ...ac, delivered_quantity: deliveredQty, delivered_date: isoDate, stats: { ...(ac.stats||{}), delivered: deliveredQty, mailed: ac.stats?.mailed ?? ac.mail_quantity ?? 0 }, status: Array.isArray(ac.status) ? ac.status.map((s: any, i: number) => i===4 ? true : s) : [false,false,false,false,true] } : ac));
+                                  alert('Recorded delivery.');
+                                } catch (err: any) {
+                                  console.error('Failed to record delivery', err);
+                                  alert('Failed to record delivery: ' + (err?.message || String(err)));
+                                }
+                              }}
+                              className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                            >
+                              Record Mail Delivery
                             </button>
                           </div>
                         )}
