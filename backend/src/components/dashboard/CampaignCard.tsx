@@ -24,6 +24,7 @@ import {
 import ResponderList from './ResponderList';
 import DeliveryTracking from './DeliveryTracking';
 import PostMeetingROIModal from './PostMeetingROIModal';
+import CampaignMapPreview from './map/CampaignMapPreview';
 import { toErrorMessage } from '@/lib/errors';
 
 interface CampaignCardProps {
