@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import AiCampaignQuery, { AiProposal } from './AiCampaignQuery';
 import { patchSetupState } from '@/lib/setupState';
+import CampaignCard from './CampaignCard';
 
 interface ClientDashboardProps {
   orgId: string;
@@ -420,191 +421,17 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
               
               <div className="space-y-4">
                 {activeCampaigns.map(camp => (
-                  <div key={camp.id} className="flex flex-col xl:flex-row xl:items-stretch bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm relative pr-4 lg:pr-6 hover:shadow-md transition-shadow">
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
-                    
-                    {/* Info Block with Rep Info added */}
-                    <div className="p-5 lg:p-6 flex-shrink-0 min-w-[340px] xl:w-[380px] xl:border-r border-slate-100 flex flex-col justify-center bg-slate-50 xl:bg-white">
-                      <div className="mb-2"><span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600 uppercase tracking-widest border border-red-200">{camp.daysLeft}</span></div>
-                      <h4 className="font-bold text-lg text-slate-900 leading-tight">{camp.title}</h4>
-                      <p className="text-sm font-medium text-slate-500 mt-1 flex items-center gap-1.5">{camp.date}</p>
-                      
-                      {/* Rep / Venue Context */}
-                      <div className="mt-4 pt-4 border-t border-slate-200/60">
-                        {isFmo && <p className="text-xs font-bold text-slate-400 mb-1">{camp.company}</p>}
-                        {/* Operational fields: template, confirmation, mail counts, responders */}
-                        <div className="mt-2 text-sm text-slate-600 space-y-1">
-                          {camp.template_type && (
-                            <div>Template: <span className="font-medium text-slate-900">{camp.template_type}</span></div>
-                          )}
-                          {camp.confirmation_method && (
-                            <div>Confirmation: <span className="font-medium text-slate-900">{camp.confirmation_method}</span></div>
-                          )}
-                          <div>Purchased list: <span className="font-medium text-slate-900">{(camp.mail_quantity ?? 0).toLocaleString()}</span></div>
-                          <div>Mailed quantity: <span className="font-medium text-slate-900">{(camp.stats?.mailed ?? camp.mail_quantity ?? 0).toLocaleString()}</span></div>
-                          {camp.delivered_quantity != null && (
-                            <div>Delivered: <span className="font-medium text-slate-900">{String(camp.delivered_quantity)}</span>{camp.delivered_date ? ` on ${new Date(camp.delivered_date).toLocaleDateString()}` : ''}</div>
-                          )}
-                          <div>Responders: <span className="font-medium text-slate-900">{camp.responder_count ?? camp.stats?.responses ?? 0}</span></div>
-                        </div>
-                        <button onClick={() => setSelectedRep(camp)} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 transition-colors text-left group">
-                          <User className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600" /> {camp.repName} (View profile)
-                        </button>
-                        <div className="text-xs text-slate-600 mt-2 space-y-1.5">
-                          <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400"/> {camp.repPhone} <span className="text-slate-300">|</span> {camp.repEmail}</p>
-                          <p className="flex items-center gap-1.5"><Navigation className="w-3.5 h-3.5 text-slate-400"/> {camp.venueName} — {camp.city}, {camp.state}</p>
-                        </div>
-                        {/* Admin: Edit/Delete for pending campaigns (conservative rule) */}
-                        {user?.is_master_admin && (!camp.status?.[1] && !camp.status?.[4]) && (
-                          <div className="mt-3 flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                // Placeholder edit flow
-                                // eslint-disable-next-line no-console
-                                console.log('Edit pending campaign', camp);
-                                alert('Edit pending campaign flow coming next.');
-                              }}
-                              className="text-xs px-2 py-1 bg-slate-100 rounded text-slate-700 hover:bg-slate-200"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const name = camp.title || camp.project_id || camp.id;
-                                const ok = window.confirm(`Delete pending campaign ${name}? This cannot be undone.`);
-                                if (!ok) return;
-                                // Diagnostic: log the campaign object and related id fields before attempting delete
-                                // eslint-disable-next-line no-console
-                                console.log('[delete] camp object before delete', camp);
-                                // eslint-disable-next-line no-console
-                                console.log('[delete] attempted delete ids', {
-                                  campId: camp.id,
-                                  title: (camp as any).title,
-                                  projectId: (camp as any).project_id,
-                                  jobId: (camp as any).job_id,
-                                  campaignId: (camp as any).campaign_id,
-                                });
-
-                                try {
-                                  // delete related job_meetings then job
-                                  const jmResult = await supabase.from('job_meetings').delete().eq('job_id', camp.id).select('id, job_id');
-                                  console.log('[delete] job_meetings result', jmResult);
-                                  if (jmResult.error) {
-                                    console.error('[delete] job_meetings error', jmResult.error);
-                                    alert('Delete failed: ' + (jmResult.error.message || String(jmResult.error)));
-                                    return;
-                                  }
-
-                                  const jobResult = await supabase.from('jobs').delete().eq('id', camp.id).select('id, job_number, org_id');
-                                  console.log('[delete] jobs result', jobResult);
-                                  if (jobResult.error) {
-                                    console.error('[delete] jobs error', jobResult.error);
-                                    alert('Delete failed: ' + (jobResult.error.message || String(jobResult.error)));
-                                    return;
-                                  }
-
-                                  // If delete returned no rows, warn the user that the canonical job may not have matched
-                                  if (jobResult.data && Array.isArray(jobResult.data) && jobResult.data.length === 0) {
-                                    alert('Delete did not remove the job. The campaign may not be using the expected canonical jobs.id.');
-                                    return;
-                                  }
-
-                                  setActiveCampaigns(prev => prev.filter(ac => ac.id !== camp.id));
-                                  alert('Campaign deleted');
-                                } catch (err: any) {
-                                  console.error('Failed to delete campaign', err);
-                                  alert('Failed to delete campaign: ' + (err?.message || String(err)));
-                                }
-                              }}
-                              className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
-                            >
-                              Delete
-                            </button>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  const qtyStr = window.prompt('Enter delivered mail quantity:', String(camp.delivered_quantity ?? camp.stats?.mailed ?? 0));
-                                  if (!qtyStr) return;
-                                  const deliveredQty = parseInt(qtyStr.replace(/,/g, ''), 10);
-                                  if (Number.isNaN(deliveredQty)) { alert('Invalid number'); return; }
-                                  const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
-                                  if (!dateStr) return;
-                                  const isoDate = new Date(`${dateStr}T00:00:00Z`).toISOString();
-
-                                  // Upsert into job_stats by job_id
-                                  const payload: any = { job_id: camp.id, delivered_count: deliveredQty, first_delivery_at: isoDate };
-                                  const { data, error } = await supabase.from('job_stats').upsert(payload as any, { onConflict: 'job_id' }).select();
-                                  if (error) throw error;
-
-                                  // Update local UI
-                                  setActiveCampaigns(prev => prev.map(ac => ac.id === camp.id ? { ...ac, delivered_quantity: deliveredQty, delivered_date: isoDate, stats: { ...(ac.stats||{}), delivered: deliveredQty, mailed: ac.stats?.mailed ?? ac.mail_quantity ?? 0 }, status: Array.isArray(ac.status) ? ac.status.map((s: any, i: number) => i===4 ? true : s) : [false,false,false,false,true] } : ac));
-                                  alert('Recorded delivery.');
-                                } catch (err: any) {
-                                  console.error('Failed to record delivery', err);
-                                  alert('Failed to record delivery: ' + (err?.message || String(err)));
-                                }
-                              }}
-                              className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
-                            >
-                              Record Mail Delivery
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Horizontal Checklist Block */}
-                    <div className="p-5 lg:p-6 flex-1 bg-white xl:bg-transparent border-t xl:border-t-0 border-slate-100 flex items-center">
-                      <div className="flex flex-wrap lg:flex-nowrap items-center w-full justify-between gap-y-6 gap-x-2 text-sm">
-                        {[
-                          'Demo Data Done',
-                          'List Purchased',
-                          'Design Chosen',
-                          'Mailhouse Paid',
-                          'Mail Sent'
-                        ].map((label, idx) => (
-                          <button 
-                            key={idx}
-                            onClick={() => toggleCampaignStatus(camp.id, idx)}
-                            className="flex items-center gap-2.5 font-medium text-slate-700 w-[calc(50%-0.5rem)] lg:w-auto hover:bg-slate-50 p-2 -ml-2 rounded-lg transition-colors group text-left"
-                          >
-                            {!!camp.status?.[idx] 
-                              ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 group-hover:scale-110 transition-transform"/> 
-                              : <XCircle className="w-5 h-5 text-red-400 shrink-0 group-hover:scale-110 transition-transform"/>}
-                            <span>{label}</span>
-                            {/* Admin inline Record List control next to List Purchased */}
-                            {idx === 1 && user?.is_master_admin && (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const promptText = `Enter purchased demographic row count for ${camp.title || camp.project_id || camp.id}`;
-                                  const qtyStr = window.prompt(promptText, String(camp.mail_quantity || ''));
-                                  if (!qtyStr) return;
-                                  const row_count = parseInt(qtyStr.replace(/,/g, ''), 10);
-                                  if (Number.isNaN(row_count)) { alert('Invalid number'); return; }
-                                  try {
-                                    const { data, error } = await supabase.from('job_mailing_lists').insert({ job_id: camp.id, row_count }).select();
-                                    if (error) throw error;
-                                    // Update local UI: mark List Purchased and update quantity
-                                    setActiveCampaigns(prev => prev.map(ac => ac.id === camp.id ? { ...ac, status: (Array.isArray(ac.status) ? ac.status.slice() : [false,false,false,false,false]).map((s,i) => i===1 ? true : s), mail_quantity: row_count } : ac));
-                                    alert('List recorded');
-                                  } catch (err: any) {
-                                    console.error('Failed to record list', err);
-                                    alert('Failed to record list: ' + (err?.message || String(err)));
-                                  }
-                                }}
-                                className="ml-3 text-xs px-2 py-1 bg-slate-100 rounded text-slate-700 hover:bg-slate-200"
-                                title="Admin: record list for this campaign"
-                              >
-                                Record Purchased List
-                              </button>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                  <div key={camp.id} className="relative">
+                    <div className="mb-2 text-sm font-bold text-red-600">JOB BOARD LIVE VERSION</div>
+                    <CampaignCard
+                      campaign={camp as any}
+                      events={(Array.isArray(events) ? events.filter(e => e.campaign_id === camp.id) : []) as any}
+                      responders={[] as any}
+                      onUpdateResponder={async (_id: string, _updates: any) => { /* noop for now */ }}
+                      onUpdateCampaign={(id: string, updates: any) => {
+                        setActiveCampaigns(prev => prev.map(ac => ac.id === id ? { ...ac, ...updates } : ac));
+                      }}
+                    />
                   </div>
                 ))}
               </div>
