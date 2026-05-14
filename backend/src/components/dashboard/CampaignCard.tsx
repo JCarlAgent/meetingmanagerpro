@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Campaign, Event, Responder } from '@/types';
@@ -50,12 +50,31 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [showRoiForm, setShowRoiForm] = useState(false);
   const [mapZips, setMapZips] = useState<string[]>([]);
   const [showAllZips, setShowAllZips] = useState(false);
+  const [localResponders, setLocalResponders] = useState<Responder[]>([]);
 
-  const totalResponders = responders.length;
+  // Load real responders for this campaign/job from Supabase (newest first, max 10 for preview)
+  useEffect(() => {
+    if (!campaign.id) return;
+    let cancelled = false;
+    supabase
+      .from('responders')
+      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, created_at')
+      .eq('campaign_id', campaign.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => {
+        if (!cancelled) setLocalResponders(data ?? []);
+      });
+    return () => { cancelled = true; };
+  }, [campaign.id]);
+
+  // Prefer live-loaded responders; fall back to prop (legacy campaigns view) then stats count
+  const displayResponders = localResponders.length > 0 ? localResponders : responders;
+  const totalResponders = displayResponders.length || (campaign.stats?.responses_total ?? 0);
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
   const mailedCount = campaign.stats?.mailed_count ?? (campaign as any).mailed_count ?? campaign.stats?.mailed ?? 0;
   const deliveredCount = campaign.stats?.delivered_count ?? (campaign as any).delivered_quantity ?? campaign.stats?.delivered ?? 0;
-  const responsesCount = responders.length || (campaign.stats?.responses_total ?? 0);
+  const responsesCount = displayResponders.length || (campaign.stats?.responses_total ?? 0);
   const responseRate = deliveredCount > 0 ? ((responsesCount / deliveredCount) * 100) : 0;
 
   const isPaid = Boolean(campaign.paid_at || campaign.stats?.first_delivery_at);
@@ -191,7 +210,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     <div className="col-span-1 bg-white rounded-lg p-2 shadow-sm">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold">Responders</div>
-                        <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('navigate', { detail: { view: 'responders' } })); }} className="text-xs text-slate-500">See full list</a>
+                        <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('navigate', { detail: { view: 'responders' } })); }} className="text-xs text-slate-500 hover:underline">See full list</a>
                       </div>
                       <div className="text-sm">
                         <div className="grid grid-cols-12 gap-2 font-semibold text-xs text-slate-500 pb-2 border-b">
@@ -200,14 +219,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           <div className="col-span-2 text-right">Guests</div>
                         </div>
                         <div className="divide-y mt-2">
-                          {responders.slice(0,7).map((r) => (
+                          {displayResponders.slice(0, 10).map((r) => (
                             <div key={r.id} className="grid grid-cols-12 gap-2 py-2 items-center text-sm">
-                              <div className="col-span-6 truncate">{r.full_name}</div>
-                              <div className="col-span-4 truncate text-xs text-slate-600">{r.phone || r.email}</div>
-                              <div className="col-span-2 text-right text-xs text-slate-600">{r.guests || 0}</div>
+                              <div className="col-span-6 truncate">{`${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() || '—'}</div>
+                              <div className="col-span-4 truncate text-xs text-slate-600">{r.phone || r.email || '—'}</div>
+                              <div className="col-span-2 text-right text-xs text-slate-600">{r.guests ?? 0}</div>
                             </div>
                           ))}
-                          {responders.length === 0 && <div className="py-2 text-sm text-slate-500">No responders yet</div>}
+                          {displayResponders.length === 0 && <div className="py-2 text-sm text-slate-500">No responders yet</div>}
                         </div>
                       </div>
                     </div>
