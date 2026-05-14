@@ -221,7 +221,7 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription, 
         </div>
       )}
 
-      <div className="w-full h-[500px] bg-slate-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm relative">
+      <div className="w-full h-[260px] md:h-[300px] bg-slate-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm relative">
         <Map
           mapboxAccessToken={ACTIVE_TOKEN}
           initialViewState={{

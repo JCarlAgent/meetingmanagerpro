@@ -134,7 +134,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   return (
     <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden hover:border-white/20 transition-all">
-      <div className="p-4 lg:p-5">
+      <div className="p-3 lg:p-4">
         <div className="flex items-start justify-between gap-3">
           {/* Project ID & Status */}
           <div className="flex items-center gap-3">
@@ -150,14 +150,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </div>
 
           {/* Job Control Board */}
-          <div className="flex-1 ml-4">
-            <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-              <div className="flex">
+          <div className="flex-1 ml-3">
+            <div className="bg-white rounded-xl border shadow-sm overflow-hidden max-h-[520px] lg:max-h-[420px]">
+              <div className="flex h-full">
                 <div className={`w-12 flex flex-col items-center justify-center text-xxs font-bold tracking-wider text-white ${statusLabel === 'ACTIVE' ? 'bg-emerald-600' : statusLabel === 'PENDING' ? 'bg-amber-500' : 'bg-slate-400'}`}>
                   <div className="transform -rotate-90 w-full text-center">{statusLabel}</div>
                 </div>
 
-                <div className="flex-1 p-4 lg:p-6">
+                <div className="flex-1 p-3 lg:p-4 overflow-auto">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm text-slate-500">{campaign.company || (campaign.org_name ?? '')}</div>
@@ -184,9 +184,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
                     {/* Responder preview */}
-                    <div className="col-span-1 bg-white rounded-lg p-3 shadow-sm">
+                    <div className="col-span-1 bg-white rounded-lg p-2 shadow-sm">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold">Responders</div>
                         <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('navigate', { detail: { view: 'responders' } })); }} className="text-xs text-slate-500">See full list</a>
@@ -211,7 +211,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     </div>
 
                     {/* Meetings */}
-                    <div className="col-span-1 lg:col-span-1 bg-gray-50 rounded-lg p-3">
+                    <div className="col-span-1 lg:col-span-1 bg-gray-50 rounded-lg p-2">
                       <div className="text-sm font-semibold mb-2">Meetings</div>
                       <div className="grid grid-cols-1 gap-2">
                         {events.slice(0,4).map((ev: any) => {
@@ -237,12 +237,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     </div>
 
                     {/* Map */}
-                    <div className="col-span-1 lg:col-span-1 bg-gray-50 rounded-lg p-3">
+                    <div className="col-span-1 lg:col-span-1 bg-gray-50 rounded-lg p-2">
                       <div className="text-sm font-semibold mb-2">Map</div>
                       {events[0]?.venue_name ? (
-                        <CampaignMapPreview venueHeadline={`${events[0].venue_name} ${events[0].venue_city || ''}`} campaignType="medicare" />
+                        <div className="w-full h-[260px] md:h-[300px] overflow-hidden rounded">
+                          <CampaignMapPreview venueHeadline={`${events[0].venue_name} ${events[0].venue_city || ''}`} campaignType="medicare" />
+                        </div>
                       ) : (
-                        <div className="w-full h-40 flex items-center justify-center bg-white border rounded">Map pending venue coordinates.</div>
+                        <div className="w-full h-[220px] flex items-center justify-center bg-white border rounded">Map pending venue coordinates.</div>
                       )}
                     </div>
                   </div>
