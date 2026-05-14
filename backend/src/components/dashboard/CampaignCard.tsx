@@ -151,13 +151,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
           {/* Job Control Board */}
           <div className="flex-1 ml-3">
-            <div className="bg-white rounded-xl border shadow-sm overflow-hidden max-h-[520px] lg:max-h-[420px]">
-              <div className="flex h-full">
+            <div className="bg-white rounded-xl border shadow-sm">
+              <div className="flex">
                 <div className={`w-12 flex flex-col items-center justify-center text-xxs font-bold tracking-wider text-white ${statusLabel === 'ACTIVE' ? 'bg-emerald-600' : statusLabel === 'PENDING' ? 'bg-amber-500' : 'bg-slate-400'}`}>
                   <div className="transform -rotate-90 w-full text-center">{statusLabel}</div>
                 </div>
 
-                <div className="flex-1 p-3 lg:p-4 overflow-auto">
+                <div className="flex-1 p-3 lg:p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm text-slate-500">{campaign.company || (campaign.org_name ?? '')}</div>

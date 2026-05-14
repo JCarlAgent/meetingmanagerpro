@@ -422,7 +422,6 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
               <div className="space-y-4">
                 {activeCampaigns.map(camp => (
                   <div key={camp.id} className="relative">
-                    <div className="mb-2 text-sm font-bold text-red-600">JOB BOARD LIVE VERSION</div>
                     <CampaignCard
                       campaign={camp as any}
                       events={(Array.isArray(events) ? events.filter(e => e.campaign_id === camp.id) : []) as any}
