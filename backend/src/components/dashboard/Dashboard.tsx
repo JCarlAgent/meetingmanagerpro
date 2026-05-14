@@ -105,6 +105,17 @@ const Dashboard: React.FC = () => {
         }
       }
 
+      // Fetch org name and primary contact name for advisor display on job cards
+      let orgName = '';
+      let orgContactName = '';
+      if (orgId) {
+        try {
+          const { data: orgRow } = await supabase.from('orgs').select('name, contact_name').eq('id', orgId).single();
+          orgName = (orgRow as any)?.name ?? '';
+          orgContactName = (orgRow as any)?.contact_name ?? '';
+        } catch { /* non-critical, ignore */ }
+      }
+
       if (jobsData && jobsData.length > 0) {
         // Enrichment: read supplemental tables to derive mail counts, delivery dates and stats.
         const jobIds = jobsData.map((j: any) => j.id);
@@ -202,6 +213,19 @@ const Dashboard: React.FC = () => {
             paid_at,
             delivered_quantity,
             responder_count,
+            // Advisor / company identity fields
+            org_name: orgName,
+            rep_name: orgContactName,
+            company: orgName,
+            // Explicit mailed count (separate from purchased list quantity)
+            mailed_count: jobStatsByJobId.get(j.id)?.mailed_count ?? 0,
+            // Stats object for CampaignCard consumption
+            stats: {
+              mailed_count: jobStatsByJobId.get(j.id)?.mailed_count ?? 0,
+              delivered_count: jobStatsByJobId.get(j.id)?.delivered_count ?? 0,
+              responses_total: jobStatsByJobId.get(j.id)?.responses_total ?? 0,
+              first_delivery_at: jobStatsByJobId.get(j.id)?.first_delivery_at ?? null,
+            },
             created_at: j.created_at,
             updated_at: j.updated_at,
           };

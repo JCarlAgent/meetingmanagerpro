@@ -38,3 +38,5 @@ fix_*
 runtest*
 patch*
 *.cjs
+.vercel
+.env*.local

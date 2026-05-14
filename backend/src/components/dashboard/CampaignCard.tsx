@@ -53,10 +53,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   const totalResponders = responders.length;
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
-  const mailedCount = campaign.stats?.mailed_count ?? campaign.stats?.mailed ?? 0;
-  const deliveredCount = campaign.stats?.delivered_count ?? campaign.stats?.delivered ?? 0;
+  const mailedCount = campaign.stats?.mailed_count ?? (campaign as any).mailed_count ?? campaign.stats?.mailed ?? 0;
+  const deliveredCount = campaign.stats?.delivered_count ?? (campaign as any).delivered_quantity ?? campaign.stats?.delivered ?? 0;
   const responsesCount = responders.length || (campaign.stats?.responses_total ?? 0);
-  const responseRate = mailedCount > 0 ? ((responsesCount / mailedCount) * 100) : 0;
+  const responseRate = deliveredCount > 0 ? ((responsesCount / deliveredCount) * 100) : 0;
 
   const isPaid = Boolean(campaign.paid_at || campaign.stats?.first_delivery_at);
 
@@ -163,8 +163,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm text-slate-500">{campaign.company || (campaign.org_name ?? '')}</div>
-                      <div className="text-lg lg:text-xl font-semibold tracking-tight text-slate-900">{campaign.repName ? `${campaign.repName} • ${campaign.company}` : (campaign.company || 'Advisor')}</div>
-                      <div className="text-xs text-slate-400 mt-1">Job: {campaign.project_id || campaign.id}</div>
+                      <div className="text-lg lg:text-xl font-semibold tracking-tight text-slate-900">{(campaign as any).rep_name || campaign.repName || (campaign as any).org_name || campaign.company || 'Advisor'}</div>
+                      <div className="text-xs text-slate-400 mt-1">Job: {campaign.project_id || campaign.title || '—'}</div>
                     </div>
                     <div className="flex items-end gap-6">
                       <div className="text-center">

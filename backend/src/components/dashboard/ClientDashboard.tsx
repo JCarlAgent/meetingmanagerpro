@@ -51,9 +51,10 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
           const event = safeEvents.find((e: any) => e && e.campaign_id === c.id) || null;
           // job-level values (may come from canonical `jobs` or enriched stats)
           const mail_quantity = c.mail_quantity ?? (c.mailQuantity ?? 0);
-          const delivered_quantity = c.delivered_quantity ?? c.delivered_count ?? (c.stats?.delivered ?? null) ?? null;
+          const delivered_quantity = c.delivered_quantity ?? c.delivered_count ?? (c.stats?.delivered_count ?? c.stats?.delivered ?? null) ?? null;
           const delivered_date = c.first_delivery_at ?? c.firstDeliveryAt ?? c.stats?.first_delivery_at ?? null;
           const responder_count = c.responder_count ?? c.responses_total ?? c.stats?.responses_total ?? 0;
+          const mailed_count = c.mailed_count ?? c.stats?.mailed_count ?? 0;
 
           return {
             id: c.id,
@@ -67,15 +68,30 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
             repPhone: c.repPhone || c.rep_phone || '',
             repEmail: c.repEmail || c.rep_email || '',
             company: c.company || c.org_name || '',
+            org_name: c.org_name || '',
+            rep_name: c.rep_name || '',
             template_type: c.template_type || c.templateType || c.template || '',
             confirmation_method: c.confirmation_method || c.confirmationMethod || c.confirmation || null,
             mail_quantity,
+            mailed_count,
             delivered_quantity,
             delivered_date,
             responder_count,
+            project_id: c.project_id || '',
             status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
             daysLeft: c.daysLeft || '',
-            stats: c.stats || { mailed: mail_quantity || 0, responses: responder_count || 0, attendees: 0, appointments: 0 }
+            stats: c.stats
+              ? {
+                  mailed_count: c.stats.mailed_count ?? mailed_count,
+                  delivered_count: c.stats.delivered_count ?? delivered_quantity ?? 0,
+                  responses_total: c.stats.responses_total ?? responder_count,
+                  first_delivery_at: c.stats.first_delivery_at ?? delivered_date ?? null,
+                  mailed: c.stats.mailed ?? mail_quantity ?? 0,
+                  responses: c.stats.responses ?? responder_count ?? 0,
+                  attendees: c.stats.attendees ?? 0,
+                  appointments: c.stats.appointments ?? 0,
+                }
+              : { mailed_count, mailed: mail_quantity || 0, delivered_count: delivered_quantity || 0, responses_total: responder_count, responses: responder_count || 0, attendees: 0, appointments: 0 }
           };
         });
         setActiveCampaigns(mapped);
