@@ -45,6 +45,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   onUpdateCampaign,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showFullResponders, setShowFullResponders] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showRoiForm, setShowRoiForm] = useState(false);
@@ -131,8 +132,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   };
 
   const formatTime = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(':');
-    const hour = parseInt(hours);
+    if (!timeStr) return '';
+    const parts = timeStr.split(':');
+    const hour = parseInt(parts[0] ?? '0', 10);
+    const minutes = parts[1] ?? '00';
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minutes} ${ampm}`;
@@ -156,22 +159,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   return (
     <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden hover:border-white/20 transition-all">
       <div className="p-3 lg:p-4">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-          {/* Project ID & Status */}
-          <div className="flex items-center flex-wrap gap-2">
-            <div className="bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold text-lg">{campaign.project_id}</div>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border ${getStatusBgColor(statusLabel.toLowerCase())}`}>{statusLabel}</span>
-            <button
-              type="button"
-              onClick={() => onUpdateCampaign(campaign.id, { paid_at: isPaid ? null : new Date().toISOString() })}
-              className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border transition-colors hover:opacity-90 ${isPaid ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-slate-500/10 text-slate-300 border-slate-500/30'}`}
-              title={isPaid ? 'Click to mark unpaid' : 'Click to mark paid'}
-            >{isPaid ? 'Paid' : 'Unpaid'}</button>
-            <span className="text-slate-400 text-sm hidden sm:inline">{new Date(campaign.created_at).toLocaleDateString()}</span>
-          </div>
-
-          {/* Job Control Board */}
-          <div className="w-full lg:flex-1 lg:ml-3">
+        {/* Job Control Board — full width, no outer badge row */}
+        <div className="w-full">
             <div className="bg-white rounded-xl border shadow-sm">
               <div className="flex">
                 <div className={`w-12 flex flex-col items-center justify-center text-xxs font-bold tracking-wider text-white ${statusLabel === 'ACTIVE' ? 'bg-emerald-600' : statusLabel === 'PENDING' ? 'bg-amber-500' : 'bg-slate-400'}`}>
@@ -183,7 +172,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     <div>
                       <div className="text-sm text-slate-500">{campaign.company || (campaign.org_name ?? '')}</div>
                       <div className="text-lg lg:text-xl font-semibold tracking-tight text-slate-900">{(campaign as any).rep_name || campaign.repName || (campaign as any).org_name || campaign.company || 'Advisor'}</div>
-                      <div className="text-xs text-slate-400 mt-1">Job: {campaign.project_id || campaign.title || '—'}</div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs text-slate-400">Job: {campaign.project_id || campaign.title || '—'}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${getStatusBgColor(statusLabel.toLowerCase())}`}>{statusLabel}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newPaidAt = isPaid ? null : new Date().toISOString();
+                            const { error } = await supabase.from('jobs').update({ paid_at: newPaidAt }).eq('id', campaign.id);
+                            if (error) { alert('Failed to save: ' + error.message); return; }
+                            onUpdateCampaign(campaign.id, { paid_at: newPaidAt });
+                          }}
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border transition-colors hover:opacity-90 ${isPaid ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
+                        >{isPaid ? 'Paid ✓' : 'Mark Paid'}</button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="text-center">
@@ -210,7 +212,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     <div className="col-span-1 bg-white rounded-lg p-2 shadow-sm">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold">Responders</div>
-                        <a href="#" onClick={(e) => { e.preventDefault(); window.dispatchEvent(new CustomEvent('navigate', { detail: { view: 'responders' } })); }} className="text-xs text-slate-500 hover:underline">See full list</a>
+                        <a href="#" onClick={(e) => { e.preventDefault(); setShowFullResponders(v => !v); }} className="text-xs text-slate-500 hover:underline">{showFullResponders ? 'Close full list' : 'See full list'}</a>
                       </div>
                       <div className="text-sm">
                         <div className="grid grid-cols-12 gap-2 font-semibold text-xs text-slate-500 pb-2 border-b">
@@ -249,7 +251,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 <div className="font-medium text-sm">{ev.venue_name || 'TBD'}</div>
                                 <div className="text-xs text-slate-500">{ev.venue_city ? `${ev.venue_city}${ev.venue_state ? `, ${ev.venue_state}` : ''}` : ''}</div>
                               </div>
-                              <div className="text-sm text-slate-600">{ev.event_time || ''}</div>
+                              <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
                             </div>
                           );
                         })}
@@ -317,21 +319,34 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     </div>
                     {isExpanded && (
                       <div className="mt-3 space-y-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {user?.is_master_admin && (
-                            <button onClick={async () => { const newPaid = isPaid ? null : new Date().toISOString(); await onUpdateCampaign(campaign.id, { paid_at: newPaid }); alert('Paid status updated'); }} className="px-3 py-1 bg-indigo-600 text-white rounded">{isPaid ? 'Mark Unpaid' : 'Mark Paid'}</button>
+                            <button onClick={async () => { const newPaid = isPaid ? null : new Date().toISOString(); const { error } = await supabase.from('jobs').update({ paid_at: newPaid }).eq('id', campaign.id); if (error) { alert('Failed: '+error.message); return; } onUpdateCampaign(campaign.id, { paid_at: newPaid }); }} className="px-3 py-1 bg-indigo-600 text-white rounded">{isPaid ? 'Mark Unpaid' : 'Mark Paid'}</button>
                           )}
                           {user?.is_master_admin && (
                             <button onClick={async () => { const qtyStr = window.prompt('Enter purchased list row count:', String(purchasedList || '')); if (!qtyStr) return; const row_count = parseInt(qtyStr.replace(/,/g,''),10); if (Number.isNaN(row_count)) { alert('Invalid number'); return; } const { data, error } = await supabase.from('job_mailing_lists').insert({ job_id: campaign.id, row_count }).select(); if (error) { alert('Failed: '+error.message); } else { onUpdateCampaign(campaign.id, { mail_quantity: row_count }); alert('Recorded purchased list'); } }} className="px-3 py-1 bg-sky-600 text-white rounded">Record Purchased List</button>
                           )}
                           {user?.is_master_admin && (
-                            <button onClick={async () => { const qtyStr = window.prompt('Enter mailed quantity (optional):', String(mailedCount || '')); if (qtyStr===null) return; const mailedQty = qtyStr ? parseInt(qtyStr.replace(/,/g,''),10) : null; const dateStr = window.prompt('Enter mailed date (YYYY-MM-DD) optional:', ''); try { if (mailedQty != null && !Number.isNaN(mailedQty)) { const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, mailed_count: mailedQty }, { onConflict: 'job_id' }).select(); if (error) throw error; onUpdateCampaign(campaign.id, { mail_quantity: campaign.mail_quantity, stats: { ...(campaign.stats||{}), mailed_count: mailedQty } }); } if (dateStr) { const iso = new Date(dateStr+'T00:00:00Z').toISOString(); const { error: poErr } = await supabase.from('print_orders').insert({ job_id: campaign.id, mailed_at: iso }).select(); if (poErr) throw poErr; } alert('Recorded mailed quantity/date'); } catch(err:any){ alert('Failed: '+(err?.message||String(err))); } } } className="px-3 py-1 bg-amber-600 text-white rounded">Record Mailed Quantity</button>
+                            <button onClick={async () => { const qtyStr = window.prompt('Enter mailed quantity (optional):', String(mailedCount || '')); if (qtyStr===null) return; const mailedQty = qtyStr ? parseInt(qtyStr.replace(/,/g,''),10) : null; try { if (mailedQty != null && !Number.isNaN(mailedQty)) { const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, mailed_count: mailedQty }, { onConflict: 'job_id' }).select(); if (error) throw error; onUpdateCampaign(campaign.id, { mail_quantity: campaign.mail_quantity, stats: { ...(campaign.stats||{}), mailed_count: mailedQty } }); } alert('Recorded mailed quantity'); } catch(err:any){ alert('Failed: '+(err?.message||String(err))); } }} className="px-3 py-1 bg-amber-600 text-white rounded">Record Mailed Quantity</button>
+                          )}
+                          {user?.is_master_admin && (
+                            <button onClick={async () => {
+                              const dateStr = window.prompt('Enter date mail was sent (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+                              if (!dateStr) return;
+                              const iso = new Date(dateStr + 'T12:00:00Z').toISOString();
+                              try {
+                                const { error } = await supabase.from('print_orders').upsert({ job_id: campaign.id, mailed_at: iso }, { onConflict: 'job_id' }).select();
+                                if (error) throw error;
+                                await persistChecklistIndex(campaign.id, 5, true);
+                                alert('Mail Sent date recorded');
+                              } catch(err:any){ alert('Failed: '+(err?.message||String(err))); }
+                            }} className="px-3 py-1 bg-orange-600 text-white rounded">Record Mail Sent Date</button>
                           )}
                           {user?.is_master_admin && (
                             <button onClick={async () => { await persistChecklistIndex(campaign.id, 3, true); alert('Marked Mailhouse Paid'); }} className="px-3 py-1 bg-emerald-600 text-white rounded">Mark Mailhouse Paid</button>
                           )}
                           {user?.is_master_admin && (
-                            <button onClick={async () => { const qtyStr = window.prompt('Enter delivered quantity (optional):', String(deliveredCount || '')); if (qtyStr===null) return; const deliveredQty = qtyStr ? parseInt(qtyStr.replace(/,/g,''),10) : null; const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD) optional:', ''); try { if (deliveredQty != null && !Number.isNaN(deliveredQty)) { const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, delivered_count: deliveredQty }, { onConflict: 'job_id' }).select(); if (error) throw error; onUpdateCampaign(campaign.id, { delivered_quantity: deliveredQty, stats: { ...(campaign.stats||{}), delivered_count: deliveredQty } }); } if (dateStr) { const iso = new Date(dateStr+'T00:00:00Z').toISOString(); const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, first_delivery_at: iso }, { onConflict: 'job_id' }).select(); if (error) throw error; } alert('Recorded delivery'); } catch(err:any){ alert('Failed: '+(err?.message||String(err))); } } } className="px-3 py-1 bg-emerald-500 text-white rounded">Record Delivery</button>
+                            <button onClick={async () => { const qtyStr = window.prompt('Enter delivered quantity (optional):', String(deliveredCount || '')); if (qtyStr===null) return; const deliveredQty = qtyStr ? parseInt(qtyStr.replace(/,/g,''),10) : null; const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD) optional:', ''); try { if (deliveredQty != null && !Number.isNaN(deliveredQty)) { const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, delivered_count: deliveredQty }, { onConflict: 'job_id' }).select(); if (error) throw error; onUpdateCampaign(campaign.id, { delivered_quantity: deliveredQty, stats: { ...(campaign.stats||{}), delivered_count: deliveredQty } }); } if (dateStr) { const iso = new Date(dateStr+'T00:00:00Z').toISOString(); const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, first_delivery_at: iso }, { onConflict: 'job_id' }).select(); if (error) throw error; } alert('Recorded delivery'); } catch(err:any){ alert('Failed: '+(err?.message||String(err))); } }} className="px-3 py-1 bg-emerald-500 text-white rounded">Record Delivery</button>
                           )}
                         </div>
                       </div>
@@ -344,10 +359,30 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         </div>
       </div>
 
-      {/* Expanded views outside the main header (kept minimal) */}
+      {/* Full responders list — toggled by 'See full list' link */}
+      {showFullResponders && (
+        <div className="border-t border-white/10 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-white">Full Responder List</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { window.print(); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded-lg transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print Sign-In Sheet
+              </button>
+              <button type="button" onClick={() => setShowFullResponders(false)} className="text-xs text-slate-400 hover:text-slate-200 underline">Close</button>
+            </div>
+          </div>
+          <ResponderList responders={displayResponders.length > 0 ? displayResponders : responders} events={events} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onUpdateResponder={onUpdateResponder} />
+        </div>
+      )}
+
+      {/* Admin details expander (separate from responders) */}
       {isExpanded && (
         <div className="border-t border-white/10 p-4">
-          <ResponderList responders={displayResponders.length > 0 ? displayResponders : responders} events={events} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onUpdateResponder={onUpdateResponder} />
+          {/* admin buttons already rendered inside the card above */}
         </div>
       )}
 

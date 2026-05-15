@@ -177,17 +177,30 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription, 
   const minLat = Math.min(...venues.map(v => v.lat));
   const maxLat = Math.max(...venues.map(v => v.lat));
 
-  const lngDiff = maxLng - minLng;
-  const latDiff = maxLat - minLat;
+  // Compute true bounding box from the isochrone polygon coordinates (not just venue centers)
+  const allCoords: [number, number][] = [];
+  venues.forEach(v => {
+    try {
+      const features = v.isochrone?.features ?? [];
+      features.forEach((f: any) => {
+        const coords = f?.geometry?.coordinates ?? [];
+        // Polygon: coords[0] is the outer ring; MultiPolygon: coords[i][0]
+        const rings = f?.geometry?.type === 'MultiPolygon' ? coords.flat(1) : coords;
+        rings.forEach((ring: any) => {
+          if (Array.isArray(ring)) {
+            ring.forEach((pt: any) => {
+              if (Array.isArray(pt) && pt.length >= 2) allCoords.push([pt[0], pt[1]]);
+            });
+          }
+        });
+      });
+    } catch { /* ignore malformed geometry */ }
+  });
 
-  const maxDiff = Math.max(lngDiff, latDiff);
-  let zoom = 10;
-  if (maxDiff > 0.5) zoom = 9;
-  if (maxDiff > 1) zoom = 8;
-  if (maxDiff > 2) zoom = 6;
-  if (maxDiff > 5) zoom = 4;
-  if (maxDiff > 20) zoom = 3;
-  if (maxDiff < 0.05) zoom = 11;
+  const polyMinLng = allCoords.length > 0 ? Math.min(...allCoords.map(c => c[0])) : minLng;
+  const polyMaxLng = allCoords.length > 0 ? Math.max(...allCoords.map(c => c[0])) : maxLng;
+  const polyMinLat = allCoords.length > 0 ? Math.min(...allCoords.map(c => c[1])) : minLat;
+  const polyMaxLat = allCoords.length > 0 ? Math.max(...allCoords.map(c => c[1])) : maxLat;
 
   const description = polygonDescription && !polygonDescription.includes("N/A") ? polygonDescription : null;
 
@@ -227,9 +240,8 @@ export default function CampaignMapPreview({ venueHeadline, polygonDescription, 
         <Map
           mapboxAccessToken={ACTIVE_TOKEN}
           initialViewState={{
-            longitude: (minLng + maxLng) / 2,
-            latitude: (minLat + maxLat) / 2,
-            zoom: zoom
+            bounds: [[polyMinLng, polyMinLat], [polyMaxLng, polyMaxLat]],
+            fitBoundsOptions: { padding: 40 }
           }}
           style={{ width: "100%", height: "100%" }}
           mapStyle="mapbox://styles/mapbox/light-v11"
