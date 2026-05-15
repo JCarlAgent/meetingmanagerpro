@@ -78,9 +78,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const responsesCount = displayResponders.length || (campaign.stats?.responses_total ?? 0);
   const responseRate = deliveredCount > 0 ? ((responsesCount / deliveredCount) * 100) : 0;
 
-  // paid_at column does not exist on jobs table; derive from checklist index 3 (Mailhouse Paid)
+  // paid_at column does not exist on jobs table; derive from checklist index 4 (Mailhouse Paid)
   const isPaid = Boolean(
-    (Array.isArray(campaign.status) && campaign.status[3]) ||
+    (Array.isArray(campaign.status) && campaign.status[4]) ||
     campaign.stats?.first_delivery_at
   );
 
@@ -112,7 +112,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const { data: updatedRows, error: updateErr } = await supabase.from('jobs').update({ notes: JSON.stringify(notesObj) }).eq('id', jobId).select('id, notes');
       if (updateErr) throw updateErr;
       // update local UI via onUpdateCampaign status array
-      const nextStatus = Array.isArray(campaign.status) ? campaign.status.slice() : [false,false,false,false,false];
+      const nextStatus = Array.isArray(campaign.status) ? campaign.status.slice() : [false,false,false,false,false,false];
       nextStatus[index] = !!value;
       onUpdateCampaign(campaign.id, { status: nextStatus });
       return updatedRows;
@@ -182,7 +182,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                         <button
                           type="button"
                           onClick={async () => {
-                            await persistChecklistIndex(campaign.id, 3, !isPaid);
+                            await persistChecklistIndex(campaign.id, 4, !isPaid);
                           }}
                           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border transition-colors hover:opacity-90 ${isPaid ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
                         >{isPaid ? 'Paid ✓' : 'Mark Paid'}</button>
@@ -322,7 +322,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                       <div className="mt-3 space-y-3">
                         <div className="flex flex-wrap items-center gap-2">
                           {user?.is_master_admin && (
-                            <button onClick={async () => { await persistChecklistIndex(campaign.id, 3, !isPaid); }} className="px-3 py-1 bg-indigo-600 text-white rounded">{isPaid ? 'Mark Unpaid' : 'Mark Paid'}</button>
+                            <button onClick={async () => { await persistChecklistIndex(campaign.id, 4, !isPaid); }} className="px-3 py-1 bg-indigo-600 text-white rounded">{isPaid ? 'Mark Unpaid' : 'Mark Paid'}</button>
                           )}
                           {user?.is_master_admin && (
                             <button onClick={async () => { const qtyStr = window.prompt('Enter purchased list row count:', String(purchasedList || '')); if (!qtyStr) return; const row_count = parseInt(qtyStr.replace(/,/g,''),10); if (Number.isNaN(row_count)) { alert('Invalid number'); return; } const { data, error } = await supabase.from('job_mailing_lists').insert({ job_id: campaign.id, row_count }).select(); if (error) { alert('Failed: '+error.message); } else { onUpdateCampaign(campaign.id, { mail_quantity: row_count }); alert('Recorded purchased list'); } }} className="px-3 py-1 bg-sky-600 text-white rounded">Record Purchased List</button>
@@ -349,14 +349,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                   const { error } = await supabase.from('print_orders').insert({ job_id: campaign.id, mailed_at: iso });
                                   if (error) throw error;
                                 }
-                                // index 4 = Mail Sent in Dashboard's statusArray
-                                await persistChecklistIndex(campaign.id, 4, true);
+                                // index 5 = Mail Sent in Dashboard's statusArray
+                                await persistChecklistIndex(campaign.id, 5, true);
                                 alert('Mail Sent date recorded');
                               } catch(err:any){ alert('Failed: '+(err?.message||String(err))); }
                             }} className="px-3 py-1 bg-orange-600 text-white rounded">Record Mail Sent Date</button>
                           )}
                           {user?.is_master_admin && (
-                            <button onClick={async () => { await persistChecklistIndex(campaign.id, 3, true); alert('Marked Mailhouse Paid'); }} className="px-3 py-1 bg-emerald-600 text-white rounded">Mark Mailhouse Paid</button>
+                            <button onClick={async () => { await persistChecklistIndex(campaign.id, 3, !campaign.status?.[3]); }} className="px-3 py-1 bg-sky-700 text-white rounded">{campaign.status?.[3] ? '800# Secured ✓' : 'Mark 800# Secured'}</button>
                           )}
                           {user?.is_master_admin && (
                             <button onClick={async () => { const qtyStr = window.prompt('Enter delivered quantity (optional):', String(deliveredCount || '')); if (qtyStr===null) return; const deliveredQty = qtyStr ? parseInt(qtyStr.replace(/,/g,''),10) : null; const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD) optional:', ''); try { if (deliveredQty != null && !Number.isNaN(deliveredQty)) { const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, delivered_count: deliveredQty }, { onConflict: 'job_id' }).select(); if (error) throw error; onUpdateCampaign(campaign.id, { delivered_quantity: deliveredQty, stats: { ...(campaign.stats||{}), delivered_count: deliveredQty } }); } if (dateStr) { const iso = new Date(dateStr+'T00:00:00Z').toISOString(); const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, first_delivery_at: iso }, { onConflict: 'job_id' }).select(); if (error) throw error; } alert('Recorded delivery'); } catch(err:any){ alert('Failed: '+(err?.message||String(err))); } }} className="px-3 py-1 bg-emerald-500 text-white rounded">Record Delivery</button>

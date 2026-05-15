@@ -189,21 +189,24 @@ const Dashboard: React.FC = () => {
             Array.isArray((notesObj.checklist as any).items)
           ) ? (notesObj.checklist as any).items : [];
 
-          // Build final status array: [Demo Data Done, List Purchased, Design Chosen, Mailhouse Paid, Mail Sent]
+          // Build final status array (6 items):
+          // 0: Demo Data Done | 1: List Purchased | 2: Template Selected | 3: 800# Secured | 4: Mailhouse Paid | 5: Mail Sent
           const statusArray: boolean[] = [];
           // 0: Demo Data Done (manual)
           statusArray[0] = storedItems.length > 0 && typeof storedItems[0] === 'boolean' ? storedItems[0] : false;
           // 1: List Purchased (derived)
           statusArray[1] = derivedListPurchased;
-          // 2: Design Chosen (manual)
+          // 2: Template Selected (manual)
           statusArray[2] = storedItems.length > 2 && typeof storedItems[2] === 'boolean' ? storedItems[2] : false;
-          // 3: Mailhouse Paid (manual)
+          // 3: 800# Secured (manual)
           statusArray[3] = storedItems.length > 3 && typeof storedItems[3] === 'boolean' ? storedItems[3] : false;
-          // 4: Mail Sent (derived)
-          statusArray[4] = derivedMailSent;
+          // 4: Mailhouse Paid (manual)
+          statusArray[4] = storedItems.length > 4 && typeof storedItems[4] === 'boolean' ? storedItems[4] : false;
+          // 5: Mail Sent (derived from print_orders.mailed_at or job_stats.mailed_count)
+          statusArray[5] = derivedMailSent;
 
           // Normalize to fixed-length boolean array to avoid undefined accesses elsewhere
-          const normalizedStatus = [0, 1, 2, 3, 4].map(i => !!statusArray[i]);
+          const normalizedStatus = [0, 1, 2, 3, 4, 5].map(i => !!statusArray[i]);
 
             return {
             id: j.id,
