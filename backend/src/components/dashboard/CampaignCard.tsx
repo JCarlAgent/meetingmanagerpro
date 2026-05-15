@@ -156,9 +156,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   return (
     <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-white/10 overflow-hidden hover:border-white/20 transition-all">
       <div className="p-3 lg:p-4">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
           {/* Project ID & Status */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center flex-wrap gap-2">
             <div className="bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold text-lg">{campaign.project_id}</div>
             <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border ${getStatusBgColor(statusLabel.toLowerCase())}`}>{statusLabel}</span>
             <button
@@ -171,7 +171,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </div>
 
           {/* Job Control Board */}
-          <div className="flex-1 ml-3">
+          <div className="w-full lg:flex-1 lg:ml-3">
             <div className="bg-white rounded-xl border shadow-sm">
               <div className="flex">
                 <div className={`w-12 flex flex-col items-center justify-center text-xxs font-bold tracking-wider text-white ${statusLabel === 'ACTIVE' ? 'bg-emerald-600' : statusLabel === 'PENDING' ? 'bg-amber-500' : 'bg-slate-400'}`}>
@@ -179,27 +179,27 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                 </div>
 
                 <div className="flex-1 p-3 lg:p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div>
                       <div className="text-sm text-slate-500">{campaign.company || (campaign.org_name ?? '')}</div>
                       <div className="text-lg lg:text-xl font-semibold tracking-tight text-slate-900">{(campaign as any).rep_name || campaign.repName || (campaign as any).org_name || campaign.company || 'Advisor'}</div>
                       <div className="text-xs text-slate-400 mt-1">Job: {campaign.project_id || campaign.title || '—'}</div>
                     </div>
-                    <div className="flex items-end gap-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="text-center">
-                        <div className="text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{mailedCount.toLocaleString()}</div>
+                        <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{mailedCount.toLocaleString()}</div>
                         <div className="text-xs text-slate-500 mt-1">Mailed</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{deliveredCount.toLocaleString()}</div>
+                        <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{deliveredCount.toLocaleString()}</div>
                         <div className="text-xs text-slate-500 mt-1">Delivered</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{responsesCount.toLocaleString()}</div>
+                        <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{responsesCount.toLocaleString()}</div>
                         <div className="text-xs text-slate-500 mt-1">Responses</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{(responseRate).toFixed(2)}%</div>
+                        <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{(responseRate).toFixed(2)}%</div>
                         <div className="text-xs text-slate-500 mt-1">Response Rate</div>
                       </div>
                     </div>
