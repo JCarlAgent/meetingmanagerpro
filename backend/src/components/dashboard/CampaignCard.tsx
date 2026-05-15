@@ -78,11 +78,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const responsesCount = displayResponders.length || (campaign.stats?.responses_total ?? 0);
   const responseRate = deliveredCount > 0 ? ((responsesCount / deliveredCount) * 100) : 0;
 
-  // paid_at column does not exist on jobs table; derive from checklist index 4 (Mailhouse Paid)
-  const isPaid = Boolean(
-    (Array.isArray(campaign.status) && campaign.status[4]) ||
-    campaign.stats?.first_delivery_at
-  );
+  // Mailhouse Paid is stored at checklist index 4 in jobs.notes; first_delivery_at is NOT used as paid signal
+  const isPaid = Array.isArray(campaign.status) && !!campaign.status[4];
 
   const isCompleted = useMemo(() => {
     const now = new Date();
@@ -353,26 +350,34 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           )}
                           {user?.is_master_admin && (
                             <button onClick={async () => {
-                              const dateStr = window.prompt('Enter date mail was sent (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
-                              if (!dateStr) return;
-                              const iso = new Date(dateStr + 'T12:00:00Z').toISOString();
+                              // Pre-fill with current mailed date or today
+                              const todayLocal = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+                              const dateStr = window.prompt('Enter date mail was sent (YYYY-MM-DD), or leave blank to clear:', todayLocal);
+                              if (dateStr === null) return; // cancelled
+                              const trimmed = dateStr.trim();
+                              // Parse as noon UTC to avoid any timezone-day-shift
+                              const iso: string | null = trimmed ? (trimmed + 'T12:00:00.000Z') : null;
                               try {
-                                // print_orders.job_id has no unique constraint — select-then-update/insert
-                                const { data: existing } = await supabase
+                                // Check if any print_orders row exists for this job
+                                const { data: rows } = await supabase
                                   .from('print_orders')
                                   .select('id')
                                   .eq('job_id', campaign.id)
-                                  .maybeSingle();
-                                if (existing?.id) {
-                                  const { error } = await supabase.from('print_orders').update({ mailed_at: iso }).eq('id', existing.id);
+                                  .limit(1);
+                                const hasExisting = rows && rows.length > 0;
+                                if (hasExisting) {
+                                  // Update ALL rows for this job_id so no stale duplicate wins the DESC sort
+                                  const { error } = await supabase.from('print_orders').update({ mailed_at: iso }).eq('job_id', campaign.id);
                                   if (error) throw error;
-                                } else {
+                                } else if (iso) {
                                   const { error } = await supabase.from('print_orders').insert({ job_id: campaign.id, mailed_at: iso });
                                   if (error) throw error;
                                 }
-                                // index 5 = Mail Sent in Dashboard's statusArray
-                                await persistChecklistIndex(campaign.id, 5, true);
-                                alert('Mail Sent date recorded');
+                                // Update local UI directly — Dashboard derives status[5] from print_orders, not jobs.notes
+                                const nextStatus = Array.isArray(campaign.status) ? campaign.status.slice() : [false,false,false,false,false,false];
+                                nextStatus[5] = !!iso;
+                                onUpdateCampaign(campaign.id, { status: nextStatus });
+                                alert(iso ? 'Mail Sent date recorded' : 'Mail Sent date cleared');
                               } catch(err:any){ alert('Failed: '+(err?.message||String(err))); }
                             }} className="px-3 py-1 bg-orange-600 text-white rounded">Record Mail Sent Date</button>
                           )}
