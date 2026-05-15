@@ -246,7 +246,16 @@ const Dashboard: React.FC = () => {
 
         // Map job_meetings -> event-like objects
         const jobMeetEvents = (jobMeetings || []).map((m: any) => {
+          // starts_at is stored as UTC ISO. Extract display values in LOCAL time so the
+          // meeting clock time shown matches what the admin originally entered.
           const d = m.starts_at ? new Date(m.starts_at) : null;
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const localDate = d
+            ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+            : '';
+          const localTime = d
+            ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
+            : '';
           return {
             id: m.id,
             campaign_id: m.job_id,
@@ -254,8 +263,8 @@ const Dashboard: React.FC = () => {
             venue_address: m.address1 || '',
             venue_city: m.city || '',
             venue_state: m.state || '',
-            event_date: d ? d.toISOString().slice(0, 10) : '',
-            event_time: d ? d.toISOString().slice(11, 16) : '',
+            event_date: localDate,
+            event_time: localTime,
             event_type: '',
             max_capacity: 0,
             status: 'open',
