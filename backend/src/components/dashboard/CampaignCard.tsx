@@ -160,7 +160,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           {/* Project ID & Status */}
           <div className="flex items-center gap-3">
             <div className="bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold text-lg">{campaign.project_id}</div>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border ${getStatusBgColor(campaign.status)}`}>{campaign.status}</span>
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase border ${getStatusBgColor(statusLabel.toLowerCase())}`}>{statusLabel}</span>
             <button
               type="button"
               onClick={() => onUpdateCampaign(campaign.id, { paid_at: isPaid ? null : new Date().toISOString() })}
@@ -347,7 +347,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       {/* Expanded views outside the main header (kept minimal) */}
       {isExpanded && (
         <div className="border-t border-white/10 p-4">
-          <ResponderList responders={responders} events={events} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onUpdateResponder={onUpdateResponder} />
+          <ResponderList responders={displayResponders.length > 0 ? displayResponders : responders} events={events} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onUpdateResponder={onUpdateResponder} />
         </div>
       )}
 

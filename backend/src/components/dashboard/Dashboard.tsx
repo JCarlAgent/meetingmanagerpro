@@ -74,6 +74,16 @@ const Dashboard: React.FC = () => {
     }
   }, [actingOrgId, user?.is_master_admin]);
 
+  useEffect(() => {
+    // Listen for navigate custom events dispatched by child components (e.g. CampaignCard "See full list")
+    const handleNavigateEvent = (e: Event) => {
+      const view = (e as CustomEvent<{ view: string }>).detail?.view;
+      if (view) setActiveView(view);
+    };
+    window.addEventListener('navigate', handleNavigateEvent);
+    return () => window.removeEventListener('navigate', handleNavigateEvent);
+  }, []);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
