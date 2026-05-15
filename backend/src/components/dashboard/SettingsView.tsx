@@ -15,6 +15,10 @@ const SettingsView: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [previewCampaignId, setPreviewCampaignId] = useState('');
+  const [isPreviewingLeads, setIsPreviewingLeads] = useState(false);
+  const [leadsPreview, setLeadsPreview] = useState<string | null>(null);
+  const [leadsPreviewError, setLeadsPreviewError] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -78,6 +82,43 @@ const SettingsView: React.FC = () => {
       }
 
       setStatus(`Success. XML received: ${data?.looksXml ? 'yes' : 'unknown'}.`);
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const previewLeads = async () => {
+    setLeadsPreview(null);
+    setLeadsPreviewError(null);
+    if (!previewCampaignId.trim()) {
+      setLeadsPreviewError('Enter a TeleDirect Campaign ID first.');
+      return;
+    }
+    setIsPreviewingLeads(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setLeadsPreviewError('Not logged in. Please log in again.');
+        return;
+      }
+      const resp = await fetch('/api/integrations/workthelead/leads-preview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ campaignId: previewCampaignId.trim() }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setLeadsPreviewError(data?.error || 'Leads preview failed');
+        return;
+      }
+      setLeadsPreview(data?.bodyPreview ?? '(empty response)');
+    } finally {
+      setIsPreviewingLeads(false);
+    }
+  };
     } finally {
       setIsTesting(false);
     }
@@ -297,13 +338,49 @@ const SettingsView: React.FC = () => {
                   {status}
                 </div>
               )}
+
+              {user?.is_master_admin && (
+                <div className="mt-5 border-t border-slate-100 pt-5">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Preview Leads (Schema Probe)
+                  </label>
+                  <p className="mt-1 text-xs text-slate-500">Enter a TeleDirect CampaignID to inspect the raw get_Leads.asp XML response. No data is saved.</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      value={previewCampaignId}
+                      onChange={(e) => setPreviewCampaignId(e.target.value)}
+                      placeholder="TeleDirect Campaign ID"
+                      className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={previewLeads}
+                      disabled={isPreviewingLeads}
+                      className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 font-medium px-4 py-2 rounded-lg transition-colors border border-slate-200 whitespace-nowrap"
+                    >
+                      <TestTube2 className="w-4 h-4" />
+                      {isPreviewingLeads ? 'Fetching…' : 'Preview Leads'}
+                    </button>
+                  </div>
+                  {leadsPreviewError && (
+                    <div className="mt-3 text-sm text-red-700 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                      {leadsPreviewError}
+                    </div>
+                  )}
+                  {leadsPreview && (
+                    <pre className="mt-3 text-xs text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all">
+                      {leadsPreview}
+                    </pre>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       <div className="mt-6 text-xs text-slate-500">
-        Note: This integration currently tests the `get_Campaigns.asp` endpoint. We’ll wire `get_Leads.asp` / `get_Calls.asp` into reporting next.
+        Note: Use "Preview Leads" above to inspect the raw get_Leads.asp XML schema for a given TeleDirect CampaignID. Full responder sync coming next.
       </div>
     </div>
   );
