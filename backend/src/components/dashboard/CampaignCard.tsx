@@ -298,14 +298,35 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                   {/* Progress / checklist */}
                   <div className="mt-3">
                     <div className="flex items-center justify-between gap-2">
-                      {['Demo Data Done','List Purchased','Template Selected','800# Secured','Mailhouse Paid','Mail Sent'].map((label, idx) => {
+                      {(['Demo Data Done','List Purchased','Template Selected','800# Secured','Mailhouse Paid','Mail Sent'] as const).map((label, idx) => {
                         const checked = Array.isArray(campaign.status) ? !!campaign.status[idx] : false;
-                        return (
-                          <div key={label} className="flex-1 flex items-center gap-2 justify-center px-3 py-2 rounded bg-gray-50">
+                        // Indexes 1 (List Purchased) and 5 (Mail Sent) are derived — not manually togglable
+                        const isManual = idx !== 1 && idx !== 5;
+                        const canToggle = isManual && !!user?.is_master_admin;
+                        const inner = (
+                          <>
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center ${checked ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
                               {checked ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                             </div>
                             <div className="text-xs text-slate-700 text-center truncate">{label}</div>
+                          </>
+                        );
+                        if (canToggle) {
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              title={checked ? `Unmark: ${label}` : `Mark: ${label}`}
+                              onClick={() => persistChecklistIndex(campaign.id, idx, !checked)}
+                              className="flex-1 flex items-center gap-2 justify-center px-3 py-2 rounded bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                            >
+                              {inner}
+                            </button>
+                          );
+                        }
+                        return (
+                          <div key={label} className="flex-1 flex items-center gap-2 justify-center px-3 py-2 rounded bg-gray-50">
+                            {inner}
                           </div>
                         );
                       })}
