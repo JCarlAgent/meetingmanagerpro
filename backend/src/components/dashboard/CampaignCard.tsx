@@ -52,6 +52,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [mapZips, setMapZips] = useState<string[]>([]);
   const [showAllZips, setShowAllZips] = useState(false);
   const [localResponders, setLocalResponders] = useState<Responder[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  // Fetch responders from Supabase for this campaign (used both on mount and after sync)
+  const reloadResponders = () => {
+    if (!campaign.id) return;
+    supabase
+      .from('responders')
+      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, created_at')
+      .eq('campaign_id', campaign.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => { setLocalResponders(data ?? []); });
+  };
 
   // Load real responders for this campaign/job from Supabase (newest first, max 10 for preview)
   useEffect(() => {
@@ -117,6 +131,39 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       console.error('persistChecklistIndex failed', err);
       alert('Failed to save checklist: ' + (err?.message || String(err)));
       return null;
+    }
+  };
+
+  const syncTeleDirectLeads = async () => {
+    const tdCampaignId = window.prompt('Enter TeleDirect Campaign ID to sync leads:');
+    if (!tdCampaignId || !tdCampaignId.trim()) return;
+    setSyncMessage(null);
+    setIsSyncing(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) {
+        setSyncMessage('Not logged in.');
+        return;
+      }
+      const resp = await fetch('/api/integrations/workthelead/sync-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, campaignId: tdCampaignId.trim() }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setSyncMessage(data?.error || 'Sync failed');
+        return;
+      }
+      const msg = `Sync complete — inserted: ${data.inserted}, updated: ${data.updated}, skipped: ${data.skipped}${data.message ? ' — ' + data.message : ''}`;
+      setSyncMessage(msg);
+      // Refresh the preview and full list immediately
+      reloadResponders();
+    } catch (err: any) {
+      setSyncMessage(err?.message || 'Sync error');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -386,6 +433,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           )}
                           {user?.is_master_admin && (
                             <button onClick={async () => { const qtyStr = window.prompt('Enter delivered quantity (optional):', String(deliveredCount || '')); if (qtyStr===null) return; const deliveredQty = qtyStr ? parseInt(qtyStr.replace(/,/g,''),10) : null; const dateStr = window.prompt('Enter delivery date (YYYY-MM-DD) optional:', ''); try { if (deliveredQty != null && !Number.isNaN(deliveredQty)) { const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, delivered_count: deliveredQty }, { onConflict: 'job_id' }).select(); if (error) throw error; onUpdateCampaign(campaign.id, { delivered_quantity: deliveredQty, stats: { ...(campaign.stats||{}), delivered_count: deliveredQty } }); } if (dateStr) { const iso = new Date(dateStr+'T00:00:00Z').toISOString(); const { error } = await supabase.from('job_stats').upsert({ job_id: campaign.id, first_delivery_at: iso }, { onConflict: 'job_id' }).select(); if (error) throw error; } alert('Recorded delivery'); } catch(err:any){ alert('Failed: '+(err?.message||String(err))); } }} className="px-3 py-1 bg-emerald-500 text-white rounded">Record Delivery</button>
+                          )}
+                          {user?.is_master_admin && (
+                            <button
+                              onClick={syncTeleDirectLeads}
+                              disabled={isSyncing}
+                              className="px-3 py-1 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-sm"
+                            >
+                              {isSyncing ? 'Syncing…' : 'Sync TeleDirect Leads'}
+                            </button>
+                          )}
+                          {syncMessage && (
+                            <span className="text-xs text-slate-600 mt-1 w-full">{syncMessage}</span>
                           )}
                         </div>
                       </div>
