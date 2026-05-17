@@ -162,15 +162,16 @@ export default async function handler(req: any, res: any) {
     const username = decryptString(credsData.username_enc);
     const password = decryptString(credsData.password_enc);
 
-    // Call TeleDirect get_Leads.asp — same parameter shape as leads-preview.ts
+    // Guard: catch a blank decrypt result before hitting TeleDirect
+    if (!username || !username.trim()) {
+      send(res, 500, { error: 'Credential decrypt yielded blank username. Re-save credentials in Settings.' });
+      return;
+    }
+
+    // Build URL exactly as test.ts does for get_Campaigns.asp — plain encodeURIComponent, no URLSearchParams
     const baseUrl = 'https://client.teledirect.com/workthelead/api';
-    const urlParams = new URLSearchParams({
-      UserName: username,
-      Password: password,
-      CampaignID: campaignId,
-    });
-    const fullUrl = `${baseUrl}/get_Leads.asp?${urlParams.toString()}`;
-    // Safe URL for diagnostics — omit password value
+    const fullUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=${encodeURIComponent(password)}&CampaignID=${encodeURIComponent(campaignId)}`;
+    // Safe URL for diagnostics — password redacted, username visible to confirm it was sent
     const safeUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=***&CampaignID=${encodeURIComponent(campaignId)}`;
 
     const resp = await fetch(fullUrl, { method: 'GET' });
