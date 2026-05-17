@@ -154,10 +154,22 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        setSyncMessage(data?.error || 'Sync failed');
+        setSyncMessage(`Error: ${data?.error || 'Sync failed'}${data?.rawPreview ? ' | Raw: ' + String(data.rawPreview).slice(0, 200) : ''}`);
         return;
       }
-      const msg = `Sync complete — inserted: ${data.inserted}, updated: ${data.updated}, skipped: ${data.skipped}${data.message ? ' — ' + data.message : ''}`;
+      if (data.inserted === 0 && data.updated === 0) {
+        // Surface diagnostics so the admin can see what TeleDirect actually returned
+        const diag = [
+          `Parsed: ${data.total ?? 0} records`,
+          data.containerTag ? `Container tag: <${data.containerTag}>` : 'No container tag detected',
+          data.fieldNames?.length ? `Fields: [${data.fieldNames.join(', ')}]` : 'No fields found',
+          data.message || '',
+          data.rawPreview ? `Raw snippet: ${String(data.rawPreview).slice(0, 300)}` : '',
+        ].filter(Boolean).join(' | ');
+        setSyncMessage(`Sync returned 0 leads. ${diag}`);
+        return;
+      }
+      const msg = `Sync complete — inserted: ${data.inserted}, updated: ${data.updated}, skipped: ${data.skipped} (of ${data.total} parsed)`;
       setSyncMessage(msg);
       // Refresh the preview and full list immediately
       reloadResponders();
@@ -445,7 +457,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                             </button>
                           )}
                           {syncMessage && (
-                            <span className="text-xs text-slate-600 mt-1 w-full">{syncMessage}</span>
+                            <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 break-words">{syncMessage}</div>
                           )}
                         </div>
                       </div>

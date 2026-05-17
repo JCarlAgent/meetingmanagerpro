@@ -8,37 +8,85 @@ function send(res: any, status: number, body: any) {
 }
 
 /**
- * Simple XML lead parser.
- * Tries common TeleDirect record element tag names, then extracts child text fields.
- * Returns an array of plain string→string records.
+ * Detect which repeating element tag contains leads in TeleDirect XML.
+ * Returns { containerTag, allCandidatesFound } for diagnostics.
  */
-function parseXmlLeads(xml: string): Record<string, string>[] {
-  const records: Record<string, string>[] = [];
+function detectContainerTag(xml: string): { containerTag: string; allTagsFound: string[] } {
+  // Scan ALL element tag names that appear more than once (repeating = record containers).
+  const tagCounts: Record<string, number> = {};
+  const tagRe = /<([A-Za-z][A-Za-z0-9_]*)[\s>]/g;
+  let m;
+  while ((m = tagRe.exec(xml)) !== null) {
+    const t = m[1];
+    tagCounts[t] = (tagCounts[t] ?? 0) + 1;
+  }
+  const repeating = Object.entries(tagCounts)
+    .filter(([, count]) => count > 1)
+    .map(([tag]) => tag);
 
-  // Try these tag names in order for the repeating record element
-  const containerCandidates = ['Lead', 'Record', 'Row', 'Responder', 'Item', 'Reservation', 'Caller'];
+  // Priority candidates — check exact tag name first (case-sensitive as found in XML)
+  const priorityOrder = ['Lead', 'lead', 'Record', 'record', 'Row', 'row',
+    'Reservation', 'reservation', 'Caller', 'caller', 'Responder', 'responder',
+    'Item', 'item', 'Contact', 'contact', 'Response', 'response'];
+
   let containerTag = '';
-  for (const tag of containerCandidates) {
-    if (new RegExp(`<${tag}[\\s>]`, 'i').test(xml) || new RegExp(`<${tag}>`, 'i').test(xml)) {
-      containerTag = tag;
-      break;
+  for (const tag of priorityOrder) {
+    if (repeating.includes(tag)) { containerTag = tag; break; }
+  }
+  // Fallback: pick whichever repeating tag has the most occurrences (excluding root/wrapper tags)
+  if (!containerTag && repeating.length > 0) {
+    const rootCandidates = new Set(['xml', 'Leads', 'leads', 'Records', 'records',
+      'Results', 'results', 'Root', 'root', 'Data', 'data', 'Response', 'Rows', 'rows']);
+    const nonRoot = repeating.filter(t => !rootCandidates.has(t));
+    if (nonRoot.length > 0) {
+      containerTag = nonRoot.sort((a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0))[0];
+    } else if (repeating.length > 0) {
+      containerTag = repeating.sort((a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0))[0];
     }
   }
-  if (!containerTag) return records;
+  return { containerTag, allTagsFound: Object.keys(tagCounts) };
+}
 
-  const recordRegex = new RegExp(`<${containerTag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${containerTag}>`, 'gi');
+/**
+ * Parse TeleDirect XML leads into flat records.
+ * Returns records plus diagnostics.
+ */
+function parseXmlLeads(xml: string): {
+  records: Record<string, string>[];
+  containerTag: string;
+  allTagsFound: string[];
+} {
+  const { containerTag, allTagsFound } = detectContainerTag(xml);
+  const records: Record<string, string>[] = [];
+
+  if (!containerTag) return { records, containerTag: '', allTagsFound };
+
+  // Match each record block — allow attributes on the opening tag
+  const recordRegex = new RegExp(
+    `<${containerTag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${containerTag}>`,
+    'gi'
+  );
   let match;
   while ((match = recordRegex.exec(xml)) !== null) {
     const block = match[1];
     const record: Record<string, string> = {};
-    const fieldRegex = /<([A-Za-z_][A-Za-z0-9_]*)(?:\s[^>]*)?>([^<]*)<\/\1>/g;
+
+    // Extract child element text nodes (including CDATA)
+    const fieldRegex = /<([A-Za-z_][A-Za-z0-9_.-]*)(?:\s[^>]*)?>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/g;
     let fm;
     while ((fm = fieldRegex.exec(block)) !== null) {
-      record[fm[1]] = fm[2].trim();
+      const val = fm[2].trim();
+      if (val) record[fm[1]] = val;
+    }
+    // Also capture empty elements as empty string so field names are visible
+    const emptyFieldRe = /<([A-Za-z_][A-Za-z0-9_.-]*)(?:\s[^>]*)?\/>/g;
+    let ef;
+    while ((ef = emptyFieldRe.exec(block)) !== null) {
+      if (!(ef[1] in record)) record[ef[1]] = '';
     }
     if (Object.keys(record).length > 0) records.push(record);
   }
-  return records;
+  return { records, containerTag, allTagsFound };
 }
 
 /**
@@ -114,23 +162,39 @@ export default async function handler(req: any, res: any) {
     const username = decryptString(credsData.username_enc);
     const password = decryptString(credsData.password_enc);
 
-    // Call TeleDirect get_Leads.asp
+    // Call TeleDirect get_Leads.asp — same parameter shape as leads-preview.ts
     const baseUrl = 'https://client.teledirect.com/workthelead/api';
-    const url = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=${encodeURIComponent(password)}&CampaignID=${encodeURIComponent(campaignId)}`;
+    const urlParams = new URLSearchParams({
+      UserName: username,
+      Password: password,
+      CampaignID: campaignId,
+    });
+    const fullUrl = `${baseUrl}/get_Leads.asp?${urlParams.toString()}`;
+    // Safe URL for diagnostics — omit password value
+    const safeUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=***&CampaignID=${encodeURIComponent(campaignId)}`;
 
-    const resp = await fetch(url, { method: 'GET' });
+    const resp = await fetch(fullUrl, { method: 'GET' });
     const text = await resp.text();
+    const httpStatus = resp.status;
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    const looksXml = normalized.startsWith('<?xml') || normalized.startsWith('<');
+    const rawPreview = normalized.slice(0, 2000);
 
     if (!resp.ok) {
-      send(res, 502, { error: `TeleDirect returned HTTP ${resp.status}` });
+      send(res, 502, {
+        ok: false,
+        error: `TeleDirect returned HTTP ${httpStatus}`,
+        safeUrl,
+        httpStatus,
+        looksXml,
+        rawPreview,
+      });
       return;
     }
 
-    // Parse XML into flat records
-    const records = parseXmlLeads(text);
+    // Parse XML into flat records with full diagnostics
+    const { records, containerTag, allTagsFound } = parseXmlLeads(text);
 
-    // Always return the first raw record and field names so the admin can
-    // verify the mapping if leads don't appear as expected.
     const rawFirstRecord = records[0] ?? null;
     const fieldNames = rawFirstRecord ? Object.keys(rawFirstRecord) : [];
 
@@ -141,9 +205,18 @@ export default async function handler(req: any, res: any) {
         updated: 0,
         skipped: 0,
         total: 0,
-        message: 'No leads found in TeleDirect response. Check the Campaign ID.',
+        // Diagnostics
+        safeUrl,
+        httpStatus,
+        looksXml,
+        rawPreview,
+        containerTag,
+        allTagsFound,
         fieldNames,
         rawFirstRecord,
+        message: looksXml
+          ? `XML received but 0 records parsed. Container tag detected: "${containerTag || 'none'}". All tags found: [${allTagsFound.join(', ')}].`
+          : `TeleDirect did not return XML. Raw response: ${rawPreview.slice(0, 300)}`,
       });
       return;
     }
@@ -235,6 +308,10 @@ export default async function handler(req: any, res: any) {
       updated,
       skipped,
       total: records.length,
+      safeUrl,
+      httpStatus,
+      looksXml,
+      containerTag,
       fieldNames,
       rawFirstRecord,
     });
