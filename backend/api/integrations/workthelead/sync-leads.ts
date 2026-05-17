@@ -129,16 +129,11 @@ export default async function handler(req: any, res: any) {
   }
 
   const jobId = (payload?.jobId ?? '').toString().trim();
-  const campaignId = (payload?.campaignId ?? '').toString().trim();
     // syncDate: admin-supplied date as YYYY-MM-DD; defaults to today (UTC)
     const syncDateRaw = (payload?.syncDate ?? '').toString().trim();
 
     if (!jobId) {
       send(res, 400, { error: 'jobId is required' });
-      return;
-    }
-    if (!campaignId) {
-      send(res, 400, { error: 'campaignId is required' });
       return;
     }
 
@@ -205,16 +200,15 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-      // POST form-encoded — TeleDirect requires FromDate/ToDate window < 25 hours
+      // POST form-encoded — Location Login: only UserName, Password, FromDate, ToDate (no CampaignID per docs)
       const baseUrl = 'https://client.teledirect.com/workthelead/api';
       const postBody = [
         `UserName=${encodeURIComponent(username)}`,
         `Password=${encodeURIComponent(password)}`,
-        `CampaignID=${encodeURIComponent(campaignId)}`,
         `FromDate=${encodeURIComponent(fromDate)}`,
         `ToDate=${encodeURIComponent(toDate)}`,
       ].join('&');
-      const safeUrl = `${baseUrl}/get_Leads.asp [POST CampaignID=${encodeURIComponent(campaignId)} FromDate=${fromDate} ToDate=${toDate}]`;
+      const safeUrl = `${baseUrl}/get_Leads.asp [POST UserName=${encodeURIComponent(username)} FromDate=${fromDate} ToDate=${toDate}]`;
 
       const resp = await fetch(`${baseUrl}/get_Leads.asp`, {
         method: 'POST',

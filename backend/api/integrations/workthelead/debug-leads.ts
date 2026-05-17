@@ -73,8 +73,7 @@ export default async function handler(req: any, res: any) {
   try { payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { send(res, 400, { error: 'Invalid JSON body' }); return; }
 
-  const campaignId = (payload?.campaignId ?? '').toString().trim();
-  if (!campaignId) { send(res, 400, { error: 'campaignId is required' }); return; }
+  // campaignId is no longer sent to get_Leads.asp — docs say Location Login only needs UserName/Password/FromDate/ToDate
 
   const { data: credsData } = await supabaseAdmin
     .from('user_workthelead_credentials').select('username_enc,password_enc')
@@ -104,69 +103,71 @@ export default async function handler(req: any, res: any) {
     return { label, url: `${base}/get_Leads.asp`, safeDesc: `POST ${base}/get_Leads.asp [${safeFields}]`, body };
   }
 
+  // NOTE: Per TeleDirect docs, get_Leads uses Location Login (not Client Login).
+  // CampaignID is NOT sent to get_Leads — only UserName, Password, FromDate, ToDate.
+
   const variants: Variant[] = [
-    // P0 — NO dates. Returns "ToDate is invalid" = auth OK. Keep as auth anchor.
-    postVariant('P0: NO-DATES baseline (expect ToDate-invalid if auth OK)', {
-      UserName: username, Password: password, CampaignID: campaignId,
+    // P0 — NO dates, NO CampaignID. Auth anchor — expect "ToDate is invalid" if Location Login creds are correct.
+    postVariant('P0: NO-DATES baseline — UserName+Password only (expect ToDate-invalid if auth OK)', {
+      UserName: username, Password: password,
     }),
 
-    // P7 — Wide range. Returns "must be less than 25 hours" = date params recognised. Keep as date-check anchor.
-    postVariant('P7: WIDE-RANGE date-check anchor (01/01→12/31/2026, expect 25h error)', {
-      UserName: username, Password: password, CampaignID: campaignId,
+    // P7 — Wide range, no CampaignID. Date-check anchor — expect "must be < 25 hours".
+    postVariant('P7: WIDE-RANGE date-check anchor 01/01→12/31/2026 (expect 25h error)', {
+      UserName: username, Password: password,
       FromDate: '01/01/2026', ToDate: '12/31/2026',
     }),
 
-    // ── SAME-DAY (FromDate = ToDate) — narrowest possible window ──
-    // If these return DATE/EMPTY instead of AUTH, TeleDirect was returning "Login failed"
-    // for empty result sets, not actual auth failures.
+    // ── DATE-ONLY: same-day windows (narrowest) ──
     postVariant('A: SAME-DAY 05/15/2026 → 05/15/2026', {
-      UserName: username, Password: password, CampaignID: campaignId,
+      UserName: username, Password: password,
       FromDate: '05/15/2026', ToDate: '05/15/2026',
     }),
-    postVariant('B: SAME-DAY 05/14/2026 → 05/14/2026', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/14/2026', ToDate: '05/14/2026',
+    postVariant('B: SAME-DAY 05/16/2026 → 05/16/2026 (yesterday)', {
+      UserName: username, Password: password,
+      FromDate: '05/16/2026', ToDate: '05/16/2026',
     }),
     postVariant('C: SAME-DAY 05/17/2026 → 05/17/2026 (today)', {
-      UserName: username, Password: password, CampaignID: campaignId,
+      UserName: username, Password: password,
       FromDate: '05/17/2026', ToDate: '05/17/2026',
     }),
+    postVariant('D: SAME-DAY 05/14/2026 → 05/14/2026', {
+      UserName: username, Password: password,
+      FromDate: '05/14/2026', ToDate: '05/14/2026',
+    }),
 
-    // ── SUB-23h TIMESTAMP windows on 05/15 ──
-    postVariant('D: TIMESTAMP 05/15 00:00:00 → 22:59:59 (22h59m)', {
-      UserName: username, Password: password, CampaignID: campaignId,
+    // ── DATE-ONLY: day → next day (24h windows) ──
+    postVariant('E: DATE-ONLY 05/16→05/17 (yesterday→today)', {
+      UserName: username, Password: password,
+      FromDate: '05/16/2026', ToDate: '05/17/2026',
+    }),
+    postVariant('F: DATE-ONLY 05/17→05/18 (today→tomorrow)', {
+      UserName: username, Password: password,
+      FromDate: '05/17/2026', ToDate: '05/18/2026',
+    }),
+
+    // ── TIMESTAMP: sub-23h windows (safely under 25h) ──
+    postVariant('G: TIMESTAMP 05/15 00:00:00 → 22:59:59 (22h59m)', {
+      UserName: username, Password: password,
       FromDate: '05/15/2026 00:00:00', ToDate: '05/15/2026 22:59:59',
     }),
-    postVariant('E: TIMESTAMP 05/15 01:00:00 → 23:00:00 (22h)', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/15/2026 01:00:00', ToDate: '05/15/2026 23:00:00',
+    postVariant('H: TIMESTAMP 05/16 00:00:00 → 23:59:59 (yesterday full day)', {
+      UserName: username, Password: password,
+      FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
     }),
-    postVariant('F: TIMESTAMP 05/15 12:00:00 → 05/16 11:00:00 (23h cross-day)', {
-      UserName: username, Password: password, CampaignID: campaignId,
+    postVariant('I: TIMESTAMP 05/17 00:00:00 → 23:59:59 (today full day)', {
+      UserName: username, Password: password,
+      FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
+    }),
+    postVariant('J: TIMESTAMP 05/15 12:00:00 → 05/16 11:00:00 (23h cross-day)', {
+      UserName: username, Password: password,
       FromDate: '05/15/2026 12:00:00', ToDate: '05/16/2026 11:00:00',
     }),
 
-    // ── Today/Yesterday timestamp windows (leads entered recently) ──
-    postVariant('G: TIMESTAMP 05/16 00:00:00 → 23:59:59 (yesterday full day)', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
-    }),
-    postVariant('H: TIMESTAMP 05/17 00:00:00 → 23:59:59 (today full day)', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
-    }),
-
-    // ── Wider multi-day windows under 25h are impossible; try borderline: exactly 24h55m ──
-    // P7 triggers 25h error; maybe there is a window between "too small = login failed" and "too large"
-    postVariant('I: TIMESTAMP 05/15 00:00:00 → 05/16/2026 00:55:00 (24h55m — expect 25h error)', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/15/2026 00:00:00', ToDate: '05/16/2026 00:55:00',
-    }),
-
-    // ── No CampaignID, same-day today ──
-    postVariant('J: SAME-DAY today NO-CAMPAIGNID (05/17 → 05/17)', {
+    // ── 24h55m borderline — should trigger the 25h error confirming auth OK ──
+    postVariant('K2: TIMESTAMP 05/15 00:00:00 → 05/16 00:55:00 (24h55m — expect 25h error)', {
       UserName: username, Password: password,
-      FromDate: '05/17/2026', ToDate: '05/17/2026',
+      FromDate: '05/15/2026 00:00:00', ToDate: '05/16/2026 00:55:00',
     }),
   ];
 

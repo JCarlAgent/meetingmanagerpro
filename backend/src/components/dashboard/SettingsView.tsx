@@ -312,7 +312,7 @@ const SettingsView: React.FC = () => {
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-slate-900">Teledirect — Work The Lead</h2>
             <p className="text-sm text-slate-600 mt-1">
-              Enter your Teledirect API login. Stored securely server-side; never saved in the browser.
+              Enter your TeleDirect <strong>Location Login</strong> credentials (used for lead syncing via <code>get_Leads</code>). Stored securely server-side; never saved in the browser.
             </p>
 
             {/* Saved credential preview */}
@@ -341,7 +341,7 @@ const SettingsView: React.FC = () => {
                 <input
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Your WorkTheLead UserName"
+                  placeholder="TeleDirect Location Login UserName"
                   className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                 />
               </div>

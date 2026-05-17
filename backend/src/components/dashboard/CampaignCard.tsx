@@ -136,15 +136,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   // Syncs TeleDirect call-center leads into the responders table for this campaign.
   const syncTeleDirectLeads = async () => {
-    const tdCampaignId = window.prompt('Enter TeleDirect Campaign ID to sync leads:');
-    if (!tdCampaignId || !tdCampaignId.trim()) return;
     // Default sync date to today in YYYY-MM-DD format (local time)
     const todayDefault = new Date().toLocaleDateString('en-CA'); // en-CA = YYYY-MM-DD
     const syncDate = window.prompt(
-      'Enter sync date (YYYY-MM-DD). TeleDirect only returns leads within a 24-hour window.\nLeave blank or press OK to use today:',
+      'Enter sync date (YYYY-MM-DD). TeleDirect returns leads for a 24-hour window.\nLeave blank or press OK to use today:',
       todayDefault
     );
-    // null = cancelled, empty string = accepted default
     if (syncDate === null) return;
     const resolvedDate = (syncDate.trim() || todayDefault);
     setSyncMessage(null);
@@ -159,7 +156,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const resp = await fetch('/api/integrations/workthelead/sync-leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId: campaign.id, campaignId: tdCampaignId.trim(), syncDate: resolvedDate }),
+        body: JSON.stringify({ jobId: campaign.id, syncDate: resolvedDate }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
