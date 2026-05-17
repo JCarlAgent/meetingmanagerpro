@@ -54,6 +54,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [localResponders, setLocalResponders] = useState<Responder[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [showTsvImport, setShowTsvImport] = useState(false);
+  const [tsvText, setTsvText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   // Fetch responders from Supabase for this campaign (used both on mount and after sync)
   const reloadResponders = () => {
@@ -193,6 +197,41 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setSyncMessage(err?.message || 'Sync error');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const importTsvLeads = async () => {
+    if (!tsvText.trim()) return;
+    setImportMessage(null);
+    setIsImporting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) { setImportMessage('Not logged in.'); return; }
+      const resp = await fetch('/api/integrations/workthelead/import-tsv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, tsv: tsvText }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setImportMessage(`Error: ${data?.error || resp.status}`);
+        return;
+      }
+      const msg = [
+        `Import complete — inserted: ${data.inserted}, updated: ${data.updated}, skipped: ${data.skipped} (of ${data.total} attendee rows, ${data.rowsParsed} total rows parsed)`,
+        ...(data.errors?.length ? [`Errors: ${data.errors.join('; ')}`] : []),
+      ].join('\n');
+      setImportMessage(msg);
+      if (data.inserted > 0 || data.updated > 0) {
+        setTsvText('');
+        setShowTsvImport(false);
+        reloadResponders();
+      }
+    } catch (err: any) {
+      setImportMessage(err?.message || 'Import error');
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -469,13 +508,21 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               disabled={isSyncing}
                               className="px-3 py-1 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-sm"
                             >
-                              {isSyncing ? 'Syncing…' : 'Sync TeleDirect Leads'}
+                              {isSyncing ? 'Syncing…' : 'Sync TeleDirect Leads (experimental)'}
+                            </button>
+                          )}
+                          {user?.is_master_admin && (
+                            <button
+                              onClick={() => { setShowTsvImport(v => !v); setImportMessage(null); }}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm"
+                            >
+                              {showTsvImport ? 'Cancel Import' : 'Import TeleDirect Export'}
                             </button>
                           )}
                           {user?.is_master_admin && (
                             <button
                               onClick={async () => {
-                                const tdCampaignId = window.prompt('Debug TeleDirect — enter Campaign ID to probe:');
+                                const tdCampaignId = window.prompt('Debug TeleDirect API — enter Campaign ID to probe:');
                                 if (!tdCampaignId?.trim()) return;
                                 setSyncMessage('Running diagnostics…');
                                 try {
@@ -503,11 +550,38 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               }}
                               className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm"
                             >
-                              Debug TD Endpoint
+                              Debug TeleDirect API
                             </button>
                           )}
                           {syncMessage && (
                             <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 break-all whitespace-pre-wrap">{syncMessage}</div>
+                          )}
+                          {showTsvImport && (
+                            <div className="w-full mt-2 space-y-2">
+                              <div className="text-xs text-slate-500 font-medium">Paste TeleDirect TSV export below (include the header row):</div>
+                              <textarea
+                                value={tsvText}
+                                onChange={e => setTsvText(e.target.value)}
+                                className="w-full h-40 p-2 text-xs font-mono border border-slate-300 rounded resize-y focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                placeholder={`TimeStamp\tAttendee/Guest\tFirstName\tLastName\tPhoneNumber\tEmail...`}
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={importTsvLeads}
+                                  disabled={isImporting || !tsvText.trim()}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-sm"
+                                >
+                                  {isImporting ? 'Importing…' : 'Run Import'}
+                                </button>
+                                <button
+                                  onClick={() => { setShowTsvImport(false); setTsvText(''); setImportMessage(null); }}
+                                  className="px-3 py-1 bg-slate-400 hover:bg-slate-500 text-white rounded text-sm"
+                                >Cancel</button>
+                              </div>
+                              {importMessage && (
+                                <div className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 whitespace-pre-wrap">{importMessage}</div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
