@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Check, Copy, KeyRound, Plug, Save, Shield, TestTube2 } from 'lucide-react';
@@ -25,6 +25,29 @@ const SettingsView: React.FC = () => {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<'id' | 'email' | null>(null);
+
+  // Saved credential preview (loaded on mount)
+  const [credPreview, setCredPreview] = useState<{
+    hasCredentials: boolean;
+    usernamePreview?: string;
+    savedAt?: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const resp = await fetch('/api/integrations/workthelead/credentials', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (resp.ok) {
+          const data = await resp.json().catch(() => null);
+          if (data) setCredPreview(data);
+        }
+      } catch { /* silently ignore */ }
+    })();
+  }, []);
 
   const saveCredentials = async () => {
     setStatus(null);
@@ -76,12 +99,27 @@ const SettingsView: React.FC = () => {
       });
 
       const data = await resp.json().catch(() => ({}));
+
       if (!resp.ok) {
-        setStatus(data?.error || 'Test failed');
+        setStatus(`Error ${resp.status}: ${data?.error || 'Test failed'}`);
         return;
       }
 
-      setStatus(`Success. XML received: ${data?.looksXml ? 'yes' : 'unknown'}.`);
+      // Build a detailed status string so auth failures are unambiguous
+      const lines: string[] = [];
+      lines.push(`Status: ${data?.ok ? '✓ Connected' : '✗ Failed'}`);
+      if (data?.usernamePreview) lines.push(`Username used: ${data.usernamePreview}`);
+      if (data?.safeUrl) lines.push(`URL: ${data.safeUrl}`);
+      if (data?.message) lines.push(data.message);
+      if (data?.errorInBody) lines.push(`⚠ TeleDirect returned <Error> in body (HTTP ${data?.httpStatus ?? '?'}). Check credentials.`);
+      if (data?.rawPreview) lines.push(`Response: ${data.rawPreview.slice(0, 300)}`);
+
+      // Refresh credential preview after a successful save+test
+      if (data?.ok && data?.usernamePreview) {
+        setCredPreview(prev => ({ ...(prev ?? { hasCredentials: true }), hasCredentials: true, usernamePreview: data.usernamePreview }));
+      }
+
+      setStatus(lines.join('\n'));
     } finally {
       setIsTesting(false);
     }
@@ -277,6 +315,24 @@ const SettingsView: React.FC = () => {
               Enter your Teledirect API login. Stored securely server-side; never saved in the browser.
             </p>
 
+            {/* Saved credential preview */}
+            {credPreview?.hasCredentials && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                <Shield className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>
+                  Saved credentials for: <strong className="text-slate-800">{credPreview.usernamePreview}</strong>
+                  {credPreview.savedAt && (
+                    <> &mdash; last updated {new Date(credPreview.savedAt).toLocaleString()}</>
+                  )}
+                </span>
+              </div>
+            )}
+            {credPreview && !credPreview.hasCredentials && (
+              <div className="mt-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                No credentials saved yet.
+              </div>
+            )}
+
             <div className="mt-5 grid gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -330,7 +386,7 @@ const SettingsView: React.FC = () => {
               </div>
 
               {status && (
-                <div className="mt-3 text-sm text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="mt-3 text-sm text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 whitespace-pre-wrap break-all">
                   {status}
                 </div>
               )}

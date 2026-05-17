@@ -1,10 +1,15 @@
-import { encryptString } from '../../_lib/crypto.js';
+import { decryptString, encryptString } from '../../_lib/crypto.js';
 import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
+}
+
+function usernamePreview(u: string): string {
+  if (u.length <= 4) return '***';
+  return `${u.slice(0, 2)}***${u.slice(-2)}`;
 }
 
 export default async function handler(req: any, res: any) {
@@ -14,16 +19,43 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  if (req.method !== 'POST') {
-    send(res, 405, { error: 'Method not allowed' });
-    return;
-  }
-
   let userId: string;
   try {
     userId = await requireUserIdFromAuthHeader(req);
   } catch {
     send(res, 401, { error: 'Unauthorized' });
+    return;
+  }
+
+  // GET — return saved credential preview (username masked, no password, with timestamp)
+  if (req.method === 'GET') {
+    try {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data } = await supabaseAdmin
+        .from('user_workthelead_credentials')
+        .select('username_enc,updated_at,created_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!data?.username_enc) {
+        send(res, 200, { hasCredentials: false });
+        return;
+      }
+
+      const username = decryptString(data.username_enc);
+      send(res, 200, {
+        hasCredentials: true,
+        usernamePreview: usernamePreview(username),
+        savedAt: data.updated_at ?? data.created_at ?? null,
+      });
+    } catch (e: any) {
+      send(res, 500, { error: e?.message || 'Server error' });
+    }
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    send(res, 405, { error: 'Method not allowed' });
     return;
   }
 
