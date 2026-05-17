@@ -134,6 +134,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
+  // Syncs TeleDirect call-center leads into the responders table for this campaign.
   const syncTeleDirectLeads = async () => {
     const tdCampaignId = window.prompt('Enter TeleDirect Campaign ID to sync leads:');
     if (!tdCampaignId || !tdCampaignId.trim()) return;
