@@ -64,6 +64,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [bulkAssignMessage, setBulkAssignMessage] = useState<string | null>(null);
   const [showMailedImport, setShowMailedImport] = useState(false);
   const [mailedCsv, setMailedCsv] = useState('');
+  const [mailedFileName, setMailedFileName] = useState<string | null>(null);
+  const [mailedRowCount, setMailedRowCount] = useState<number | null>(null);
   const [isImportingMail, setIsImportingMail] = useState(false);
   const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
   const [isMatchingMail, setIsMatchingMail] = useState(false);
@@ -295,8 +297,30 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   const { user } = useAuth();
 
+  const handleMailedFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMailedImportMessage(null);
+    setMailedFileName(file.name);
+    setMailedRowCount(null);
+    // Reset so re-selecting same file still fires onChange
+    e.target.value = '';
+    file.text().then(text => {
+      setMailedCsv(text);
+      const rows = text.split('\n').filter(l => l.trim().length > 0).length;
+      setMailedRowCount(rows);
+    }).catch(() => {
+      setMailedImportMessage('Error: could not read file. Try a different file or use the paste fallback.');
+      setMailedFileName(null);
+    });
+  };
+
   const importMailedList = async () => {
-    if (!mailedCsv.trim()) { setMailedImportMessage('Paste your CSV first.'); return; }
+    const csvToSend = mailedCsv.trim();
+    if (!csvToSend) {
+      setMailedImportMessage(mailedFileName ? 'File is still loading, please wait…' : 'Select a file or paste CSV text first.');
+      return;
+    }
     setIsImportingMail(true);
     setMailedImportMessage(null);
     try {
@@ -305,15 +329,24 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const res = await fetch('/api/integrations/workthelead/import-mailed-list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId: campaign.id, csv: mailedCsv }),
+        body: JSON.stringify({ jobId: campaign.id, csv: csvToSend }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Import failed');
-      setMailedImportMessage(`Imported ${json.inserted.toLocaleString()} records (${json.skipped} skipped). Now click Match Responders.`);
+      if (!res.ok) throw new Error(json.error ?? `Server error ${res.status}`);
+      setMailedImportMessage(`✓ Imported ${json.inserted.toLocaleString()} records (${json.skipped} skipped). Click "Match Responders to List" to enrich responders.`);
       setMailedCsv('');
+      setMailedFileName(null);
+      setMailedRowCount(null);
       setShowMailedImport(false);
     } catch (err: any) {
-      setMailedImportMessage('Error: ' + (err?.message ?? String(err)));
+      const msg = err?.message ?? String(err);
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        setMailedImportMessage('Network error — check your connection and try again.');
+      } else if (msg.includes('413') || msg.includes('too large') || msg.includes('limit')) {
+        setMailedImportMessage('Error: file too large for server. Contact support.');
+      } else {
+        setMailedImportMessage('Error: ' + msg);
+      }
     } finally {
       setIsImportingMail(false);
     }
@@ -701,10 +734,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               <div className="text-xs font-medium text-slate-600 mb-1.5">Mailed List Enrichment</div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <button
+                                  type="button"
                                   onClick={() => { setShowMailedImport(v => !v); setMailedImportMessage(null); }}
                                   className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs"
                                 >{showMailedImport ? 'Cancel' : 'Import Mailed List CSV'}</button>
                                 <button
+                                  type="button"
                                   onClick={runMatchResponders}
                                   disabled={isMatchingMail}
                                   className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-xs"
@@ -712,30 +747,78 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               </div>
                               {showMailedImport && (
                                 <div className="mt-2 space-y-2">
-                                  <div className="text-xs text-slate-500">Paste the raw CSV contents of your mailed list file (no headers, layout file columns applied automatically).</div>
-                                  <textarea
-                                    value={mailedCsv}
-                                    onChange={e => setMailedCsv(e.target.value)}
-                                    placeholder="Paste CSV here…"
-                                    rows={6}
-                                    className="w-full p-2 text-xs border border-slate-300 rounded font-mono focus:outline-none focus:ring-1 focus:ring-teal-400 resize-y"
-                                  />
+                                  {/* ── Primary: file upload ── */}
+                                  <div>
+                                    <div className="text-xs font-medium text-slate-600 mb-1">Upload Mailed List CSV</div>
+                                    <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-700 rounded text-xs cursor-pointer">
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" /></svg>
+                                      {mailedFileName ? 'Change file' : 'Choose file…'}
+                                      <input
+                                        type="file"
+                                        accept=".csv,.txt,text/csv,text/plain"
+                                        className="sr-only"
+                                        onChange={handleMailedFileSelect}
+                                      />
+                                    </label>
+                                    {mailedFileName && (
+                                      <div className="mt-1 text-xs text-slate-600">
+                                        <span className="font-medium">{mailedFileName}</span>
+                                        {mailedRowCount !== null && (
+                                          <span className="ml-2 text-slate-400">~{mailedRowCount.toLocaleString()} rows</span>
+                                        )}
+                                        {mailedRowCount === null && mailedCsv === '' && (
+                                          <span className="ml-2 text-slate-400 italic">reading…</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* ── Fallback: paste textarea ── */}
+                                  <details className="text-xs">
+                                    <summary className="cursor-pointer text-slate-400 hover:text-slate-600 select-none">
+                                      Or paste CSV manually (large files may fail)
+                                    </summary>
+                                    <textarea
+                                      value={mailedFileName ? '' : mailedCsv}
+                                      onChange={e => {
+                                        setMailedFileName(null);
+                                        setMailedRowCount(null);
+                                        setMailedCsv(e.target.value);
+                                      }}
+                                      placeholder="Paste CSV rows here… (no headers)"
+                                      rows={6}
+                                      className="mt-1.5 w-full p-2 text-xs border border-slate-300 rounded font-mono focus:outline-none focus:ring-1 focus:ring-teal-400 resize-y"
+                                    />
+                                  </details>
+                                  {/* ── Actions ── */}
                                   <div className="flex items-center gap-2">
                                     <button
+                                      type="button"
                                       onClick={importMailedList}
-                                      disabled={isImportingMail || !mailedCsv.trim()}
-                                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded text-xs"
-                                    >{isImportingMail ? 'Importing…' : 'Import'}</button>
+                                      disabled={isImportingMail || (!mailedCsv.trim())}
+                                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
+                                    >{isImportingMail ? 'Importing…' : 'Import Mailed List'}</button>
                                     <button
-                                      onClick={() => { setShowMailedImport(false); setMailedCsv(''); setMailedImportMessage(null); }}
+                                      type="button"
+                                      onClick={() => { setShowMailedImport(false); setMailedCsv(''); setMailedFileName(null); setMailedRowCount(null); setMailedImportMessage(null); }}
                                       className="px-3 py-1.5 text-slate-600 border border-slate-300 rounded text-xs hover:bg-slate-50"
                                     >Cancel</button>
                                   </div>
-                                  {mailedImportMessage && <div className="text-xs text-slate-600">{mailedImportMessage}</div>}
+                                  {mailedImportMessage && (
+                                    <div className={`text-xs px-2 py-1.5 rounded ${mailedImportMessage.startsWith('✓') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                      {mailedImportMessage}
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                              {matchMailMessage && !showMailedImport && (
-                                <div className="mt-1 text-xs text-slate-600">{matchMailMessage}</div>
+                              {matchMailMessage && (
+                                <div className={`mt-1 text-xs px-2 py-1 rounded ${matchMailMessage.startsWith('Error') ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-600'}`}>
+                                  {matchMailMessage}
+                                </div>
+                              )}
+                              {mailedImportMessage && !showMailedImport && (
+                                <div className="mt-1 text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700">
+                                  {mailedImportMessage}
+                                </div>
                               )}
                             </div>
                           )}

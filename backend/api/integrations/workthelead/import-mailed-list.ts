@@ -14,6 +14,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin';
 import { createClient } from '@supabase/supabase-js';
 
+// Increase body size limit — default 1 MB is too small for 10k+ row CSVs
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
