@@ -13,7 +13,8 @@ import {
   QrCode,
   PhoneCall,
   UserPlus,
-  AlertTriangle
+  AlertTriangle,
+  Printer,
 } from 'lucide-react';
 
 interface ResponderListProps {
@@ -24,6 +25,7 @@ interface ResponderListProps {
   onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void;
   isMasterAdmin?: boolean;
   onDeleteResponder?: (responderId: string) => void;
+  campaignName?: string;
 }
 
 interface EditDraft {
@@ -46,6 +48,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
   onUpdateResponder,
   isMasterAdmin = false,
   onDeleteResponder,
+  campaignName = 'Campaign',
 }) => {
   const [filter, setFilter] = useState<'all' | 'confirmed' | 'unconfirmed' | 'unassigned'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -62,6 +65,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
   });
 
   const unassignedCount = responders.filter(r => !r.event_id).length;
+  // Attendees = primary responders + their guests (for the current filtered view)
+  const attendeesCount = filteredResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + 'T00:00:00');
@@ -135,6 +140,41 @@ const ResponderList: React.FC<ResponderListProps> = ({
     onDeleteResponder?.(responder.id);
   };
 
+  // Print a sign-in sheet in a new window
+  const printResponders = (forEventId: string | null) => {
+    const toPrint = forEventId ? responders.filter(r => r.event_id === forEventId) : responders;
+    const ev = forEventId ? eventMap.get(forEventId) : null;
+    const eventLabel = ev ? formatEventShort(ev) : 'All Meetings';
+    const totalAttendees = toPrint.reduce((s, r) => s + 1 + (r.guests ?? 0), 0);
+    const sorted = [...toPrint].sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? ''));
+    const rows = sorted.map(r =>
+      `<tr><td>${(r.last_name ?? '').toUpperCase()}, ${r.first_name ?? ''}</td>` +
+      `<td>${r.phone ?? ''}</td>` +
+      `<td style="text-align:center">${(r.guests ?? 0) + 1}</td>` +
+      `<td style="text-align:center">${r.confirmed ? '&#x2713;' : ''}</td>` +
+      `<td></td></tr>`
+    ).join('');
+    const html = [
+      '<!DOCTYPE html><html><head><title>', campaignName, ' Sign-In Sheet</title>',
+      '<style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}',
+      'h2{font-size:15px;margin-bottom:2px}p{margin:0 0 10px;color:#555}',
+      'table{width:100%;border-collapse:collapse}',
+      'th{background:#e8e8e8;font-weight:bold;border:1px solid #bbb;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase}',
+      'td{border:1px solid #ccc;padding:5px 8px}',
+      'tr:nth-child(even) td{background:#f9f9f9}</style></head><body>',
+      '<h2>', campaignName, ' \u2014 Sign-In Sheet</h2>',
+      '<p>', eventLabel, ' &nbsp;|&nbsp; ', toPrint.length, ' responder', toPrint.length !== 1 ? 's' : '', ', ', totalAttendees, ' total attendees</p>',
+      '<table><thead><tr><th>Name</th><th>Phone</th><th>Party Size</th><th>Confirmed</th><th>Signature</th></tr></thead>',
+      '<tbody>', rows, '</tbody></table>',
+      '<scr', 'ipt>window.onload=function(){window.print();}</scr', 'ipt>',
+      '</body></html>',
+    ].join('');
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); }
+  };
+
+  const colCount = isMasterAdmin ? 8 : 7;
+
   return (
     <div className="bg-white text-slate-900">
       {/* Event Filter Tabs */}
@@ -143,7 +183,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
           onClick={() => onSelectEvent(null)}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selectedEventId === null ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
         >
-          All Events
+          All Meetings
         </button>
         {events.map((event) => (
           <button
@@ -155,7 +195,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
           </button>
         ))}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as any)}
@@ -166,6 +206,16 @@ const ResponderList: React.FC<ResponderListProps> = ({
             <option value="unconfirmed">Unconfirmed</option>
             <option value="unassigned">⚠ Unassigned meeting {unassignedCount > 0 ? `(${unassignedCount})` : ''}</option>
           </select>
+          {selectedEventId && (
+            <button
+              onClick={() => printResponders(selectedEventId)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs"
+            ><Printer className="w-3.5 h-3.5" />Print Selected Meeting</button>
+          )}
+          <button
+            onClick={() => printResponders(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-xs"
+          ><Printer className="w-3.5 h-3.5" />Print All Meetings</button>
         </div>
       </div>
 
@@ -178,9 +228,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
       )}
 
       {/* Responder Count */}
-      <div className="px-4 py-2 border-b border-slate-200">
+      <div className="px-4 py-2 border-b border-slate-200 flex items-center gap-4 flex-wrap">
         <span className="text-sm text-slate-600">
-          Showing <span className="font-semibold text-slate-900">{filteredResponders.length}</span> responders
+          Showing <span className="font-semibold text-slate-900">{filteredResponders.length}</span> responder{filteredResponders.length !== 1 ? 's' : ''}
+        </span>
+        <span className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{attendeesCount}</span> total attendees
+          <span className="text-xs text-slate-400 ml-1">(primary + guests)</span>
         </span>
       </div>
 
@@ -261,11 +315,16 @@ const ResponderList: React.FC<ResponderListProps> = ({
           <tbody className="divide-y divide-slate-100">
             {filteredResponders.map((responder) => {
               const assignedEvent = responder.event_id ? eventMap.get(responder.event_id) : null;
+              const hasEnrichment =
+                responder.matched_to_mail_list != null ||
+                !!responder.age ||
+                !!responder.income ||
+                !!responder.ipa;
               return (
-                <tr
-                  key={responder.id}
-                  className={`hover:bg-slate-50 transition-colors ${!responder.event_id ? 'bg-amber-50/60' : responder.confirmed ? '' : 'bg-amber-50'}`}
-                >
+                <React.Fragment key={responder.id}>
+                  <tr
+                    className={`hover:bg-slate-50 transition-colors ${!responder.event_id ? 'bg-amber-50/60' : responder.confirmed ? '' : 'bg-amber-50'}`}
+                  >
                   {/* Status */}
                   <td className="px-4 py-3">
                     <button
@@ -357,6 +416,31 @@ const ResponderList: React.FC<ResponderListProps> = ({
                     </td>
                   )}
                 </tr>
+
+                  {/* Enrichment detail row — visible once mailed-list matching has run */}
+                  {hasEnrichment && (
+                    <tr className={`${!responder.event_id ? 'bg-amber-50/40' : 'bg-slate-50/50'}`}>
+                      <td colSpan={colCount} className="px-6 pb-2 pt-0">
+                        <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-xs text-slate-500">
+                          {responder.age && <span>Age: <span className="font-medium text-slate-700">{responder.age}</span></span>}
+                          {responder.income && <span>Income: <span className="font-medium text-slate-700">{responder.income}</span></span>}
+                          {responder.ipa && <span>IPA: <span className="font-medium text-slate-700">{responder.ipa}</span></span>}
+                          {responder.matched_to_mail_list === true && (
+                            <span className="text-green-600 font-medium">
+                              &#x2713; On mailed list
+                              {responder.match_confidence === 'fuzzy' && <span className="ml-1 text-amber-500 font-normal">(possible match)</span>}
+                            </span>
+                          )}
+                          {responder.matched_to_mail_list === false && (
+                            <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
+                              <AlertTriangle className="w-3 h-3" />Not found on mailed list
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

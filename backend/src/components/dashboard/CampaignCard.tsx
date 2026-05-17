@@ -62,13 +62,19 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [bulkAssignEventId, setBulkAssignEventId] = useState<string>('');
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [bulkAssignMessage, setBulkAssignMessage] = useState<string | null>(null);
+  const [showMailedImport, setShowMailedImport] = useState(false);
+  const [mailedCsv, setMailedCsv] = useState('');
+  const [isImportingMail, setIsImportingMail] = useState(false);
+  const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
+  const [isMatchingMail, setIsMatchingMail] = useState(false);
+  const [matchMailMessage, setMatchMailMessage] = useState<string | null>(null);
 
   // Fetch responders from Supabase for this campaign (used both on mount and after sync)
   const reloadResponders = () => {
     if (!campaign.id) return;
     supabase
       .from('responders')
-      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, created_at')
+        .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
       .eq('campaign_id', campaign.id)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -97,8 +103,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
   const mailedCount = campaign.stats?.mailed_count ?? (campaign as any).mailed_count ?? campaign.stats?.mailed ?? 0;
   const deliveredCount = campaign.stats?.delivered_count ?? (campaign as any).delivered_quantity ?? campaign.stats?.delivered ?? 0;
-  const responsesCount = displayResponders.length || (campaign.stats?.responses_total ?? 0);
-  const responseRate = deliveredCount > 0 ? ((responsesCount / deliveredCount) * 100) : 0;
+  // Attendees = sum of (1 primary + guests) across all responders
+  const attendeesCount = displayResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0) || (campaign.stats?.responses_total ?? 0);
+  const responseRate = deliveredCount > 0 ? ((attendeesCount / deliveredCount) * 100) : 0;
 
   // Mailhouse Paid is stored at checklist index 4 in jobs.notes; first_delivery_at is NOT used as paid signal
   const isPaid = Array.isArray(campaign.status) && !!campaign.status[4];
@@ -288,6 +295,54 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   const { user } = useAuth();
 
+  const importMailedList = async () => {
+    if (!mailedCsv.trim()) { setMailedImportMessage('Paste your CSV first.'); return; }
+    setIsImportingMail(true);
+    setMailedImportMessage(null);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('/api/integrations/workthelead/import-mailed-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, csv: mailedCsv }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Import failed');
+      setMailedImportMessage(`Imported ${json.inserted.toLocaleString()} records (${json.skipped} skipped). Now click Match Responders.`);
+      setMailedCsv('');
+      setShowMailedImport(false);
+    } catch (err: any) {
+      setMailedImportMessage('Error: ' + (err?.message ?? String(err)));
+    } finally {
+      setIsImportingMail(false);
+    }
+  };
+
+  const runMatchResponders = async () => {
+    setIsMatchingMail(true);
+    setMatchMailMessage(null);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('/api/integrations/workthelead/match-responders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Match failed');
+      setMatchMailMessage(
+        `Matched ${json.matched} exact, ${json.fuzzyMatched} fuzzy, ${json.unmatched} not found (${json.total} total).`
+      );
+      reloadResponders();
+    } catch (err: any) {
+      setMatchMailMessage('Error: ' + (err?.message ?? String(err)));
+    } finally {
+      setIsMatchingMail(false);
+    }
+  };
+
 
   const getStatusBgColor = (status: string) => {
     switch (status) {
@@ -361,8 +416,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                         <div className="text-xs text-slate-500 mt-1">Delivered</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{responsesCount.toLocaleString()}</div>
-                        <div className="text-xs text-slate-500 mt-1">Responses</div>
+                        <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{attendeesCount.toLocaleString()}</div>
+                        <div className="text-xs text-slate-500 mt-1">Attendees</div>
                       </div>
                       <div className="text-center">
                         <div className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-slate-900">{(responseRate).toFixed(2)}%</div>
@@ -640,6 +695,50 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               )}
                             </div>
                           )}
+                          {/* ── Mailed list import & matching ── */}
+                          {user?.is_master_admin && (
+                            <div className="w-full mt-2 pt-2 border-t border-slate-200">
+                              <div className="text-xs font-medium text-slate-600 mb-1.5">Mailed List Enrichment</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  onClick={() => { setShowMailedImport(v => !v); setMailedImportMessage(null); }}
+                                  className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs"
+                                >{showMailedImport ? 'Cancel' : 'Import Mailed List CSV'}</button>
+                                <button
+                                  onClick={runMatchResponders}
+                                  disabled={isMatchingMail}
+                                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-xs"
+                                >{isMatchingMail ? 'Matching…' : 'Match Responders to List'}</button>
+                              </div>
+                              {showMailedImport && (
+                                <div className="mt-2 space-y-2">
+                                  <div className="text-xs text-slate-500">Paste the raw CSV contents of your mailed list file (no headers, layout file columns applied automatically).</div>
+                                  <textarea
+                                    value={mailedCsv}
+                                    onChange={e => setMailedCsv(e.target.value)}
+                                    placeholder="Paste CSV here…"
+                                    rows={6}
+                                    className="w-full p-2 text-xs border border-slate-300 rounded font-mono focus:outline-none focus:ring-1 focus:ring-teal-400 resize-y"
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={importMailedList}
+                                      disabled={isImportingMail || !mailedCsv.trim()}
+                                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded text-xs"
+                                    >{isImportingMail ? 'Importing…' : 'Import'}</button>
+                                    <button
+                                      onClick={() => { setShowMailedImport(false); setMailedCsv(''); setMailedImportMessage(null); }}
+                                      className="px-3 py-1.5 text-slate-600 border border-slate-300 rounded text-xs hover:bg-slate-50"
+                                    >Cancel</button>
+                                  </div>
+                                  {mailedImportMessage && <div className="text-xs text-slate-600">{mailedImportMessage}</div>}
+                                </div>
+                              )}
+                              {matchMailMessage && !showMailedImport && (
+                                <div className="mt-1 text-xs text-slate-600">{matchMailMessage}</div>
+                              )}
+                            </div>
+                          )}
                           {/* ── Dev / experimental tools ── */}
                           {user?.is_master_admin && (
                             <div className="w-full mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center gap-2">
@@ -722,6 +821,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             onUpdateResponder={onUpdateResponder}
             isMasterAdmin={!!user?.is_master_admin}
             onDeleteResponder={handleDeleteResponder}
+            campaignName={(campaign as any).project_name ?? (campaign as any).name ?? campaign.id}
           />
         </div>
       )}

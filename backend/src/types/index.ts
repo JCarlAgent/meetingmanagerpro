@@ -71,6 +71,8 @@ export interface Responder {
   income?: string;
   age?: string;
   ipa?: string;
+  matched_to_mail_list?: boolean | null;
+  match_confidence?: 'exact' | 'fuzzy' | 'none' | null;
   created_at: string;
   updated_at: string;
 }
