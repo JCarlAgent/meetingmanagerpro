@@ -130,17 +130,32 @@ export default async function handler(req: any, res: any) {
 
   const jobId = (payload?.jobId ?? '').toString().trim();
   const campaignId = (payload?.campaignId ?? '').toString().trim();
+    // syncDate: admin-supplied date as YYYY-MM-DD; defaults to today (UTC)
+    const syncDateRaw = (payload?.syncDate ?? '').toString().trim();
 
-  if (!jobId) {
-    send(res, 400, { error: 'jobId is required' });
-    return;
-  }
-  if (!campaignId) {
-    send(res, 400, { error: 'campaignId is required' });
-    return;
-  }
+    if (!jobId) {
+      send(res, 400, { error: 'jobId is required' });
+      return;
+    }
+    if (!campaignId) {
+      send(res, 400, { error: 'campaignId is required' });
+      return;
+    }
 
-  try {
+    // Build MM/DD/YYYY from YYYY-MM-DD (or today if not supplied)
+    let syncDateMDY: string;
+    if (syncDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(syncDateRaw)) {
+      const [y, mo, d] = syncDateRaw.split('-');
+      syncDateMDY = `${mo}/${d}/${y}`;
+    } else {
+      const now = new Date();
+      const mo = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const d  = String(now.getUTCDate()).padStart(2, '0');
+      const y  = now.getUTCFullYear();
+      syncDateMDY = `${mo}/${d}/${y}`;
+    }
+    const fromDate = `${syncDateMDY} 00:00:00`;
+    const toDate   = `${syncDateMDY} 23:59:59`;
     const supabaseAdmin = getSupabaseAdmin();
 
     // Load saved TeleDirect credentials for this user
@@ -190,167 +205,182 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // Build URL exactly as test.ts does for get_Campaigns.asp — plain encodeURIComponent, no URLSearchParams
-    const baseUrl = 'https://client.teledirect.com/workthelead/api';
-    const fullUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=${encodeURIComponent(password)}&CampaignID=${encodeURIComponent(campaignId)}`;
-    // Safe URL for diagnostics — password redacted, username clearly visible
-    const safeUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=***&CampaignID=${encodeURIComponent(campaignId)}`;
+      // POST form-encoded — TeleDirect requires FromDate/ToDate window < 25 hours
+      const baseUrl = 'https://client.teledirect.com/workthelead/api';
+      const postBody = [
+        `UserName=${encodeURIComponent(username)}`,
+        `Password=${encodeURIComponent(password)}`,
+        `CampaignID=${encodeURIComponent(campaignId)}`,
+        `FromDate=${encodeURIComponent(fromDate)}`,
+        `ToDate=${encodeURIComponent(toDate)}`,
+      ].join('&');
+      const safeUrl = `${baseUrl}/get_Leads.asp [POST CampaignID=${encodeURIComponent(campaignId)} FromDate=${fromDate} ToDate=${toDate}]`;
 
-    const resp = await fetch(fullUrl, { method: 'GET' });
-    const text = await resp.text();
-    const httpStatus = resp.status;
-    const normalized = text.replace(/\s+/g, ' ').trim();
-    const looksXml = normalized.startsWith('<?xml') || normalized.startsWith('<');
-    const rawPreview = normalized.slice(0, 2000);
-
-    if (!resp.ok) {
-      send(res, 502, {
-        ok: false,
-        error: `TeleDirect returned HTTP ${httpStatus}`,
-        safeUrl,
-        httpStatus,
-        looksXml,
-        rawPreview,
-        credentialUserId: userId,
-        usernamePreview,
-        hasUsername: true,
-        hasPassword: true,
+      const resp = await fetch(`${baseUrl}/get_Leads.asp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: postBody,
       });
-      return;
-    }
+      const text = await resp.text();
+      const httpStatus = resp.status;
+      const normalized = text.replace(/\s+/g, ' ').trim();
+      const looksXml = normalized.startsWith('<?xml') || normalized.startsWith('<');
+      const rawPreview = normalized.slice(0, 2000);
 
-    // Parse XML into flat records with full diagnostics
-    const { records, containerTag, allTagsFound } = parseXmlLeads(text);
+      if (!resp.ok) {
+        send(res, 502, {
+          ok: false,
+          error: `TeleDirect returned HTTP ${httpStatus}`,
+          syncDate: syncDateMDY,
+          fromDate,
+          toDate,
+          safeUrl,
+          httpStatus,
+          looksXml,
+          rawPreview,
+          credentialUserId: userId,
+          usernamePreview,
+          hasUsername: true,
+          hasPassword: true,
+        });
+        return;
+      }
 
-    const rawFirstRecord = records[0] ?? null;
-    const fieldNames = rawFirstRecord ? Object.keys(rawFirstRecord) : [];
+      // Parse XML into flat records with full diagnostics
+      const { records, containerTag, allTagsFound } = parseXmlLeads(text);
 
-    if (records.length === 0) {
+      const rawFirstRecord = records[0] ?? null;
+      const fieldNames = rawFirstRecord ? Object.keys(rawFirstRecord) : [];
+
+      if (records.length === 0) {
+        send(res, 200, {
+          ok: true,
+          inserted: 0,
+          updated: 0,
+          skipped: 0,
+          total: 0,
+          syncDate: syncDateMDY,
+          fromDate,
+          toDate,
+          safeUrl,
+          httpStatus,
+          looksXml,
+          rawPreview,
+          containerTag,
+          allTagsFound,
+          fieldNames,
+          rawFirstRecord,
+          credentialUserId: userId,
+          usernamePreview,
+          hasUsername: true,
+          hasPassword: true,
+          message: looksXml
+            ? `XML received but 0 records parsed. Container tag: "${containerTag || 'none'}". Tags found: [${allTagsFound.join(', ')}].`
+            : `TeleDirect did not return XML. Raw: ${rawPreview.slice(0, 300)}`,
+        });
+        return;
+      }
+
+      let inserted = 0;
+      let updated = 0;
+      let skipped = 0;
+
+      for (const record of records) {
+        // Map TeleDirect fields → responders columns using multiple possible names
+        const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname');
+        const lastName  = getField(record, 'LastName',  'Last_Name',  'LName', 'lastname');
+        const phone     = getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'phone_number', 'PhoneNum');
+        const email     = getField(record, 'Email', 'EmailAddress', 'email_address', 'EmailAddr');
+        const address   = getField(record, 'Address', 'Address1', 'StreetAddress', 'Addr', 'Addr1');
+        const city      = getField(record, 'City');
+        const state     = getField(record, 'State', 'St', 'StateCode');
+        const zip       = getField(record, 'Zip', 'ZipCode', 'PostalCode', 'Zip5', 'ZipCode5');
+        const guestsRaw = getField(record, 'Guests', 'NumGuests', 'GuestCount', 'PartySize', 'AdditionalGuests', 'Party', 'TotalGuests');
+        const guests    = guestsRaw ? (parseInt(guestsRaw, 10) || 0) : 0;
+
+        // Skip records with no identifying information whatsoever
+        if (!firstName && !lastName && !phone && !email) {
+          skipped++;
+          continue;
+        }
+
+        // --- Duplicate prevention ---
+        let existingId: string | null = null;
+
+        if (phone) {
+          const { data: found } = await supabaseAdmin
+            .from('responders')
+            .select('id')
+            .eq('campaign_id', jobId)
+            .eq('phone', phone)
+            .maybeSingle();
+          if (found?.id) existingId = found.id;
+        }
+
+        if (!existingId && email) {
+          const { data: found } = await supabaseAdmin
+            .from('responders')
+            .select('id')
+            .eq('campaign_id', jobId)
+            .eq('email', email)
+            .maybeSingle();
+          if (found?.id) existingId = found.id;
+        }
+
+        const row: Record<string, any> = {
+          campaign_id:     jobId,
+          first_name:      firstName,
+          last_name:       lastName,
+          phone:           phone || '',
+          email:           email || '',
+          address:         address || '',
+          city:            city || '',
+          state:           state || '',
+          zip:             zip || '',
+          guests,
+          response_source: 'call_center',
+          confirmed:       true,
+          attended:        false,
+          updated_at:      new Date().toISOString(),
+        };
+
+        if (existingId) {
+          const { error } = await supabaseAdmin
+            .from('responders')
+            .update(row)
+            .eq('id', existingId);
+          if (!error) updated++;
+          else skipped++;
+        } else {
+          const { error } = await supabaseAdmin
+            .from('responders')
+            .insert({ ...row, created_at: new Date().toISOString() });
+          if (!error) inserted++;
+          else skipped++;
+        }
+      }
+
       send(res, 200, {
         ok: true,
-        inserted: 0,
-        updated: 0,
-        skipped: 0,
-        total: 0,
-        // Diagnostics
+        inserted,
+        updated,
+        skipped,
+        total: records.length,
+        syncDate: syncDateMDY,
+        fromDate,
+        toDate,
         safeUrl,
         httpStatus,
         looksXml,
-        rawPreview,
         containerTag,
-        allTagsFound,
         fieldNames,
         rawFirstRecord,
         credentialUserId: userId,
         usernamePreview,
         hasUsername: true,
         hasPassword: true,
-        message: looksXml
-          ? `XML received but 0 records parsed. Container tag: "${containerTag || 'none'}". Tags found: [${allTagsFound.join(', ')}].`
-          : `TeleDirect did not return XML. Raw: ${rawPreview.slice(0, 300)}`,
       });
-      return;
+    } catch (e: any) {
+      send(res, 500, { error: e?.message || 'Server error' });
     }
-
-    let inserted = 0;
-    let updated = 0;
-    let skipped = 0;
-
-    for (const record of records) {
-      // Map TeleDirect fields → responders columns using multiple possible names
-      const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname');
-      const lastName  = getField(record, 'LastName',  'Last_Name',  'LName', 'lastname');
-      const phone     = getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'phone_number', 'PhoneNum');
-      const email     = getField(record, 'Email', 'EmailAddress', 'email_address', 'EmailAddr');
-      const address   = getField(record, 'Address', 'Address1', 'StreetAddress', 'Addr', 'Addr1');
-      const city      = getField(record, 'City');
-      const state     = getField(record, 'State', 'St', 'StateCode');
-      const zip       = getField(record, 'Zip', 'ZipCode', 'PostalCode', 'Zip5', 'ZipCode5');
-      const guestsRaw = getField(record, 'Guests', 'NumGuests', 'GuestCount', 'PartySize', 'AdditionalGuests', 'Party', 'TotalGuests');
-      const guests    = guestsRaw ? (parseInt(guestsRaw, 10) || 0) : 0;
-
-      // Skip records with no identifying information whatsoever
-      if (!firstName && !lastName && !phone && !email) {
-        skipped++;
-        continue;
-      }
-
-      // --- Duplicate prevention ---
-      // Strategy: look for existing responder in same campaign by phone, then email.
-      // No external_id column exists, so we use best available unique contact key.
-      let existingId: string | null = null;
-
-      if (phone) {
-        const { data: found } = await supabaseAdmin
-          .from('responders')
-          .select('id')
-          .eq('campaign_id', jobId)
-          .eq('phone', phone)
-          .maybeSingle();
-        if (found?.id) existingId = found.id;
-      }
-
-      if (!existingId && email) {
-        const { data: found } = await supabaseAdmin
-          .from('responders')
-          .select('id')
-          .eq('campaign_id', jobId)
-          .eq('email', email)
-          .maybeSingle();
-        if (found?.id) existingId = found.id;
-      }
-
-      const row: Record<string, any> = {
-        campaign_id:     jobId,
-        first_name:      firstName,
-        last_name:       lastName,
-        phone:           phone || '',
-        email:           email || '',
-        address:         address || '',
-        city:            city || '',
-        state:           state || '',
-        zip:             zip || '',
-        guests,
-        response_source: 'call_center',
-        confirmed:       true,
-        attended:        false,
-        updated_at:      new Date().toISOString(),
-      };
-
-      if (existingId) {
-        const { error } = await supabaseAdmin
-          .from('responders')
-          .update(row)
-          .eq('id', existingId);
-        if (!error) updated++;
-        else skipped++;
-      } else {
-        const { error } = await supabaseAdmin
-          .from('responders')
-          .insert({ ...row, created_at: new Date().toISOString() });
-        if (!error) inserted++;
-        else skipped++;
-      }
-    }
-
-    send(res, 200, {
-      ok: true,
-      inserted,
-      updated,
-      skipped,
-      total: records.length,
-      safeUrl,
-      httpStatus,
-      looksXml,
-      containerTag,
-      fieldNames,
-      rawFirstRecord,
-      credentialUserId: userId,
-      usernamePreview,
-      hasUsername: true,
-      hasPassword: true,
-    });
-  } catch (e: any) {
-    send(res, 500, { error: e?.message || 'Server error' });
   }
-}

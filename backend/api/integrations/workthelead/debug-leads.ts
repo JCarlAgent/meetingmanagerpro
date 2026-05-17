@@ -1,6 +1,7 @@
 /**
  * DIAGNOSTIC ONLY — master-admin restricted.
- * Tries POST form-encoded date-range variants for get_Leads.asp.
+ * Probes 24-hour daily windows for get_Leads.asp (POST form-encoded).
+ * API requires FromDate/ToDate with a window < 25 hours.
  * Does NOT insert any responders.
  * Remove once working format is confirmed.
  */
@@ -13,17 +14,36 @@ function send(res: any, status: number, body: any) {
   res.end(JSON.stringify(body));
 }
 
+/** Extract all XML field names and the first raw record for diagnostics */
+function parseFirstRecord(raw: string): { fieldNames: string[]; rawFirstRecord: string } {
+  // Find any repeating element (heuristic: first tag that appears more than once)
+  const tagCounts: Record<string, number> = {};
+  const tagRe = /<([A-Za-z][A-Za-z0-9_]*)[\s>/]/g;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(raw)) !== null) tagCounts[m[1]] = (tagCounts[m[1]] ?? 0) + 1;
+  const repeating = Object.entries(tagCounts).filter(([, c]) => c > 1).map(([t]) => t);
+  const rootTags = new Set(['Leads', 'leads', 'Records', 'Results', 'Root', 'Data', 'Response', 'Rows']);
+  const container = repeating.find(t => !rootTags.has(t)) ?? repeating[0] ?? '';
+  if (!container) return { fieldNames: [], rawFirstRecord: '' };
+  const blockMatch = new RegExp(`<${container}[\\s>][\\s\\S]*?<\\/${container}>`, 'i').exec(raw);
+  if (!blockMatch) return { fieldNames: [], rawFirstRecord: '' };
+  const block = blockMatch[0];
+  const fields = [...block.matchAll(/<([A-Za-z_][A-Za-z0-9_.]*)(?:\s[^>]*)?>([^<]*)<\/\1>/g)].map(x => x[1]);
+  return { fieldNames: [...new Set(fields)], rawFirstRecord: block.slice(0, 800) };
+}
+
 function probe(raw: string): {
   hasLeads: boolean; isAuthError: boolean; isDateError: boolean;
-  hasOtherError: boolean; errorType: 'auth' | 'date' | 'other' | null; preview: string;
+  hasOtherError: boolean; errorType: 'auth' | 'date' | 'other' | null;
+  preview: string; fieldNames: string[]; rawFirstRecord: string;
 } {
   const normalized = raw.replace(/\s+/g, ' ').trim();
   const lower = normalized.toLowerCase();
   const isAuthError = lower.includes('login failed') || lower.includes('invalid user') ||
     (lower.includes('<error>') && (lower.includes('login') || lower.includes('user')));
   const isDateError = lower.includes('<error>') && (
-    lower.includes('date') || lower.includes('fromdate') || lower.includes('todate') ||
-    lower.includes('startdate') || lower.includes('enddate')
+    lower.includes('date') || lower.includes('hours') || lower.includes('fromdate') ||
+    lower.includes('todate') || lower.includes('startdate') || lower.includes('enddate')
   );
   const hasOtherError = lower.includes('<error>') && !isAuthError && !isDateError;
   const hasLeads = !isAuthError && !isDateError && !hasOtherError && (
@@ -33,7 +53,8 @@ function probe(raw: string): {
     (normalized.match(/<[A-Za-z]+>/g) ?? []).length > 8
   );
   const errorType = isAuthError ? 'auth' : isDateError ? 'date' : hasOtherError ? 'other' : null;
-  return { hasLeads, isAuthError, isDateError, hasOtherError, errorType, preview: normalized.slice(0, 400) };
+  const { fieldNames, rawFirstRecord } = hasLeads ? parseFirstRecord(raw) : { fieldNames: [], rawFirstRecord: '' };
+  return { hasLeads, isAuthError, isDateError, hasOtherError, errorType, preview: normalized.slice(0, 400), fieldNames, rawFirstRecord };
 }
 
 export default async function handler(req: any, res: any) {
@@ -67,73 +88,67 @@ export default async function handler(req: any, res: any) {
     const username = decryptString(credsData.username_enc);
     const password = decryptString(credsData.password_enc);
     const base = 'https://client.teledirect.com/workthelead/api';
-    const u = encodeURIComponent(username);
-    const pw = encodeURIComponent(password);
-    const cid = encodeURIComponent(campaignId);
 
-    function postVariant(label: string, fields: Record<string, string>) {
-      const body = Object.entries(fields).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-      const safeFields = Object.entries(fields)
-        .map(([k, v]) => `${k}=${k.toLowerCase().includes('pass') ? '***' : v}`).join('&');
-      return { label, url: `${base}/get_Leads.asp`, safeDesc: `POST [${safeFields}]`, body };
+    function postBody(fields: Record<string, string>): string {
+      return Object.entries(fields).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    }
+    function safeDesc(fields: Record<string, string>): string {
+      return Object.entries(fields)
+        .map(([k, v]) => `${k}=${k.toLowerCase().includes('pass') ? '***' : v}`).join(' | ');
     }
 
-    const mdy  = { from: '01/01/2026', to: '12/31/2026' };
-    const iso  = { from: '2026-01-01', to: '2026-12-31' };
-    const dash = { from: '01-01-2026', to: '12-31-2026' };
-    const num  = { from: '20260101',   to: '20261231'   };
-    const wide = { from: '01/01/2025', to: '12/31/2026' };
-
-    const variants = [
-      postVariant('P0: POST CampaignID only (no dates)',
-        { UserName: username, Password: password, CampaignID: campaignId }),
-      postVariant('P1: POST FromDate+ToDate MM/DD/YYYY',
-        { UserName: username, Password: password, CampaignID: campaignId, FromDate: mdy.from, ToDate: mdy.to }),
-      postVariant('P2: POST StartDate+EndDate MM/DD/YYYY',
-        { UserName: username, Password: password, CampaignID: campaignId, StartDate: mdy.from, EndDate: mdy.to }),
-      postVariant('P3: POST From+To MM/DD/YYYY',
-        { UserName: username, Password: password, CampaignID: campaignId, From: mdy.from, To: mdy.to }),
-      postVariant('P4: POST FromDate+ToDate YYYY-MM-DD',
-        { UserName: username, Password: password, CampaignID: campaignId, FromDate: iso.from, ToDate: iso.to }),
-      postVariant('P5: POST StartDate+EndDate YYYY-MM-DD',
-        { UserName: username, Password: password, CampaignID: campaignId, StartDate: iso.from, EndDate: iso.to }),
-      postVariant('P6: POST FromDate+ToDate MM-DD-YYYY',
-        { UserName: username, Password: password, CampaignID: campaignId, FromDate: dash.from, ToDate: dash.to }),
-      postVariant('P7: POST FromDate+ToDate YYYYMMDD',
-        { UserName: username, Password: password, CampaignID: campaignId, FromDate: num.from, ToDate: num.to }),
-      postVariant('P8: POST no CampaignID, FromDate+ToDate MM/DD/YYYY',
-        { UserName: username, Password: password, FromDate: mdy.from, ToDate: mdy.to }),
-      postVariant('P9: POST FromDate+ToDate MM/DD/YYYY wide 2025-2026',
-        { UserName: username, Password: password, CampaignID: campaignId, FromDate: wide.from, ToDate: wide.to }),
-      postVariant('P10: POST lowercase campaignid+fromdate+todate MM/DD/YYYY',
-        { UserName: username, Password: password, campaignid: campaignId, fromdate: mdy.from, todate: mdy.to }),
+    // 24-hour daily windows to probe (May 13–17 2026)
+    // Two formats: with timestamp (HH:MM:SS) and date-only
+    const days = [
+      { label: '05/13/2026', from: '05/13/2026 00:00:00', to: '05/13/2026 23:59:59', dateOnly: { from: '05/13/2026', to: '05/14/2026' } },
+      { label: '05/14/2026', from: '05/14/2026 00:00:00', to: '05/14/2026 23:59:59', dateOnly: { from: '05/14/2026', to: '05/15/2026' } },
+      { label: '05/15/2026', from: '05/15/2026 00:00:00', to: '05/15/2026 23:59:59', dateOnly: { from: '05/15/2026', to: '05/16/2026' } },
+      { label: '05/16/2026', from: '05/16/2026 00:00:00', to: '05/16/2026 23:59:59', dateOnly: { from: '05/16/2026', to: '05/17/2026' } },
+      { label: '05/17/2026', from: '05/17/2026 00:00:00', to: '05/17/2026 23:59:59', dateOnly: { from: '05/17/2026', to: '05/18/2026' } },
     ];
+
+    type Variant = { label: string; safeDesc: string; body: string };
+    const variants: Variant[] = [];
+
+    // With timestamp
+    for (const d of days) {
+      const fields = { UserName: username, Password: password, CampaignID: campaignId, FromDate: d.from, ToDate: d.to };
+      variants.push({ label: `WITH-TIME ${d.label} (FromDate=${d.from} ToDate=${d.to})`, safeDesc: safeDesc(fields), body: postBody(fields) });
+    }
+    // Date-only (no time component, ToDate = next day)
+    for (const d of days) {
+      const fields = { UserName: username, Password: password, CampaignID: campaignId, FromDate: d.dateOnly.from, ToDate: d.dateOnly.to };
+      variants.push({ label: `DATE-ONLY ${d.label} (FromDate=${d.dateOnly.from} ToDate=${d.dateOnly.to})`, safeDesc: safeDesc(fields), body: postBody(fields) });
+    }
+    // Also try without CampaignID on the most likely day (today, May 17) — some APIs return all leads for date range
+    const todayFields = { UserName: username, Password: password, FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59' };
+    variants.push({ label: 'WITH-TIME 05/17/2026 NO-CAMPAIGNID', safeDesc: safeDesc(todayFields), body: postBody(todayFields) });
 
     const results: any[] = [];
 
     // Control K — GET get_Campaigns.asp (identical to Settings Test Connection)
     try {
-      const r = await fetch(`${base}/get_Campaigns.asp?UserName=${u}&Password=${pw}`, { method: 'GET' });
+      const r = await fetch(`${base}/get_Campaigns.asp?UserName=${encodeURIComponent(username)}&Password=${encodeURIComponent(password)}`, { method: 'GET' });
       const text = await r.text();
       results.push({
         label: 'K: GET get_Campaigns.asp (auth control)',
-        safeDesc: `GET ${base}/get_Campaigns.asp?UserName=${u}&Password=***`,
+        safeDesc: `GET ${base}/get_Campaigns.asp?UserName=${encodeURIComponent(username)}&Password=***`,
         httpStatus: r.status, ...probe(text), isControl: true,
       });
     } catch (e: any) {
       results.push({
         label: 'K: GET get_Campaigns.asp (auth control)',
-        safeDesc: `GET ${base}/get_Campaigns.asp?UserName=${u}&Password=***`,
+        safeDesc: `GET ${base}/get_Campaigns.asp?UserName=${encodeURIComponent(username)}&Password=***`,
         httpStatus: 0, hasLeads: false, isAuthError: false, isDateError: false,
-        hasOtherError: true, errorType: 'other',
-        preview: `Fetch exception: ${e?.message ?? String(e)}`, isControl: true,
+        hasOtherError: true, errorType: 'other', fieldNames: [], rawFirstRecord: '',
+        preview: `Fetch exception: ${(e as any)?.message ?? String(e)}`, isControl: true,
       });
     }
 
     // POST variants — each isolated
     for (const v of variants) {
       try {
-        const r = await fetch(v.url, {
+        const r = await fetch(`${base}/get_Leads.asp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: v.body,
@@ -144,8 +159,8 @@ export default async function handler(req: any, res: any) {
         results.push({
           label: v.label, safeDesc: v.safeDesc, httpStatus: 0,
           hasLeads: false, isAuthError: false, isDateError: false,
-          hasOtherError: true, errorType: 'other',
-          preview: `Fetch exception: ${e?.message ?? String(e)}`, isControl: false,
+          hasOtherError: true, errorType: 'other', fieldNames: [], rawFirstRecord: '',
+          preview: `Fetch exception: ${(e as any)?.message ?? String(e)}`, isControl: false,
         });
       }
     }
@@ -154,14 +169,16 @@ export default async function handler(req: any, res: any) {
     send(res, 200, {
       ok: true,
       winner: winner?.label ?? null,
+      winnerFieldNames: winner?.fieldNames ?? [],
+      winnerRawFirstRecord: winner?.rawFirstRecord ?? '',
       usernamePreview: `${username.slice(0, 2)}***${username.slice(-2)}`,
       results,
     });
   } catch (topErr: any) {
     send(res, 500, {
       ok: false,
-      error: topErr?.message ?? String(topErr),
-      stack: (topErr?.stack ?? '').split('\n').slice(0, 3).join(' | '),
+      error: (topErr as any)?.message ?? String(topErr),
+      stack: ((topErr as any)?.stack ?? '').split('\n').slice(0, 3).join(' | '),
     });
   }
 }
