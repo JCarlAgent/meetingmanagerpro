@@ -59,6 +59,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [importEventId, setImportEventId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [bulkAssignEventId, setBulkAssignEventId] = useState<string>('');
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [bulkAssignMessage, setBulkAssignMessage] = useState<string | null>(null);
 
   // Fetch responders from Supabase for this campaign (used both on mount and after sync)
   const reloadResponders = () => {
@@ -250,6 +253,36 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setImportMessage(err?.message || 'Import error');
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleDeleteResponder = async (responderId: string) => {
+    const { error } = await supabase.from('responders').delete().eq('id', responderId);
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    reloadResponders();
+  };
+
+  const bulkAssignUnassigned = async () => {
+    if (!bulkAssignEventId) { setBulkAssignMessage('Select a meeting first.'); return; }
+    setIsBulkAssigning(true);
+    setBulkAssignMessage(null);
+    try {
+      const { data: unassigned, error: selErr } = await supabase
+        .from('responders').select('id')
+        .eq('campaign_id', campaign.id).is('event_id', null);
+      if (selErr) throw selErr;
+      if (!unassigned?.length) { setBulkAssignMessage('No unassigned responders found.'); return; }
+      const { error: updErr } = await supabase
+        .from('responders').update({ event_id: bulkAssignEventId })
+        .eq('campaign_id', campaign.id).is('event_id', null);
+      if (updErr) throw updErr;
+      setBulkAssignMessage(`Assigned ${unassigned.length} responder${unassigned.length !== 1 ? 's' : ''} to selected meeting.`);
+      setBulkAssignEventId('');
+      reloadResponders();
+    } catch (err: any) {
+      setBulkAssignMessage('Error: ' + (err?.message || String(err)));
+    } finally {
+      setIsBulkAssigning(false);
     }
   };
 
@@ -581,6 +614,32 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               )}
                             </div>
                           )}
+                          {/* ── Bulk assign unassigned responders ── */}
+                          {user?.is_master_admin && (
+                            <div className="w-full mt-2 pt-2 border-t border-slate-200">
+                              <div className="text-xs font-medium text-slate-600 mb-1.5">Bulk assign unassigned responders</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <select
+                                  value={bulkAssignEventId}
+                                  onChange={e => setBulkAssignEventId(e.target.value)}
+                                  className="flex-1 min-w-[200px] p-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                >
+                                  <option value="">— select meeting to assign —</option>
+                                  {events.map(ev => (
+                                    <option key={ev.id} value={ev.id}>{formatEventOption(ev)}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={bulkAssignUnassigned}
+                                  disabled={isBulkAssigning || !bulkAssignEventId}
+                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded text-xs"
+                                >{isBulkAssigning ? 'Assigning…' : 'Assign All Unassigned'}</button>
+                              </div>
+                              {bulkAssignMessage && (
+                                <div className="mt-1 text-xs text-slate-600">{bulkAssignMessage}</div>
+                              )}
+                            </div>
+                          )}
                           {/* ── Dev / experimental tools ── */}
                           {user?.is_master_admin && (
                             <div className="w-full mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center gap-2">
@@ -655,7 +714,15 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
               <button type="button" onClick={() => setShowFullResponders(false)} className="text-xs text-slate-400 hover:text-slate-200 underline">Close</button>
             </div>
           </div>
-          <ResponderList responders={displayResponders.length > 0 ? displayResponders : responders} events={events} selectedEventId={selectedEventId} onSelectEvent={setSelectedEventId} onUpdateResponder={onUpdateResponder} />
+          <ResponderList
+            responders={displayResponders.length > 0 ? displayResponders : responders}
+            events={events}
+            selectedEventId={selectedEventId}
+            onSelectEvent={setSelectedEventId}
+            onUpdateResponder={onUpdateResponder}
+            isMasterAdmin={!!user?.is_master_admin}
+            onDeleteResponder={handleDeleteResponder}
+          />
         </div>
       )}
 
