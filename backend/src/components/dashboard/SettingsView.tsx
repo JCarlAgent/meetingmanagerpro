@@ -119,10 +119,6 @@ const SettingsView: React.FC = () => {
       setIsPreviewingLeads(false);
     }
   };
-    } finally {
-      setIsTesting(false);
-    }
-  };
 
   const copyToClipboard = async (value: string, field: 'id' | 'email') => {
     try {
