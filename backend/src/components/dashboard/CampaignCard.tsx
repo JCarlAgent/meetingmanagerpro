@@ -506,59 +506,25 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                             <button
                               onClick={syncTeleDirectLeads}
                               disabled={isSyncing}
-                              className="px-3 py-1 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-sm"
+                              className="hidden"
                             >
                               {isSyncing ? 'Syncing…' : 'Sync TeleDirect Leads (experimental)'}
                             </button>
                           )}
+                          {/* ── Primary: TeleDirect export import ── */}
                           {user?.is_master_admin && (
                             <button
                               onClick={() => { setShowTsvImport(v => !v); setImportMessage(null); }}
-                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm"
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium"
                             >
                               {showTsvImport ? 'Cancel Import' : 'Import TeleDirect Export'}
                             </button>
                           )}
-                          {user?.is_master_admin && (
-                            <button
-                              onClick={async () => {
-                                const tdCampaignId = window.prompt('Debug TeleDirect API — enter Campaign ID to probe:');
-                                if (!tdCampaignId?.trim()) return;
-                                setSyncMessage('Running diagnostics…');
-                                try {
-                                  const { data: sessionData } = await supabase.auth.getSession();
-                                  const token = sessionData.session?.access_token ?? null;
-                                  if (!token) { setSyncMessage('Not logged in.'); return; }
-                                  const resp = await fetch('/api/integrations/workthelead/debug-leads', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                    body: JSON.stringify({ campaignId: tdCampaignId.trim() }),
-                                  });
-                                  const data = await resp.json().catch(() => ({}));
-                                  if (!resp.ok) { setSyncMessage(`Diagnostic error: ${data?.error || resp.status}`); return; }
-                                  const icon = (r: any) => r.hasLeads ? '✓ LEADS' : r.isAuthError ? '✗ AUTH' : r.isDateError ? '~ DATE' : r.hasOtherError ? '? OTHER' : '? EMPTY';
-                                  const lines = [
-                                    `Username: ${data.usernamePreview ?? '?'}`,
-                                    `WINNER: ${data.winner ?? 'none'}`,
-                                    '',
-                                    ...(data.results ?? []).map((r: any) =>
-                                      `[${icon(r)}] ${r.label}\n  ${r.safeDesc ?? r.safeUrl}\n  HTTP ${r.httpStatus} | ${r.preview}`
-                                    ),
-                                  ];
-                                  setSyncMessage(lines.join('\n'));
-                                } catch (err: any) { setSyncMessage(`Diagnostic exception: ${err?.message}`); }
-                              }}
-                              className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm"
-                            >
-                              Debug TeleDirect API
-                            </button>
-                          )}
-                          {syncMessage && (
-                            <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 break-all whitespace-pre-wrap">{syncMessage}</div>
-                          )}
                           {showTsvImport && (
                             <div className="w-full mt-2 space-y-2">
-                              <div className="text-xs text-slate-500 font-medium">Paste TeleDirect TSV export below (include the header row):</div>
+                              <div className="text-xs text-slate-600">
+                                Use this with the downloaded TeleDirect meeting export (.xls). Open the file, copy all rows including headers, paste here, then run import.
+                              </div>
                               <textarea
                                 value={tsvText}
                                 onChange={e => setTsvText(e.target.value)}
@@ -580,6 +546,54 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               </div>
                               {importMessage && (
                                 <div className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 whitespace-pre-wrap">{importMessage}</div>
+                              )}
+                            </div>
+                          )}
+                          {/* ── Dev / experimental tools ── */}
+                          {user?.is_master_admin && (
+                            <div className="w-full mt-3 pt-3 border-t border-slate-200 flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] text-slate-400 uppercase tracking-wide">Dev tools</span>
+                              <button
+                                onClick={syncTeleDirectLeads}
+                                disabled={isSyncing}
+                                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-500 border border-slate-300 rounded text-xs"
+                              >
+                                {isSyncing ? 'Syncing…' : 'Sync TeleDirect API (experimental)'}
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const tdCampaignId = window.prompt('Debug TeleDirect API — enter Campaign ID to probe:');
+                                  if (!tdCampaignId?.trim()) return;
+                                  setSyncMessage('Running diagnostics…');
+                                  try {
+                                    const { data: sessionData } = await supabase.auth.getSession();
+                                    const token = sessionData.session?.access_token ?? null;
+                                    if (!token) { setSyncMessage('Not logged in.'); return; }
+                                    const resp = await fetch('/api/integrations/workthelead/debug-leads', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                      body: JSON.stringify({ campaignId: tdCampaignId.trim() }),
+                                    });
+                                    const data = await resp.json().catch(() => ({}));
+                                    if (!resp.ok) { setSyncMessage(`Diagnostic error: ${data?.error || resp.status}`); return; }
+                                    const icon = (r: any) => r.hasLeads ? '✓ LEADS' : r.isAuthError ? '✗ AUTH' : r.isDateError ? '~ DATE' : r.hasOtherError ? '? OTHER' : '? EMPTY';
+                                    const lines = [
+                                      `Username: ${data.usernamePreview ?? '?'}`,
+                                      `WINNER: ${data.winner ?? 'none'}`,
+                                      '',
+                                      ...(data.results ?? []).map((r: any) =>
+                                        `[${icon(r)}] ${r.label}\n  ${r.safeDesc ?? r.safeUrl}\n  HTTP ${r.httpStatus} | ${r.preview}`
+                                      ),
+                                    ];
+                                    setSyncMessage(lines.join('\n'));
+                                  } catch (err: any) { setSyncMessage(`Diagnostic exception: ${err?.message}`); }
+                                }}
+                                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 rounded text-xs"
+                              >
+                                Debug TeleDirect API
+                              </button>
+                              {syncMessage && (
+                                <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 break-all whitespace-pre-wrap">{syncMessage}</div>
                               )}
                             </div>
                           )}
