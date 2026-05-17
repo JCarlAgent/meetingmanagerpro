@@ -130,67 +130,70 @@ export default async function handler(req: any, res: any) {
 
   // NOTE: Per TeleDirect docs, get_Leads uses Location Login (not Client Login).
   // CampaignID is NOT sent to get_Leads — only UserName, Password, FromDate, ToDate.
+  //
+  // CONFIRMED: Encoded (encodeURIComponent / +) → "Login failed" (server can't parse dates).
+  //            Raw unencoded → "ToDate is invalid" (auth passes, date format wrong).
+  // Strategy: raw only, sweep date format variants.
 
   const variants: Variant[] = [
-    // P0 — auth anchor — expect "ToDate is invalid" if Location Login creds are correct
-    postVariant('P0: NO-DATES baseline (expect ToDate-invalid if auth OK)', {
+    // ── Anchors ──
+    // P0 — no dates — encoding irrelevant when no date fields — expect "ToDate is invalid" if auth OK
+    postVariant('P0: NO-DATES auth anchor (expect ToDate-invalid = auth OK)', {
       UserName: username, Password: password,
     }),
-
-    // P7 — date-check anchor — expect "must be < 25 hours"
-    postVariant('P7: WIDE-RANGE date-check anchor 01/01→12/31/2026 (expect 25h error)', {
+    // R_WIDE — raw wide range — should still hit "must be < 25 hours" if date parser reads raw slashes
+    rawVariant('R_WIDE: RAW wide-range anchor 01/01/2026→12/31/2026 (expect 25h error = raw dates parsed)', {
       UserName: username, Password: password,
       FromDate: '01/01/2026', ToDate: '12/31/2026',
     }),
 
-    // ── AM/PM format — spaces encoded as %20 (encodeURIComponent) ──
-    postVariant('AM1: AM/PM %20-encoded 05/16 12:00:00 AM → 11:59:59 PM', {
+    // ── RAW: AM/PM no-seconds, no leading zero (M/D/YYYY H:MM AM/PM) ──
+    rawVariant('A: RAW 5/16/2026 12:00 AM → 5/16/2026 11:59 PM', {
       UserName: username, Password: password,
-      FromDate: '05/16/2026 12:00:00 AM', ToDate: '05/16/2026 11:59:59 PM',
+      FromDate: '5/16/2026 12:00 AM', ToDate: '5/16/2026 11:59 PM',
     }),
-    postVariant('AM2: AM/PM %20-encoded 05/17 12:00:00 AM → 11:59:59 PM (today)', {
+    rawVariant('E: RAW 5/17/2026 12:00 AM → 5/17/2026 11:59 PM (today)', {
       UserName: username, Password: password,
-      FromDate: '05/17/2026 12:00:00 AM', ToDate: '05/17/2026 11:59:59 PM',
-    }),
-
-    // ── AM/PM format — spaces encoded as + (standard form-encoding) ──
-    plusVariant('AM3: AM/PM +-encoded 05/16 12:00:00 AM → 11:59:59 PM', {
-      UserName: username, Password: password,
-      FromDate: '05/16/2026 12:00:00 AM', ToDate: '05/16/2026 11:59:59 PM',
-    }),
-    plusVariant('AM4: AM/PM +-encoded 05/17 12:00:00 AM → 11:59:59 PM (today)', {
-      UserName: username, Password: password,
-      FromDate: '05/17/2026 12:00:00 AM', ToDate: '05/17/2026 11:59:59 PM',
+      FromDate: '5/17/2026 12:00 AM', ToDate: '5/17/2026 11:59 PM',
     }),
 
-    // ── AM/PM format — raw unencoded (literal slashes/spaces/colons in body) ──
-    rawVariant('AM5: AM/PM RAW-UNENCODED 05/16 12:00:00 AM → 11:59:59 PM', {
+    // ── RAW: AM/PM with seconds, no leading zero (M/D/YYYY H:MM:SS AM/PM) ──
+    rawVariant('B: RAW 5/16/2026 12:00:00 AM → 5/16/2026 11:59:00 PM', {
       UserName: username, Password: password,
-      FromDate: '05/16/2026 12:00:00 AM', ToDate: '05/16/2026 11:59:59 PM',
-    }),
-    rawVariant('AM6: AM/PM RAW-UNENCODED 05/17 12:00:00 AM → 11:59:59 PM (today)', {
-      UserName: username, Password: password,
-      FromDate: '05/17/2026 12:00:00 AM', ToDate: '05/17/2026 11:59:59 PM',
+      FromDate: '5/16/2026 12:00:00 AM', ToDate: '5/16/2026 11:59:00 PM',
     }),
 
-    // ── 24h timestamp — raw unencoded (for comparison with %20 variants H/I) ──
-    rawVariant('AM7: 24h TIMESTAMP RAW 05/16 00:00:00 → 23:59:59 (yesterday)', {
+    // ── RAW: 24h no-seconds, no leading zero (M/D/YYYY H:MM) ──
+    rawVariant('C: RAW 5/16/2026 0:00 → 5/16/2026 23:59', {
+      UserName: username, Password: password,
+      FromDate: '5/16/2026 0:00', ToDate: '5/16/2026 23:59',
+    }),
+
+    // ── RAW: date-only, no leading zero (M/D/YYYY) ──
+    rawVariant('D: RAW date-only 5/16/2026 → 5/16/2026', {
+      UserName: username, Password: password,
+      FromDate: '5/16/2026', ToDate: '5/16/2026',
+    }),
+    rawVariant('F: RAW date-only 5/17/2026 → 5/17/2026 (today)', {
+      UserName: username, Password: password,
+      FromDate: '5/17/2026', ToDate: '5/17/2026',
+    }),
+
+    // ── RAW: ISO-like (YYYY-MM-DD HH:MM) ──
+    rawVariant('G: RAW ISO-like 2026-05-16 00:00 → 2026-05-16 23:59', {
+      UserName: username, Password: password,
+      FromDate: '2026-05-16 00:00', ToDate: '2026-05-16 23:59',
+    }),
+    rawVariant('H: RAW ISO-like 2026-05-17 00:00 → 2026-05-17 23:59 (today)', {
+      UserName: username, Password: password,
+      FromDate: '2026-05-17 00:00', ToDate: '2026-05-17 23:59',
+    }),
+
+    // ── RAW: zero-padded full timestamp (MM/DD/YYYY HH:MM:SS) — original format ──
+    // kept as reference to confirm "ToDate invalid" (previously observed result)
+    rawVariant('REF: RAW zero-padded 05/16/2026 00:00:00 → 23:59:59 (reference — was ToDate-invalid)', {
       UserName: username, Password: password,
       FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
-    }),
-    rawVariant('AM8: 24h TIMESTAMP RAW 05/17 00:00:00 → 23:59:59 (today)', {
-      UserName: username, Password: password,
-      FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
-    }),
-
-    // ── 24h timestamp +-encoded (for comparison) ──
-    plusVariant('AM9: 24h TIMESTAMP +-encoded 05/16 00:00:00 → 23:59:59', {
-      UserName: username, Password: password,
-      FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
-    }),
-    plusVariant('AM10: 24h TIMESTAMP +-encoded 05/17 00:00:00 → 23:59:59 (today)', {
-      UserName: username, Password: password,
-      FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
     }),
   ];
 
