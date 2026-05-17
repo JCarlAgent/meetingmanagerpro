@@ -128,73 +128,46 @@ export default async function handler(req: any, res: any) {
     return { label, url: `${base}/get_Leads.asp`, safeDesc: `POST ${base}/get_Leads.asp [RAW-UNENCODED] [${safeFields}]`, body };
   }
 
-  // NOTE: Per TeleDirect docs, get_Leads uses Location Login (not Client Login).
-  // CampaignID is NOT sent to get_Leads — only UserName, Password, FromDate, ToDate.
+  // CONFIRMED:
+  //   Encoded (encodeURIComponent / +) → "Login failed" (ASP can't parse encoded date strings)
+  //   Raw unencoded                    → "ToDate is invalid" (auth passes, date format wrong)
   //
-  // CONFIRMED: Encoded (encodeURIComponent / +) → "Login failed" (server can't parse dates).
-  //            Raw unencoded → "ToDate is invalid" (auth passes, date format wrong).
-  // Strategy: raw only, sweep date format variants.
+  // NEW HYPOTHESIS: 276067 = public RSVP tracking ID (myrsvp.biz/?id=)
+  //                 595037 = true internal TeleDirect meeting/campaign ID (from exported file title)
+  // Strategy: raw only — test 3 CampaignID groups × best date formats.
+  // Also testing date-only (no time) since time portion may be causing parse failures.
+
+  // Best raw date candidates from sweep: M/D/YYYY AM/PM with seconds, plus date-only
+  const dates = {
+    d16ampm: { FromDate: '5/16/2026 12:00:00 AM', ToDate: '5/16/2026 11:59:59 PM' },
+    d17ampm: { FromDate: '5/17/2026 12:00:00 AM', ToDate: '5/17/2026 11:59:59 PM' },
+    d16only: { FromDate: '5/16/2026', ToDate: '5/16/2026' },
+    d17only: { FromDate: '5/17/2026', ToDate: '5/17/2026' },
+  };
 
   const variants: Variant[] = [
-    // ── Anchors ──
-    // P0 — no dates — encoding irrelevant when no date fields — expect "ToDate is invalid" if auth OK
+    // ── Auth anchor — no dates, no CampaignID ──
     postVariant('P0: NO-DATES auth anchor (expect ToDate-invalid = auth OK)', {
       UserName: username, Password: password,
     }),
-    // R_WIDE — raw wide range — should still hit "must be < 25 hours" if date parser reads raw slashes
-    rawVariant('R_WIDE: RAW wide-range anchor 01/01/2026→12/31/2026 (expect 25h error = raw dates parsed)', {
-      UserName: username, Password: password,
-      FromDate: '01/01/2026', ToDate: '12/31/2026',
-    }),
 
-    // ── RAW: AM/PM no-seconds, no leading zero (M/D/YYYY H:MM AM/PM) ──
-    rawVariant('A: RAW 5/16/2026 12:00 AM → 5/16/2026 11:59 PM', {
-      UserName: username, Password: password,
-      FromDate: '5/16/2026 12:00 AM', ToDate: '5/16/2026 11:59 PM',
-    }),
-    rawVariant('E: RAW 5/17/2026 12:00 AM → 5/17/2026 11:59 PM (today)', {
-      UserName: username, Password: password,
-      FromDate: '5/17/2026 12:00 AM', ToDate: '5/17/2026 11:59 PM',
-    }),
+    // ── Group 1: NO CampaignID ──
+    rawVariant('NC_A: NO-ID | 5/16 AM/PM seconds', { UserName: username, Password: password, ...dates.d16ampm }),
+    rawVariant('NC_E: NO-ID | 5/17 AM/PM seconds (today)', { UserName: username, Password: password, ...dates.d17ampm }),
+    rawVariant('NC_D: NO-ID | date-only 5/16', { UserName: username, Password: password, ...dates.d16only }),
+    rawVariant('NC_F: NO-ID | date-only 5/17 (today)', { UserName: username, Password: password, ...dates.d17only }),
 
-    // ── RAW: AM/PM with seconds, no leading zero (M/D/YYYY H:MM:SS AM/PM) ──
-    rawVariant('B: RAW 5/16/2026 12:00:00 AM → 5/16/2026 11:59:00 PM', {
-      UserName: username, Password: password,
-      FromDate: '5/16/2026 12:00:00 AM', ToDate: '5/16/2026 11:59:00 PM',
-    }),
+    // ── Group 2: CampaignID=595037 (internal meeting ID from exported reservation file) ──
+    rawVariant('C595_A: ID=595037 | 5/16 AM/PM seconds', { UserName: username, Password: password, CampaignID: '595037', ...dates.d16ampm }),
+    rawVariant('C595_E: ID=595037 | 5/17 AM/PM seconds (today)', { UserName: username, Password: password, CampaignID: '595037', ...dates.d17ampm }),
+    rawVariant('C595_D: ID=595037 | date-only 5/16', { UserName: username, Password: password, CampaignID: '595037', ...dates.d16only }),
+    rawVariant('C595_F: ID=595037 | date-only 5/17 (today)', { UserName: username, Password: password, CampaignID: '595037', ...dates.d17only }),
 
-    // ── RAW: 24h no-seconds, no leading zero (M/D/YYYY H:MM) ──
-    rawVariant('C: RAW 5/16/2026 0:00 → 5/16/2026 23:59', {
-      UserName: username, Password: password,
-      FromDate: '5/16/2026 0:00', ToDate: '5/16/2026 23:59',
-    }),
-
-    // ── RAW: date-only, no leading zero (M/D/YYYY) ──
-    rawVariant('D: RAW date-only 5/16/2026 → 5/16/2026', {
-      UserName: username, Password: password,
-      FromDate: '5/16/2026', ToDate: '5/16/2026',
-    }),
-    rawVariant('F: RAW date-only 5/17/2026 → 5/17/2026 (today)', {
-      UserName: username, Password: password,
-      FromDate: '5/17/2026', ToDate: '5/17/2026',
-    }),
-
-    // ── RAW: ISO-like (YYYY-MM-DD HH:MM) ──
-    rawVariant('G: RAW ISO-like 2026-05-16 00:00 → 2026-05-16 23:59', {
-      UserName: username, Password: password,
-      FromDate: '2026-05-16 00:00', ToDate: '2026-05-16 23:59',
-    }),
-    rawVariant('H: RAW ISO-like 2026-05-17 00:00 → 2026-05-17 23:59 (today)', {
-      UserName: username, Password: password,
-      FromDate: '2026-05-17 00:00', ToDate: '2026-05-17 23:59',
-    }),
-
-    // ── RAW: zero-padded full timestamp (MM/DD/YYYY HH:MM:SS) — original format ──
-    // kept as reference to confirm "ToDate invalid" (previously observed result)
-    rawVariant('REF: RAW zero-padded 05/16/2026 00:00:00 → 23:59:59 (reference — was ToDate-invalid)', {
-      UserName: username, Password: password,
-      FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
-    }),
+    // ── Group 3: CampaignID=276067 (public RSVP id — for comparison) ──
+    rawVariant('C276_A: ID=276067 | 5/16 AM/PM seconds', { UserName: username, Password: password, CampaignID: '276067', ...dates.d16ampm }),
+    rawVariant('C276_E: ID=276067 | 5/17 AM/PM seconds (today)', { UserName: username, Password: password, CampaignID: '276067', ...dates.d17ampm }),
+    rawVariant('C276_D: ID=276067 | date-only 5/16', { UserName: username, Password: password, CampaignID: '276067', ...dates.d16only }),
+    rawVariant('C276_F: ID=276067 | date-only 5/17 (today)', { UserName: username, Password: password, CampaignID: '276067', ...dates.d17only }),
   ];
 
   // Control K — GET get_Campaigns.asp (same as Settings Test Connection)
@@ -212,7 +185,7 @@ export default async function handler(req: any, res: any) {
   try {
     const r = await fetch(controlK.url, { method: 'GET' });
     const text = await r.text();
-    results.push({ label: controlK.label, safeDesc: controlK.safeDesc, httpStatus: r.status, ...probe(text), isControl: true });
+    results.push({ label: controlK.label, safeDesc: controlK.safeDesc, httpStatus: r.status, ...probe(text), rawXml: text.slice(0, 3000), isControl: true });
   } catch (e: any) {
     results.push({
       label: controlK.label, safeDesc: controlK.safeDesc, httpStatus: 0,
@@ -231,7 +204,7 @@ export default async function handler(req: any, res: any) {
         body: v.body,
       });
       const text = await r.text();
-      results.push({ label: v.label, safeDesc: v.safeDesc, httpStatus: r.status, ...probe(text), isControl: false });
+      results.push({ label: v.label, safeDesc: v.safeDesc, httpStatus: r.status, ...probe(text), rawXml: text.slice(0, 3000), isControl: false });
     } catch (e: any) {
       results.push({
         label: v.label, safeDesc: v.safeDesc, httpStatus: 0,
