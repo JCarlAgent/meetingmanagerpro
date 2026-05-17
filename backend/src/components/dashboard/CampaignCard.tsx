@@ -154,19 +154,28 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        setSyncMessage(`Error: ${data?.error || 'Sync failed'}${data?.rawPreview ? ' | Raw: ' + String(data.rawPreview).slice(0, 200) : ''}`);
+        const errLines = [
+          `Error: ${data?.error || 'Sync failed'}`,
+          data?.credentialUserId ? `UserID: ${String(data.credentialUserId).slice(0, 8)}…` : '',
+          data?.usernamePreview ? `Username preview: ${data.usernamePreview}` : '',
+          data?.safeUrl ? `URL: ${data.safeUrl}` : '',
+          data?.rawPreview ? `Raw: ${String(data.rawPreview).slice(0, 300)}` : '',
+        ].filter(Boolean).join(' | ');
+        setSyncMessage(errLines);
         return;
       }
       if (data.inserted === 0 && data.updated === 0) {
-        // Surface diagnostics so the admin can see what TeleDirect actually returned
+        // Surface all diagnostics so admin can see exactly what was sent and received
         const diag = [
           `Parsed: ${data.total ?? 0} records`,
+          data.usernamePreview ? `Username preview: ${data.usernamePreview}` : 'NO USERNAME',
+          data.safeUrl ? `URL sent: ${data.safeUrl}` : '',
           data.containerTag ? `Container tag: <${data.containerTag}>` : 'No container tag detected',
-          data.fieldNames?.length ? `Fields: [${data.fieldNames.join(', ')}]` : 'No fields found',
+          data.fieldNames?.length ? `Fields: [${data.fieldNames.join(', ')}]` : 'No fields',
           data.message || '',
-          data.rawPreview ? `Raw snippet: ${String(data.rawPreview).slice(0, 300)}` : '',
-        ].filter(Boolean).join(' | ');
-        setSyncMessage(`Sync returned 0 leads. ${diag}`);
+          data.rawPreview ? `Raw: ${String(data.rawPreview).slice(0, 400)}` : '',
+        ].filter(Boolean).join('\n');
+        setSyncMessage(`Sync returned 0 leads.\n${diag}`);
         return;
       }
       const msg = `Sync complete — inserted: ${data.inserted}, updated: ${data.updated}, skipped: ${data.skipped} (of ${data.total} parsed)`;
@@ -457,7 +466,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                             </button>
                           )}
                           {syncMessage && (
-                            <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 break-words">{syncMessage}</div>
+                            <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 break-all whitespace-pre-wrap">{syncMessage}</div>
                           )}
                         </div>
                       </div>

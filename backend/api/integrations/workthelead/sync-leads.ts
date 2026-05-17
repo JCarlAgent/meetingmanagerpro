@@ -162,16 +162,38 @@ export default async function handler(req: any, res: any) {
     const username = decryptString(credsData.username_enc);
     const password = decryptString(credsData.password_enc);
 
+    // Masked username for diagnostics — first 2 chars + *** + last 2 chars (or just *** if too short)
+    const uLen = username?.length ?? 0;
+    const usernamePreview = uLen >= 5
+      ? `${username.slice(0, 2)}***${username.slice(-2)}`
+      : uLen > 0 ? '***' : '(blank)';
+
     // Guard: catch a blank decrypt result before hitting TeleDirect
     if (!username || !username.trim()) {
-      send(res, 500, { error: 'Credential decrypt yielded blank username. Re-save credentials in Settings.' });
+      send(res, 500, {
+        error: 'Decrypted username is blank in sync-leads route. Re-save credentials in Settings.',
+        credentialUserId: userId,
+        usernamePreview,
+        hasUsername: false,
+        hasPassword: !!password?.trim(),
+      });
+      return;
+    }
+    if (!password || !password.trim()) {
+      send(res, 500, {
+        error: 'Decrypted password is blank in sync-leads route. Re-save credentials in Settings.',
+        credentialUserId: userId,
+        usernamePreview,
+        hasUsername: true,
+        hasPassword: false,
+      });
       return;
     }
 
     // Build URL exactly as test.ts does for get_Campaigns.asp — plain encodeURIComponent, no URLSearchParams
     const baseUrl = 'https://client.teledirect.com/workthelead/api';
     const fullUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=${encodeURIComponent(password)}&CampaignID=${encodeURIComponent(campaignId)}`;
-    // Safe URL for diagnostics — password redacted, username visible to confirm it was sent
+    // Safe URL for diagnostics — password redacted, username clearly visible
     const safeUrl = `${baseUrl}/get_Leads.asp?UserName=${encodeURIComponent(username)}&Password=***&CampaignID=${encodeURIComponent(campaignId)}`;
 
     const resp = await fetch(fullUrl, { method: 'GET' });
@@ -189,6 +211,10 @@ export default async function handler(req: any, res: any) {
         httpStatus,
         looksXml,
         rawPreview,
+        credentialUserId: userId,
+        usernamePreview,
+        hasUsername: true,
+        hasPassword: true,
       });
       return;
     }
@@ -215,9 +241,13 @@ export default async function handler(req: any, res: any) {
         allTagsFound,
         fieldNames,
         rawFirstRecord,
+        credentialUserId: userId,
+        usernamePreview,
+        hasUsername: true,
+        hasPassword: true,
         message: looksXml
-          ? `XML received but 0 records parsed. Container tag detected: "${containerTag || 'none'}". All tags found: [${allTagsFound.join(', ')}].`
-          : `TeleDirect did not return XML. Raw response: ${rawPreview.slice(0, 300)}`,
+          ? `XML received but 0 records parsed. Container tag: "${containerTag || 'none'}". Tags found: [${allTagsFound.join(', ')}].`
+          : `TeleDirect did not return XML. Raw: ${rawPreview.slice(0, 300)}`,
       });
       return;
     }
@@ -315,6 +345,10 @@ export default async function handler(req: any, res: any) {
       containerTag,
       fieldNames,
       rawFirstRecord,
+      credentialUserId: userId,
+      usernamePreview,
+      hasUsername: true,
+      hasPassword: true,
     });
   } catch (e: any) {
     send(res, 500, { error: e?.message || 'Server error' });
