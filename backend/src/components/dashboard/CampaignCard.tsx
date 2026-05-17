@@ -482,11 +482,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                   });
                                   const data = await resp.json().catch(() => ({}));
                                   if (!resp.ok) { setSyncMessage(`Diagnostic error: ${data?.error || resp.status}`); return; }
+                                  const icon = (r: any) => r.hasLeads ? '✓ LEADS' : r.isAuthError ? '✗ AUTH' : r.isDateError ? '~ DATE' : r.hasOtherError ? '? OTHER' : '? EMPTY';
                                   const lines = [
+                                    `Username: ${data.usernamePreview ?? '?'}`,
                                     `WINNER: ${data.winner ?? 'none'}`,
                                     '',
                                     ...(data.results ?? []).map((r: any) =>
-                                      `[${r.hasLeads ? '✓ LEADS' : r.hasError ? '✗ ERROR' : '? EMPTY'}] ${r.label}\n  ${r.safeUrl}\n  HTTP ${r.httpStatus} | ${r.preview}`
+                                      `[${icon(r)}] ${r.label}\n  ${r.safeDesc ?? r.safeUrl}\n  HTTP ${r.httpStatus} | ${r.preview}`
                                     ),
                                   ];
                                   setSyncMessage(lines.join('\n'));
