@@ -89,8 +89,7 @@ export default async function handler(req: any, res: any) {
   const base = 'https://client.teledirect.com/workthelead/api';
 
   // --- EXACT postVariant function from commit 1a65abf ---
-  // body: key=encodeURIComponent(value) joined by &
-  // safeDesc: same but password replaced with ***
+  // body: key=encodeURIComponent(value) joined by & — spaces encoded as %20
   type Variant = { label: string; url: string; safeDesc: string; body: string };
 
   function postVariant(label: string, fields: Record<string, string>): Variant {
@@ -103,71 +102,95 @@ export default async function handler(req: any, res: any) {
     return { label, url: `${base}/get_Leads.asp`, safeDesc: `POST ${base}/get_Leads.asp [${safeFields}]`, body };
   }
 
+  // Variant where spaces are encoded as + (RFC 1866 form-encoding spec, not encodeURIComponent)
+  function plusVariant(label: string, fields: Record<string, string>): Variant {
+    function plusEncode(s: string): string {
+      return encodeURIComponent(s).replace(/%20/g, '+');
+    }
+    const body = Object.entries(fields)
+      .map(([k, v]) => `${k}=${plusEncode(v)}`)
+      .join('&');
+    const safeFields = Object.entries(fields)
+      .map(([k, v]) => `${k}=${k.toLowerCase().includes('pass') ? '***' : plusEncode(v)}`)
+      .join('&');
+    return { label, url: `${base}/get_Leads.asp`, safeDesc: `POST ${base}/get_Leads.asp [PLUS-ENCODED] [${safeFields}]`, body };
+  }
+
+  // Variant with fully raw/unencoded values — slashes, spaces, colons all literal
+  // Some classic ASP servers parse this more leniently
+  function rawVariant(label: string, fields: Record<string, string>): Variant {
+    const body = Object.entries(fields)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('&');
+    const safeFields = Object.entries(fields)
+      .map(([k, v]) => `${k}=${k.toLowerCase().includes('pass') ? '***' : v}`)
+      .join('&');
+    return { label, url: `${base}/get_Leads.asp`, safeDesc: `POST ${base}/get_Leads.asp [RAW-UNENCODED] [${safeFields}]`, body };
+  }
+
   // NOTE: Per TeleDirect docs, get_Leads uses Location Login (not Client Login).
   // CampaignID is NOT sent to get_Leads — only UserName, Password, FromDate, ToDate.
 
   const variants: Variant[] = [
-    // P0 — NO dates, NO CampaignID. Auth anchor — expect "ToDate is invalid" if Location Login creds are correct.
-    postVariant('P0: NO-DATES baseline — UserName+Password only (expect ToDate-invalid if auth OK)', {
+    // P0 — auth anchor — expect "ToDate is invalid" if Location Login creds are correct
+    postVariant('P0: NO-DATES baseline (expect ToDate-invalid if auth OK)', {
       UserName: username, Password: password,
     }),
 
-    // P7 — Wide range, no CampaignID. Date-check anchor — expect "must be < 25 hours".
+    // P7 — date-check anchor — expect "must be < 25 hours"
     postVariant('P7: WIDE-RANGE date-check anchor 01/01→12/31/2026 (expect 25h error)', {
       UserName: username, Password: password,
       FromDate: '01/01/2026', ToDate: '12/31/2026',
     }),
 
-    // ── DATE-ONLY: same-day windows (narrowest) ──
-    postVariant('A: SAME-DAY 05/15/2026 → 05/15/2026', {
+    // ── AM/PM format — spaces encoded as %20 (encodeURIComponent) ──
+    postVariant('AM1: AM/PM %20-encoded 05/16 12:00:00 AM → 11:59:59 PM', {
       UserName: username, Password: password,
-      FromDate: '05/15/2026', ToDate: '05/15/2026',
+      FromDate: '05/16/2026 12:00:00 AM', ToDate: '05/16/2026 11:59:59 PM',
     }),
-    postVariant('B: SAME-DAY 05/16/2026 → 05/16/2026 (yesterday)', {
+    postVariant('AM2: AM/PM %20-encoded 05/17 12:00:00 AM → 11:59:59 PM (today)', {
       UserName: username, Password: password,
-      FromDate: '05/16/2026', ToDate: '05/16/2026',
-    }),
-    postVariant('C: SAME-DAY 05/17/2026 → 05/17/2026 (today)', {
-      UserName: username, Password: password,
-      FromDate: '05/17/2026', ToDate: '05/17/2026',
-    }),
-    postVariant('D: SAME-DAY 05/14/2026 → 05/14/2026', {
-      UserName: username, Password: password,
-      FromDate: '05/14/2026', ToDate: '05/14/2026',
+      FromDate: '05/17/2026 12:00:00 AM', ToDate: '05/17/2026 11:59:59 PM',
     }),
 
-    // ── DATE-ONLY: day → next day (24h windows) ──
-    postVariant('E: DATE-ONLY 05/16→05/17 (yesterday→today)', {
+    // ── AM/PM format — spaces encoded as + (standard form-encoding) ──
+    plusVariant('AM3: AM/PM +-encoded 05/16 12:00:00 AM → 11:59:59 PM', {
       UserName: username, Password: password,
-      FromDate: '05/16/2026', ToDate: '05/17/2026',
+      FromDate: '05/16/2026 12:00:00 AM', ToDate: '05/16/2026 11:59:59 PM',
     }),
-    postVariant('F: DATE-ONLY 05/17→05/18 (today→tomorrow)', {
+    plusVariant('AM4: AM/PM +-encoded 05/17 12:00:00 AM → 11:59:59 PM (today)', {
       UserName: username, Password: password,
-      FromDate: '05/17/2026', ToDate: '05/18/2026',
+      FromDate: '05/17/2026 12:00:00 AM', ToDate: '05/17/2026 11:59:59 PM',
     }),
 
-    // ── TIMESTAMP: sub-23h windows (safely under 25h) ──
-    postVariant('G: TIMESTAMP 05/15 00:00:00 → 22:59:59 (22h59m)', {
+    // ── AM/PM format — raw unencoded (literal slashes/spaces/colons in body) ──
+    rawVariant('AM5: AM/PM RAW-UNENCODED 05/16 12:00:00 AM → 11:59:59 PM', {
       UserName: username, Password: password,
-      FromDate: '05/15/2026 00:00:00', ToDate: '05/15/2026 22:59:59',
+      FromDate: '05/16/2026 12:00:00 AM', ToDate: '05/16/2026 11:59:59 PM',
     }),
-    postVariant('H: TIMESTAMP 05/16 00:00:00 → 23:59:59 (yesterday full day)', {
+    rawVariant('AM6: AM/PM RAW-UNENCODED 05/17 12:00:00 AM → 11:59:59 PM (today)', {
+      UserName: username, Password: password,
+      FromDate: '05/17/2026 12:00:00 AM', ToDate: '05/17/2026 11:59:59 PM',
+    }),
+
+    // ── 24h timestamp — raw unencoded (for comparison with %20 variants H/I) ──
+    rawVariant('AM7: 24h TIMESTAMP RAW 05/16 00:00:00 → 23:59:59 (yesterday)', {
       UserName: username, Password: password,
       FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
     }),
-    postVariant('I: TIMESTAMP 05/17 00:00:00 → 23:59:59 (today full day)', {
+    rawVariant('AM8: 24h TIMESTAMP RAW 05/17 00:00:00 → 23:59:59 (today)', {
       UserName: username, Password: password,
       FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
     }),
-    postVariant('J: TIMESTAMP 05/15 12:00:00 → 05/16 11:00:00 (23h cross-day)', {
-      UserName: username, Password: password,
-      FromDate: '05/15/2026 12:00:00', ToDate: '05/16/2026 11:00:00',
-    }),
 
-    // ── 24h55m borderline — should trigger the 25h error confirming auth OK ──
-    postVariant('K2: TIMESTAMP 05/15 00:00:00 → 05/16 00:55:00 (24h55m — expect 25h error)', {
+    // ── 24h timestamp +-encoded (for comparison) ──
+    plusVariant('AM9: 24h TIMESTAMP +-encoded 05/16 00:00:00 → 23:59:59', {
       UserName: username, Password: password,
-      FromDate: '05/15/2026 00:00:00', ToDate: '05/16/2026 00:55:00',
+      FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
+    }),
+    plusVariant('AM10: 24h TIMESTAMP +-encoded 05/17 00:00:00 → 23:59:59 (today)', {
+      UserName: username, Password: password,
+      FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
     }),
   ];
 
