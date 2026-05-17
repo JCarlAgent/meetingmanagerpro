@@ -105,50 +105,68 @@ export default async function handler(req: any, res: any) {
   }
 
   const variants: Variant[] = [
-    // P0 — NO dates, baseline. Previously returned "ToDate is invalid" (auth succeeded).
-    // If this now returns AUTH error, credentials have changed/expired.
-    postVariant('P0: NO-DATES baseline (auth check — expect ToDate error if creds valid)', {
+    // P0 — NO dates. Returns "ToDate is invalid" = auth OK. Keep as auth anchor.
+    postVariant('P0: NO-DATES baseline (expect ToDate-invalid if auth OK)', {
       UserName: username, Password: password, CampaignID: campaignId,
     }),
 
-    // DATE-ONLY variants — MM/DD/YYYY, 24-hour window (same day to next day = exactly 24h)
-    postVariant('P1: DATE-ONLY 05/13→05/14', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/13/2026', ToDate: '05/14/2026',
-    }),
-    postVariant('P2: DATE-ONLY 05/14→05/15', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/14/2026', ToDate: '05/15/2026',
-    }),
-    postVariant('P3: DATE-ONLY 05/15→05/16', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/15/2026', ToDate: '05/16/2026',
-    }),
-    postVariant('P4: DATE-ONLY 05/16→05/17', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/16/2026', ToDate: '05/17/2026',
-    }),
-    postVariant('P5: DATE-ONLY 05/17→05/18', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/17/2026', ToDate: '05/18/2026',
-    }),
-
-    // Exact 23-hour timestamp window (confirmed < 25h limit)
-    postVariant('P6: 23-HOUR TIMESTAMP 05/15 00:00:00 → 23:00:00', {
-      UserName: username, Password: password, CampaignID: campaignId,
-      FromDate: '05/15/2026 00:00:00', ToDate: '05/15/2026 23:00:00',
-    }),
-
-    // Wide date range that previously triggered "must be less than 25 hours" — confirms auth OK, date check active
-    postVariant('P7: WIDE-RANGE auth-confirm MM/DD/YYYY (01/01→12/31/2026)', {
+    // P7 — Wide range. Returns "must be less than 25 hours" = date params recognised. Keep as date-check anchor.
+    postVariant('P7: WIDE-RANGE date-check anchor (01/01→12/31/2026, expect 25h error)', {
       UserName: username, Password: password, CampaignID: campaignId,
       FromDate: '01/01/2026', ToDate: '12/31/2026',
     }),
 
-    // No CampaignID — does the API return all leads for a date range?
-    postVariant('P8: DATE-ONLY 05/17→05/18 NO-CAMPAIGNID', {
+    // ── SAME-DAY (FromDate = ToDate) — narrowest possible window ──
+    // If these return DATE/EMPTY instead of AUTH, TeleDirect was returning "Login failed"
+    // for empty result sets, not actual auth failures.
+    postVariant('A: SAME-DAY 05/15/2026 → 05/15/2026', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/15/2026', ToDate: '05/15/2026',
+    }),
+    postVariant('B: SAME-DAY 05/14/2026 → 05/14/2026', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/14/2026', ToDate: '05/14/2026',
+    }),
+    postVariant('C: SAME-DAY 05/17/2026 → 05/17/2026 (today)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/17/2026', ToDate: '05/17/2026',
+    }),
+
+    // ── SUB-23h TIMESTAMP windows on 05/15 ──
+    postVariant('D: TIMESTAMP 05/15 00:00:00 → 22:59:59 (22h59m)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/15/2026 00:00:00', ToDate: '05/15/2026 22:59:59',
+    }),
+    postVariant('E: TIMESTAMP 05/15 01:00:00 → 23:00:00 (22h)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/15/2026 01:00:00', ToDate: '05/15/2026 23:00:00',
+    }),
+    postVariant('F: TIMESTAMP 05/15 12:00:00 → 05/16 11:00:00 (23h cross-day)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/15/2026 12:00:00', ToDate: '05/16/2026 11:00:00',
+    }),
+
+    // ── Today/Yesterday timestamp windows (leads entered recently) ──
+    postVariant('G: TIMESTAMP 05/16 00:00:00 → 23:59:59 (yesterday full day)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/16/2026 00:00:00', ToDate: '05/16/2026 23:59:59',
+    }),
+    postVariant('H: TIMESTAMP 05/17 00:00:00 → 23:59:59 (today full day)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/17/2026 00:00:00', ToDate: '05/17/2026 23:59:59',
+    }),
+
+    // ── Wider multi-day windows under 25h are impossible; try borderline: exactly 24h55m ──
+    // P7 triggers 25h error; maybe there is a window between "too small = login failed" and "too large"
+    postVariant('I: TIMESTAMP 05/15 00:00:00 → 05/16/2026 00:55:00 (24h55m — expect 25h error)', {
+      UserName: username, Password: password, CampaignID: campaignId,
+      FromDate: '05/15/2026 00:00:00', ToDate: '05/16/2026 00:55:00',
+    }),
+
+    // ── No CampaignID, same-day today ──
+    postVariant('J: SAME-DAY today NO-CAMPAIGNID (05/17 → 05/17)', {
       UserName: username, Password: password,
-      FromDate: '05/17/2026', ToDate: '05/18/2026',
+      FromDate: '05/17/2026', ToDate: '05/17/2026',
     }),
   ];
 
