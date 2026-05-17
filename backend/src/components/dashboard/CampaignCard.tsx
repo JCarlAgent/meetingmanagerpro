@@ -465,6 +465,38 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               {isSyncing ? 'Syncing…' : 'Sync TeleDirect Leads'}
                             </button>
                           )}
+                          {user?.is_master_admin && (
+                            <button
+                              onClick={async () => {
+                                const tdCampaignId = window.prompt('Debug TeleDirect — enter Campaign ID to probe:');
+                                if (!tdCampaignId?.trim()) return;
+                                setSyncMessage('Running diagnostics…');
+                                try {
+                                  const { data: sessionData } = await supabase.auth.getSession();
+                                  const token = sessionData.session?.access_token ?? null;
+                                  if (!token) { setSyncMessage('Not logged in.'); return; }
+                                  const resp = await fetch('/api/integrations/workthelead/debug-leads', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                    body: JSON.stringify({ campaignId: tdCampaignId.trim() }),
+                                  });
+                                  const data = await resp.json().catch(() => ({}));
+                                  if (!resp.ok) { setSyncMessage(`Diagnostic error: ${data?.error || resp.status}`); return; }
+                                  const lines = [
+                                    `WINNER: ${data.winner ?? 'none'}`,
+                                    '',
+                                    ...(data.results ?? []).map((r: any) =>
+                                      `[${r.hasLeads ? '✓ LEADS' : r.hasError ? '✗ ERROR' : '? EMPTY'}] ${r.label}\n  ${r.safeUrl}\n  HTTP ${r.httpStatus} | ${r.preview}`
+                                    ),
+                                  ];
+                                  setSyncMessage(lines.join('\n'));
+                                } catch (err: any) { setSyncMessage(`Diagnostic exception: ${err?.message}`); }
+                              }}
+                              className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm"
+                            >
+                              Debug TD Endpoint
+                            </button>
+                          )}
                           {syncMessage && (
                             <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 break-all whitespace-pre-wrap">{syncMessage}</div>
                           )}
