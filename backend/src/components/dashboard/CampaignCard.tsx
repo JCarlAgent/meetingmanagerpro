@@ -303,49 +303,105 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     setMailedImportMessage(null);
     setMailedFileName(file.name);
     setMailedRowCount(null);
-    // Reset so re-selecting same file still fires onChange
+    setMailedCsv('');
+    // Reset input so re-selecting same file still fires onChange
     e.target.value = '';
-    file.text().then(text => {
-      setMailedCsv(text);
-      const rows = text.split('\n').filter(l => l.trim().length > 0).length;
-      setMailedRowCount(rows);
-    }).catch(() => {
-      setMailedImportMessage('Error: could not read file. Try a different file or use the paste fallback.');
-      setMailedFileName(null);
-    });
+    setMailedImportMessage(`[1/6] Reading file: ${file.name} (${(file.size / 1024).toFixed(1)} KB, type: "${file.type || 'unknown'}")…`);
+    file.text()
+      .then(text => {
+        const rows = text.split('\n').filter(l => l.trim().length > 0).length;
+        setMailedCsv(text);
+        setMailedRowCount(rows);
+        const preview = text.slice(0, 200).replace(/\n/g, '↵');
+        setMailedImportMessage(`[2/6] File read OK — ${rows.toLocaleString()} rows. Preview: "${preview}…"`);
+      })
+      .catch(err => {
+        setMailedImportMessage(`[FAIL] File read failed: ${err?.message ?? String(err)}`);
+        setMailedFileName(null);
+      });
   };
 
   const importMailedList = async () => {
     const csvToSend = mailedCsv.trim();
     if (!csvToSend) {
-      setMailedImportMessage(mailedFileName ? 'File is still loading, please wait…' : 'Select a file or paste CSV text first.');
+      setMailedImportMessage(
+        mailedFileName
+          ? '[WAIT] File is still loading — please wait a moment then try again.'
+          : '[FAIL] No file selected and no text pasted. Select a file first.'
+      );
       return;
     }
     setIsImportingMail(true);
-    setMailedImportMessage(null);
+    setMailedImportMessage(`[3/6] Getting auth token…`);
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      const res = await fetch('/api/integrations/workthelead/import-mailed-list', {
+      if (!token) {
+        setMailedImportMessage('[FAIL] Not authenticated — please refresh and log in again.');
+        setIsImportingMail(false);
+        return;
+      }
+
+      const url = `/api/integrations/workthelead/import-mailed-list?jobId=${encodeURIComponent(campaign.id)}`;
+      setMailedImportMessage(`[4/6] Sending ${csvToSend.split('\n').filter(l => l.trim()).length.toLocaleString()} rows to server (${(new Blob([csvToSend]).size / 1024).toFixed(1)} KB as text/plain)…`);
+
+      const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId: campaign.id, csv: csvToSend }),
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          Authorization: `Bearer ${token}`,
+        },
+        body: csvToSend,
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? `Server error ${res.status}`);
-      setMailedImportMessage(`✓ Imported ${json.inserted.toLocaleString()} records (${json.skipped} skipped). Click "Match Responders to List" to enrich responders.`);
+
+      setMailedImportMessage(`[5/6] Server responded HTTP ${res.status}. Reading response…`);
+
+      const rawText = await res.text();
+      const contentType = res.headers.get('content-type') ?? '(none)';
+
+      if (!res.ok) {
+        // Try to parse error message from JSON; fall back to raw text
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const j = JSON.parse(rawText);
+          errMsg += `: ${j.error ?? rawText.slice(0, 300)}`;
+        } catch {
+          errMsg += ` — Response (${contentType}): ${rawText.slice(0, 500)}`;
+        }
+        setMailedImportMessage(`[FAIL] ${errMsg}`);
+        setIsImportingMail(false);
+        return;
+      }
+
+      // Parse success response
+      let json: any;
+      try {
+        json = JSON.parse(rawText);
+      } catch (parseErr) {
+        setMailedImportMessage(
+          `[FAIL] Server returned HTTP ${res.status} but body is not valid JSON.\n` +
+          `Content-Type: ${contentType}\n` +
+          `Raw (first 500 chars): ${rawText.slice(0, 500)}`
+        );
+        setIsImportingMail(false);
+        return;
+      }
+
+      setMailedImportMessage(
+        `[6/6] ✓ Imported ${json.inserted?.toLocaleString() ?? '?'} records ` +
+        `(${json.skipped ?? 0} skipped, ${json.total ?? '?'} total rows). ` +
+        `Click "Match Responders to List" to enrich responders.`
+      );
       setMailedCsv('');
       setMailedFileName(null);
       setMailedRowCount(null);
       setShowMailedImport(false);
     } catch (err: any) {
       const msg = err?.message ?? String(err);
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-        setMailedImportMessage('Network error — check your connection and try again.');
-      } else if (msg.includes('413') || msg.includes('too large') || msg.includes('limit')) {
-        setMailedImportMessage('Error: file too large for server. Contact support.');
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+        setMailedImportMessage(`[FAIL] Network error — the request never reached the server. Check connection. (${msg})`);
       } else {
-        setMailedImportMessage('Error: ' + msg);
+        setMailedImportMessage(`[FAIL] Unexpected error at step unknown: ${msg}`);
       }
     } finally {
       setIsImportingMail(false);
@@ -804,7 +860,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     >Cancel</button>
                                   </div>
                                   {mailedImportMessage && (
-                                    <div className={`text-xs px-2 py-1.5 rounded ${mailedImportMessage.startsWith('✓') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                    <div className={`text-xs px-2 py-1.5 rounded whitespace-pre-wrap break-words font-mono ${mailedImportMessage.startsWith('[FAIL]') ? 'bg-red-50 text-red-700' : mailedImportMessage.startsWith('[6/6]') || mailedImportMessage.includes('✓') ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-600'}`}>
                                       {mailedImportMessage}
                                     </div>
                                   )}
