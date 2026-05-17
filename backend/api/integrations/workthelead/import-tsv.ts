@@ -65,9 +65,12 @@ export default async function handler(req: any, res: any) {
   try { payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { send(res, 400, { error: 'Invalid JSON body' }); return; }
 
-  const { jobId, tsv } = payload ?? {};
+  const { jobId, eventId, tsv } = payload ?? {};
   if (!jobId || typeof tsv !== 'string' || !tsv.trim()) {
     send(res, 400, { error: 'jobId and tsv are required' }); return;
+  }
+  if (!eventId || typeof eventId !== 'string') {
+    send(res, 400, { error: 'eventId is required — select a meeting before importing' }); return;
   }
 
   const rows = parseTsv(tsv);
@@ -98,7 +101,7 @@ export default async function handler(req: any, res: any) {
 
     const record: Record<string, any> = {
       campaign_id: jobId,
-      event_id: null,
+      event_id: eventId,
       first_name: (row['FirstName'] ?? '').trim() || null,
       last_name: (row['LastName'] ?? '').trim() || null,
       phone,
@@ -115,18 +118,18 @@ export default async function handler(req: any, res: any) {
       updated_at: new Date().toISOString(),
     };
 
-    // Duplicate prevention: check by campaign_id+phone first, then campaign_id+email
+    // Duplicate prevention: scoped to campaign_id + event_id, then phone/email
     let existingId: string | null = null;
     if (phone) {
       const { data: byPhone } = await supabaseAdmin
         .from('responders').select('id')
-        .eq('campaign_id', jobId).eq('phone', phone).maybeSingle();
+        .eq('campaign_id', jobId).eq('event_id', eventId).eq('phone', phone).maybeSingle();
       existingId = byPhone?.id ?? null;
     }
     if (!existingId && email) {
       const { data: byEmail } = await supabaseAdmin
         .from('responders').select('id')
-        .eq('campaign_id', jobId).eq('email', email).maybeSingle();
+        .eq('campaign_id', jobId).eq('event_id', eventId).eq('email', email).maybeSingle();
       existingId = byEmail?.id ?? null;
     }
 

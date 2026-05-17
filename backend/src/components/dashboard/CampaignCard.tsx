@@ -56,6 +56,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [showTsvImport, setShowTsvImport] = useState(false);
   const [tsvText, setTsvText] = useState('');
+  const [importEventId, setImportEventId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
@@ -200,8 +201,24 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
+  const formatEventOption = (ev: Event): string => {
+    const parts: string[] = [];
+    if (ev.event_date) {
+      const d = new Date(ev.event_date + 'T00:00:00');
+      parts.push(d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }));
+    }
+    if (ev.event_time) {
+      const [h, m] = ev.event_time.split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      parts.push(`${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`);
+    }
+    if (ev.venue_name) parts.push(`— ${ev.venue_name}`);
+    return parts.join(' ');
+  };
+
   const importTsvLeads = async () => {
     if (!tsvText.trim()) return;
+    if (!importEventId) { setImportMessage('Please select a meeting before importing.'); return; }
     setImportMessage(null);
     setIsImporting(true);
     try {
@@ -211,7 +228,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const resp = await fetch('/api/integrations/workthelead/import-tsv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId: campaign.id, tsv: tsvText }),
+        body: JSON.stringify({ jobId: campaign.id, eventId: importEventId, tsv: tsvText }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
@@ -225,6 +242,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setImportMessage(msg);
       if (data.inserted > 0 || data.updated > 0) {
         setTsvText('');
+        setImportEventId('');
         setShowTsvImport(false);
         reloadResponders();
       }
@@ -525,6 +543,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               <div className="text-xs text-slate-600">
                                 Use this with the downloaded TeleDirect meeting export (.xls). Open the file, copy all rows including headers, paste here, then run import.
                               </div>
+                              {/* Meeting selector — required before import */}
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Select meeting <span className="text-red-500">*</span></label>
+                                <select
+                                  value={importEventId}
+                                  onChange={e => setImportEventId(e.target.value)}
+                                  className="w-full p-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                                >
+                                  <option value="">— select a meeting —</option>
+                                  {events.map(ev => (
+                                    <option key={ev.id} value={ev.id}>{formatEventOption(ev)}</option>
+                                  ))}
+                                </select>
+                              </div>
                               <textarea
                                 value={tsvText}
                                 onChange={e => setTsvText(e.target.value)}
@@ -534,13 +566,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={importTsvLeads}
-                                  disabled={isImporting || !tsvText.trim()}
+                                  disabled={isImporting || !tsvText.trim() || !importEventId}
                                   className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-sm"
                                 >
                                   {isImporting ? 'Importing…' : 'Run Import'}
                                 </button>
                                 <button
-                                  onClick={() => { setShowTsvImport(false); setTsvText(''); setImportMessage(null); }}
+                                  onClick={() => { setShowTsvImport(false); setTsvText(''); setImportEventId(''); setImportMessage(null); }}
                                   className="px-3 py-1 bg-slate-400 hover:bg-slate-500 text-white rounded text-sm"
                                 >Cancel</button>
                               </div>
