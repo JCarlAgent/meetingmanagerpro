@@ -321,77 +321,91 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ ok: true, matched: 0, fuzzyMatched: 0, unmatched: 0, total: 0, errors: [] });
     }
 
+    // ── Step 1: compute all matches synchronously (no IO) ─────────────────────
+    // Separating matching from writing avoids interleaved-await overhead and
+    // makes it possible to batch-write in a single upsert call.
+    type UpdateRow = {
+      id: string;
+      matched_to_mail_list: boolean;
+      match_confidence: string;
+      mail_record_id: string | null;
+      age: string | null;
+      income: string | null;
+      ipa: string | null;
+    };
+
     let matched = 0;
     let fuzzyMatched = 0;
     let unmatched = 0;
-    const errors: string[] = [];
+    const updateRows: UpdateRow[] = [];
     const diagnostics: object[] = [];
 
-    // Names to generate detailed diagnostics for (temporarily — remove after confirming match accuracy)
+    // Names to generate detailed diagnostics for (debug mode only)
     const DIAG_NAMES = new Set(['donald nelson', 'lisa lee', 'michael hart', 'catherine french']);
 
     for (const resp of responders) {
-      try {
-        const { mr, confidence, tier } = findMatch(resp.first_name, resp.last_name, resp.zip, resp.address, idx);
+      const { mr, confidence, tier } = findMatch(resp.first_name, resp.last_name, resp.zip, resp.address, idx);
 
-        // Diagnostic output for specific responders
-        if (debug) {
-          const fullName = `${(resp.first_name ?? '').toLowerCase()} ${(resp.last_name ?? '').toLowerCase()}`.trim();
-          const wantDiag = DIAG_NAMES.has(fullName) || confidence === 'none';
-          if (wantDiag) {
-            const nl = normLast(resp.last_name);
-            const nf = normFirst(resp.first_name);
-            const z  = normZip(resp.zip);
-            // Candidates with same last name on the mail list
-            const lastNameCandidates = (mailRecords as MailRecord[])
-              .filter(m => normLast(m.last_name) === nl)
-              .slice(0, 5)
-              .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
-            const lastZipCandidates = (mailRecords as MailRecord[])
-              .filter(m => normLast(m.last_name) === nl && normZip(m.zip) === z)
-              .slice(0, 5)
-              .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
-            diagnostics.push({
-              responder: { first: resp.first_name, last: resp.last_name, zip: resp.zip, addr: resp.address },
-              normalized: { nf, nl, z, sn: streetNum(resp.address) },
-              keysTriedT1: `${nf}|${nl}|${z}`,
-              keysTriedT2: `${nl}|${streetNum(resp.address)}`,
-              keysTriedT3: `${nf.charAt(0)}|${nl}|${z}`,
-              keysTriedT4: nl.length >= 4 ? `${nf}|${nl}` : '(skipped: last<4)',
-              keysTriedT5: `${nl}|${z}`,
-              confidence,
-              tier,
-              lastNameCandidates,
-              lastZipCandidates,
-            });
-          }
+      // Diagnostic output for specific responders (debug mode)
+      if (debug) {
+        const fullName = `${(resp.first_name ?? '').toLowerCase()} ${(resp.last_name ?? '').toLowerCase()}`.trim();
+        const wantDiag = DIAG_NAMES.has(fullName) || confidence === 'none';
+        if (wantDiag) {
+          const nl = normLast(resp.last_name);
+          const nf = normFirst(resp.first_name);
+          const z  = normZip(resp.zip);
+          const lastNameCandidates = (mailRecords as MailRecord[])
+            .filter(m => normLast(m.last_name) === nl)
+            .slice(0, 5)
+            .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
+          const lastZipCandidates = (mailRecords as MailRecord[])
+            .filter(m => normLast(m.last_name) === nl && normZip(m.zip) === z)
+            .slice(0, 5)
+            .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
+          diagnostics.push({
+            responder: { first: resp.first_name, last: resp.last_name, zip: resp.zip, addr: resp.address },
+            normalized: { nf, nl, z, sn: streetNum(resp.address) },
+            keysTriedT1: `${nf}|${nl}|${z}`,
+            keysTriedT2: `${nl}|${streetNum(resp.address)}`,
+            keysTriedT3: `${nf.charAt(0)}|${nl}|${z}`,
+            keysTriedT4: nl.length >= 4 ? `${nf}|${nl}` : '(skipped: last<4)',
+            keysTriedT5: `${nl}|${z}`,
+            confidence,
+            tier,
+            lastNameCandidates,
+            lastZipCandidates,
+          });
         }
+      }
 
-        const update: Record<string, unknown> = {
-          matched_to_mail_list: mr != null,
-          match_confidence:     confidence,
-          mail_record_id:       mr?.id ?? null,
-          age:                  mr?.age_band ?? null,
-          income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
-          ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
-        };
+      if (confidence === 'exact') matched++;
+      else if (confidence === 'fuzzy') fuzzyMatched++;
+      else unmatched++;
 
-        const { error: updErr } = await supabaseAdmin
-          .from('responders')
-          .update(update)
-          .eq('id', resp.id);
+      updateRows.push({
+        id: resp.id,
+        matched_to_mail_list: mr != null,
+        match_confidence:     confidence,
+        mail_record_id:       mr?.id ?? null,
+        age:                  mr?.age_band ?? null,
+        income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
+        ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
+      });
+    }
 
-        if (updErr) {
-          errors.push(`Responder ${resp.id}: ${updErr.message}`);
-        } else if (confidence === 'exact') {
-          matched++;
-        } else if (confidence === 'fuzzy') {
-          fuzzyMatched++;
-        } else {
-          unmatched++;
-        }
-      } catch (e: any) {
-        errors.push(`Responder ${resp.id}: ${e?.message ?? String(e)}`);
+    // ── Step 2: batch upsert (one API call per 500 rows) ──────────────────────
+    // Upsert on primary key `id` — updates only the 7 enrichment columns;
+    // all other responder fields (email, phone, etc.) are untouched.
+    const BATCH_SIZE = 500;
+    const errors: string[] = [];
+
+    for (let i = 0; i < updateRows.length; i += BATCH_SIZE) {
+      const batch = updateRows.slice(i, i + BATCH_SIZE);
+      const { error: upsertErr } = await supabaseAdmin
+        .from('responders')
+        .upsert(batch, { onConflict: 'id' });
+      if (upsertErr) {
+        errors.push(`Batch[${i}..${i + batch.length - 1}]: ${upsertErr.message}`);
       }
     }
 
@@ -401,6 +415,7 @@ export default async function handler(req: any, res: any) {
       fuzzyMatched,
       unmatched,
       total: responders.length,
+      updatedBatches: Math.ceil(updateRows.length / BATCH_SIZE),
       errors: errors.slice(0, 20),
     };
     if (debug && diagnostics.length) result.diagnostics = diagnostics;
