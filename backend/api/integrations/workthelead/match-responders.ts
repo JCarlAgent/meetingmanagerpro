@@ -17,14 +17,7 @@
  * Returns: { ok, matched, fuzzyMatched, unmatched, total, errors[] }
  */
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
 
 function normName(s: string | null | undefined): string {
   return (s ?? '').toLowerCase().trim().replace(/[^a-z]/g, '');
@@ -39,10 +32,11 @@ function addrKey(s: string | null | undefined): string {
   return (s ?? '').trim().split(/\s+/)[0].toLowerCase();
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const userId = await requireUserIdFromAuthHeader(req);
 
     const { data: adminRow } = await supabaseAdmin

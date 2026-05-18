@@ -21,8 +21,7 @@
  * Returns: { ok, step, inserted, skipped, parsed, total, errors[], sampleRow }
  */
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin';
+import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
 
 // Each chunk is ~200 rows × ~200 bytes ≈ 40 KB raw → ~50 KB JSON-encoded.
 export const config = {
@@ -125,10 +124,19 @@ function mapRow(fields: string[], jobId: string): Record<string, string | null> 
 // 200 rows per Supabase call — keeps each RPC response small and well within timeouts.
 const BATCH_SIZE = 200;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // NOTE: supabaseAdmin is created INSIDE the handler (not at module level) so
-  // any missing env-var error is caught by the try/catch and returned as JSON
-  // rather than crashing the module at cold-start (FUNCTION_INVOCATION_FAILED).
+export default async function handler(req: any, res: any) {
+  // ?health=1 — no auth, no Supabase, confirms the function loads and env vars are present
+  if (req.query?.health === '1') {
+    return res.status(200).json({
+      ok: true,
+      route: 'import-mailed-list',
+      env: {
+        hasSupabaseUrl:    !!process.env.SUPABASE_URL,
+        hasServiceRole:    !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      },
+    });
+  }
+
   let step = 'init';
   try {
     if (req.method !== 'POST') {
