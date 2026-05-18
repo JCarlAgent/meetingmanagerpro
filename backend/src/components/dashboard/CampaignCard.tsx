@@ -1069,24 +1069,24 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                       <thead className="sticky top-0 bg-slate-100">
                                         <tr>
                                           <th className="text-left px-1.5 py-1 border-b border-slate-200">Name</th>
-                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Zip</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Resp.Zip</th>
                                           <th className="text-left px-1.5 py-1 border-b border-slate-200">Confidence</th>
                                           <th className="text-left px-1.5 py-1 border-b border-slate-200">Tier</th>
                                           <th className="text-left px-1.5 py-1 border-b border-slate-200">Matched To</th>
                                           <th className="text-left px-1.5 py-1 border-b border-slate-200">Write</th>
-                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Error</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Fail Reason / Error</th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {matchNameResults.map((r: any) => (
                                           <tr key={r.id} className={r.confidence === 'none' ? 'bg-red-50' : r.confidence === 'exact' ? 'bg-green-50' : 'bg-yellow-50'}>
                                             <td className="px-1.5 py-0.5 border-b border-slate-100">{r.name}</td>
-                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.zip || '—'}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.responderZip || '—'}</td>
                                             <td className="px-1.5 py-0.5 border-b border-slate-100">{r.confidence}</td>
                                             <td className="px-1.5 py-0.5 border-b border-slate-100">{r.tier}</td>
                                             <td className="px-1.5 py-0.5 border-b border-slate-100">{r.matchedPurchasedName ?? '—'} {r.matchedPurchasedZip ? `(${r.matchedPurchasedZip})` : ''}</td>
                                             <td className="px-1.5 py-0.5 border-b border-slate-100">{r.writeOk ? '✓' : '✗'}</td>
-                                            <td className="px-1.5 py-0.5 border-b border-slate-100 text-red-600 max-w-xs truncate">{r.writeError ?? ''}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100 text-red-600 max-w-xs truncate">{r.failReason ?? r.writeError ?? ''}</td>
                                           </tr>
                                         ))}
                                       </tbody>

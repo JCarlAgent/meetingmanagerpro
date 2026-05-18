@@ -10,8 +10,10 @@
  *   T1 Exact:          normFirst + normLast + zip5
  *   T2 Addr-fuzzy:     normLast  + streetNum(address)
  *   T3 Initial+last+zip: firstChar(normFirst) + normLast + zip5
- *   T4 Name-only:      normFirst + normLast — only when unique on mail list, normLast ≥ 4 chars
+ *   T4 Name-only:      normFirst + normLast — only when unique on mail list, normLast ≥ 3 chars
  *   T5 Last+zip-unique: normLast + zip5     — only when exactly one candidate on mail list
+ *   T6 Initial+last-unique: firstChar(normFirst) + normLast — unique on mail list, normLast ≥ 4 chars
+ *      (handles zip mismatch when name initial is sufficient to disambiguate)
  *
  * normFirst strips middle initials (takes first word only), lowercases, alpha-only.
  * normLast lowercases, alpha-only.
@@ -69,6 +71,11 @@ function buildIndices(mailRecords: MailRecord[]) {
   // T5: normLast|zip5 — unique check via count
   const t5 = new Map<string, MailRecord>();
   const t5Count = new Map<string, number>();
+  // T6: firstChar(normFirst)|normLast — unique check via count (zip-free fallback)
+  const t6 = new Map<string, MailRecord>();
+  const t6Count = new Map<string, number>();
+  // lastOnly: normLast → all records (for fail diagnostics)
+  const lastOnly = new Map<string, MailRecord[]>();
 
   for (const mr of mailRecords) {
     const nf = normFirst(mr.first_name);
@@ -96,9 +103,21 @@ function buildIndices(mailRecords: MailRecord[]) {
       if (!t5.has(k5)) t5.set(k5, mr);
       t5Count.set(k5, (t5Count.get(k5) ?? 0) + 1);
     }
+
+    const k6 = `${nf.charAt(0)}|${nl}`;
+    if (nf && nl) {
+      if (!t6.has(k6)) t6.set(k6, mr);
+      t6Count.set(k6, (t6Count.get(k6) ?? 0) + 1);
+    }
+
+    if (nl) {
+      const existing = lastOnly.get(nl) ?? [];
+      existing.push(mr);
+      lastOnly.set(nl, existing);
+    }
   }
 
-  return { t1, t2, t3, t4, t4Count, t5, t5Count };
+  return { t1, t2, t3, t4, t4Count, t5, t5Count, t6, t6Count, lastOnly };
 }
 
 type Indices = ReturnType<typeof buildIndices>;
@@ -109,7 +128,7 @@ function findMatch(
   zip: string | null | undefined,
   address: string | null | undefined,
   idx: Indices,
-): { mr: MailRecord | undefined; confidence: 'exact' | 'fuzzy' | 'none'; tier: string } {
+): { mr: MailRecord | undefined; confidence: 'exact' | 'fuzzy' | 'none'; tier: string; failReason?: string } {
   const nf = normFirst(firstName);
   const nl = normLast(lastName);
   const z  = normZip(zip);
@@ -132,8 +151,8 @@ function findMatch(
   }
 
   // T4 — name-only, unique match (handles missing/wrong zip)
-  // Guard: last name ≥ 4 chars and exactly one candidate with this first+last
-  if (nf && nl.length >= 4) {
+  // Guard: last name ≥ 3 chars and exactly one candidate with this first+last
+  if (nf && nl.length >= 3) {
     const k4 = `${nf}|${nl}`;
     if ((idx.t4Count.get(k4) ?? 0) === 1) {
       mr = idx.t4.get(k4);
@@ -150,7 +169,40 @@ function findMatch(
     }
   }
 
-  return { mr: undefined, confidence: 'none', tier: 'none' };
+  // T6 — initial+last, unique match (handles both zip mismatch AND name abbreviation)
+  // Guard: last name ≥ 4 chars and exactly one candidate with this initial+last combo
+  if (nf && nl.length >= 4) {
+    const k6 = `${nf.charAt(0)}|${nl}`;
+    if ((idx.t6Count.get(k6) ?? 0) === 1) {
+      mr = idx.t6.get(k6);
+      if (mr) return { mr, confidence: 'fuzzy', tier: 'T6:initial+last-unique' };
+    }
+  }
+
+  // Build a concise fail reason for diagnostics
+  const lastCandidates = idx.lastOnly.get(nl) ?? [];
+  const failParts: string[] = [];
+  if (!nl) failParts.push('last_name_empty');
+  else if (lastCandidates.length === 0) failParts.push(`last='${nl}':NOT_IN_LIST`);
+  else {
+    failParts.push(`last='${nl}':${lastCandidates.length}_candidates`);
+    const sample = lastCandidates.slice(0, 3).map(c => `${normFirst(c.first_name)}/${normZip(c.zip)}`).join(',');
+    failParts.push(`sample=[${sample}]`);
+    if (!z) failParts.push('responder_zip_empty:T1/T3/T5_skipped');
+    else failParts.push(`responder_zip=${z}`);
+    const t4k = `${nf}|${nl}`;
+    const t4c = idx.t4Count.get(t4k) ?? 0;
+    if (t4c > 1) failParts.push(`T4_blocked:count=${t4c}`);
+    const t5k = `${nl}|${z}`;
+    const t5c = idx.t5Count.get(t5k) ?? 0;
+    if (z && t5c > 1) failParts.push(`T5_blocked:count=${t5c}`);
+    const t6k = `${nf.charAt(0)}|${nl}`;
+    const t6c = idx.t6Count.get(t6k) ?? 0;
+    if (t6c > 1) failParts.push(`T6_blocked:count=${t6c}`);
+  }
+  const failReason = failParts.join(' | ');
+
+  return { mr: undefined, confidence: 'none', tier: 'none', failReason };
 }
 
 export default async function handler(req: any, res: any) {
@@ -175,24 +227,42 @@ export default async function handler(req: any, res: any) {
     };
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
 
-    // ── debugNames mode: raw data inspection, NO writes ──────────────────────
-    // Returns everything needed to understand why specific names fail to match.
+    // ── debugNames mode: raw data inspection + actual findMatch(), NO writes ──
+    // Fetches ALL purchased records, builds real indices, runs the same findMatch()
+    // that the real match path uses, then compares to key-based prediction.
+    // Any divergence (key-compare says match but findMatch() says none) is flagged.
     if (debugNames) {
       const TARGET_LAST_NAMES = ['nelson', 'lee', 'hart', 'french'];
 
-      // Count of ALL purchased records for this campaign
-      const { count: mailCount } = await supabaseAdmin
+      // Fetch ALL mail records for this campaign — same query as real match path.
+      const { data: allMailRecords, error: allMailErr } = await supabaseAdmin
         .from('campaign_mailed_list_records')
-        .select('id', { count: 'exact', head: true })
+        .select('id, first_name, last_name, address, zip, claritas_ipa, age_band, est_income_code, est_income_range')
         .eq('campaign_id', jobId);
+      if (allMailErr) throw allMailErr;
 
-      // Fetch purchased records for the 4 target last names only
+      const allMailCount = allMailRecords?.length ?? 0;
+
+      // Also fetch display columns for the target names
       const { data: purchasedRows, error: pErr } = await supabaseAdmin
         .from('campaign_mailed_list_records')
         .select('id, first_name, last_name, individual_name, address, city, state, zip, age_band, est_income_code, est_income_range, claritas_ipa')
         .eq('campaign_id', jobId)
         .or(TARGET_LAST_NAMES.map(n => `last_name.ilike.${n}`).join(','));
       if (pErr) throw pErr;
+
+      // Build REAL indices from the full list — identical to real match path
+      const realIdx = allMailCount > 0
+        ? buildIndices(allMailRecords as MailRecord[])
+        : null;
+
+      // T4/T5 uniqueness counts for the target names (from full list)
+      const t4UniqueInfo: Record<string, number> = {};
+      const t5UniqueInfo: Record<string, number> = {};
+      if (realIdx) {
+        for (const [k, v] of realIdx.t4Count) t4UniqueInfo[k] = v;
+        for (const [k, v] of realIdx.t5Count) t5UniqueInfo[k] = v;
+      }
 
       // Fetch responder records for the 4 target last names
       const { data: responderRows, error: rErr } = await supabaseAdmin
@@ -202,7 +272,7 @@ export default async function handler(req: any, res: any) {
         .or(TARGET_LAST_NAMES.map(n => `last_name.ilike.${n}`).join(','));
       if (rErr) throw rErr;
 
-      // Build per-last-name comparison
+      // Build per-last-name report
       const report = TARGET_LAST_NAMES.map(targetNL => {
         const purchased = (purchasedRows ?? []).filter(p => normLast(p.last_name) === targetNL);
         const responders = (responderRows ?? []).filter(r => normLast(r.last_name) === targetNL);
@@ -223,6 +293,8 @@ export default async function handler(req: any, res: any) {
           const nl = normLast(r.last_name);
           const z  = normZip(r.zip);
           const sn = streetNum(r.address);
+
+          // ── Key-based prediction (what the old debug showed) ───────────────
           const keysGenerated = {
             T1: `${nf}|${nl}|${z}`,
             T2: nl && sn ? `${nl}|${sn}` : '(skipped: no streetnum)',
@@ -230,24 +302,60 @@ export default async function handler(req: any, res: any) {
             T4: nl.length >= 4 ? `${nf}|${nl}` : '(skipped: last<4chars)',
             T5: nl && z ? `${nl}|${z}` : '(skipped: no zip)',
           };
-          // Check which purchased records would match at each tier
-          const tierMatches = purchasedKeyed.map(pk => {
+          const t4Key = `${nf}|${nl}`;
+          const t5Key = `${nl}|${z}`;
+          const keyPrediction = purchasedKeyed.map(pk => {
             const matchAt: string[] = [];
             if (pk.keys.T1 === keysGenerated.T1) matchAt.push('T1');
             if (!keysGenerated.T2.startsWith('(') && pk.keys.T2 === keysGenerated.T2) matchAt.push('T2');
             if (!keysGenerated.T3.startsWith('(') && pk.keys.T3 === keysGenerated.T3) matchAt.push('T3');
-            if (!keysGenerated.T4.startsWith('(') && pk.keys.T4 === keysGenerated.T4) matchAt.push('T4_candidate');
-            if (!keysGenerated.T5.startsWith('(') && pk.keys.T5 === keysGenerated.T5) matchAt.push('T5_candidate');
+            // T4/T5: flag as candidate only — uniqueness against FULL list not checked here
+            if (!keysGenerated.T4.startsWith('(') && pk.keys.T4 === keysGenerated.T4)
+              matchAt.push(`T4_candidate(fullListCount=${t4UniqueInfo[t4Key] ?? 0})`);
+            if (!keysGenerated.T5.startsWith('(') && pk.keys.T5 === keysGenerated.T5)
+              matchAt.push(`T5_candidate(fullListCount=${t5UniqueInfo[t5Key] ?? 0})`);
             return { purchasedFirst: pk.raw.first, purchasedZip: pk.raw.zip, matchAt };
           });
+          const keyDiagnosis = keyPrediction.some(t => t.matchAt.length > 0)
+            ? `KEY-COMPARE would match: ${keyPrediction.filter(t => t.matchAt.length > 0).map(t => `${t.purchasedFirst} at ${t.matchAt.join('/')}`).join(', ')}`
+            : `KEY-COMPARE: no match — zip=${z||'(blank)'}, first=${nf||'(blank)'}, purchased=${purchased.length}`;
+
+          // ── Actual findMatch() result using REAL full-list indices ─────────
+          const actualResult = realIdx
+            ? findMatch(r.first_name, r.last_name, r.zip, r.address, realIdx)
+            : { mr: undefined as MailRecord | undefined, confidence: 'none' as const, tier: 'no-index' };
+
+          const actualDiagnosis = actualResult.mr
+            ? `REAL findMatch(): ${actualResult.tier} → ${actualResult.mr.first_name} ${actualResult.mr.last_name} zip=${actualResult.mr.zip}`
+            : `REAL findMatch(): NO MATCH (confidence=none)`;
+
+          // ── Divergence flag ───────────────────────────────────────────────
+          const keyWouldMatch = keyPrediction.some(t =>
+            t.matchAt.some(m => m.startsWith('T1') || m.startsWith('T2') || m.startsWith('T3'))
+          );
+          const realMatches = actualResult.mr !== undefined;
+          const diverged = keyWouldMatch !== realMatches;
+
           return {
             raw: { id: r.id, first: r.first_name, last: r.last_name, zip: r.zip, addr: r.address },
-            currentState: { matched_to_mail_list: r.matched_to_mail_list, match_confidence: r.match_confidence, age: r.age, income: r.income, ipa: r.ipa },
+            currentDbState: { matched_to_mail_list: r.matched_to_mail_list, match_confidence: r.match_confidence, age: r.age, income: r.income, ipa: r.ipa },
             keysGenerated,
-            tierMatches,
-            diagnosis: tierMatches.some(t => t.matchAt.length > 0)
-              ? `Would match: ${tierMatches.filter(t => t.matchAt.length > 0).map(t => `${t.purchasedFirst} at ${t.matchAt.join('/')}`).join(', ')}`
-              : `NO MATCH — zip=${z||'(blank)'}, first=${nf||'(blank)'}, purchasedCandidates=${purchased.length}`,
+            keyPrediction,
+            keyDiagnosis,
+            actualFindMatch: {
+              tier: actualResult.tier,
+              confidence: actualResult.confidence,
+              matchedRecord: actualResult.mr
+                ? { first: actualResult.mr.first_name, last: actualResult.mr.last_name, zip: actualResult.mr.zip, addr: actualResult.mr.address }
+                : null,
+            },
+            actualDiagnosis,
+            DIVERGED: diverged,
+            divergenceExplanation: diverged
+              ? (keyWouldMatch
+                  ? `KEY-COMPARE predicted match but findMatch() returns none. Likely cause: T4/T5 uniqueness guard fired (full-list count for T4 key "${t4Key}" = ${t4UniqueInfo[t4Key] ?? 0}, T5 key "${t5Key}" = ${t5UniqueInfo[t5Key] ?? 0}). T1/T2/T3 keys did not hit the index — check normalized key values above.`
+                  : `findMatch() found a match but KEY-COMPARE predicted none. Check key comparison logic.`)
+              : 'no divergence',
           };
         });
 
@@ -260,10 +368,16 @@ export default async function handler(req: any, res: any) {
         };
       });
 
+      const anyDiverged = report.some(r => r.responders.some((a: any) => a.DIVERGED));
+
       return res.status(200).json({
         ok: true,
         campaignId: jobId,
-        mailListTotalForCampaign: mailCount ?? 0,
+        mailListTotalForCampaign: allMailCount,
+        DIVERGENCE_DETECTED: anyDiverged,
+        note: anyDiverged
+          ? 'DIVERGENCE: key-compare prediction and real findMatch() disagree for ≥1 responder. See DIVERGED + divergenceExplanation fields.'
+          : 'No divergence — key-compare and findMatch() agree for all target responders.',
         report,
       });
     }
@@ -335,10 +449,14 @@ export default async function handler(req: any, res: any) {
     type NameResult = {
       id: string;
       name: string;
+      responderFirst: string | null;
+      responderLast: string | null;
+      responderZip: string | null;
       tier: string;
       confidence: string;
       matchedPurchasedName: string | null;
       matchedPurchasedZip: string | null;
+      failReason: string | null;
       writeOk: boolean;
       writeError: string | null;
     };
@@ -354,7 +472,7 @@ export default async function handler(req: any, res: any) {
     const DIAG_NAMES = new Set(['donald nelson', 'lisa lee', 'michael hart', 'catherine french']);
 
     for (const resp of responders) {
-      const { mr, confidence, tier } = findMatch(resp.first_name, resp.last_name, resp.zip, resp.address, idx);
+      const { mr, confidence, tier, failReason } = findMatch(resp.first_name, resp.last_name, resp.zip, resp.address, idx);
 
       // Diagnostic output for specific responders (debug mode)
       if (debug) {
@@ -405,10 +523,14 @@ export default async function handler(req: any, res: any) {
       nameResults.push({
         id:                    resp.id,
         name:                  `${resp.first_name ?? ''} ${resp.last_name ?? ''}`.trim(),
+        responderFirst:        resp.first_name ?? null,
+        responderLast:         resp.last_name  ?? null,
+        responderZip:          resp.zip        ?? null,
         tier,
         confidence,
         matchedPurchasedName:  mr ? `${mr.first_name ?? ''} ${mr.last_name ?? ''}`.trim() : null,
         matchedPurchasedZip:   mr?.zip ?? null,
+        failReason:            confidence === 'none' ? (failReason ?? null) : null,
         writeOk:               false, // will be updated after writes
         writeError:            null,
       });
@@ -455,6 +577,12 @@ export default async function handler(req: any, res: any) {
 
     const writeFailCount = nameResults.filter(r => !r.writeOk).length;
 
+    // ── Target-name spotlight: French, Lee, Hart, Nelson in the real result ──
+    const SPOTLIGHT_LAST = new Set(['french', 'lee', 'hart', 'nelson']);
+    const spotlight = nameResults.filter(r =>
+      SPOTLIGHT_LAST.has(normLast(r.name.split(' ').slice(-1)[0] ?? ''))
+    );
+
     const result: Record<string, unknown> = {
       ok: true,
       matched,
@@ -464,6 +592,7 @@ export default async function handler(req: any, res: any) {
       writeFailCount,
       errors: errors.slice(0, 20),
       nameResults,
+      spotlight,
     };
     if (debug && diagnostics.length) result.diagnostics = diagnostics;
 
