@@ -59,6 +59,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [importEventId, setImportEventId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [bulkAssignEventId, setBulkAssignEventId] = useState<string>('');
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [bulkAssignMessage, setBulkAssignMessage] = useState<string | null>(null);
@@ -231,7 +232,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const importTsvLeads = async () => {
     if (!tsvText.trim()) return;
     if (!importEventId) { setImportMessage('Please select a meeting before importing.'); return; }
-    setImportMessage(null);
+    if (replaceExisting && !window.confirm(
+      'REPLACE MODE: This will DELETE all existing responders for this meeting before importing.\n\nManually set attendance flags and advisor notes will be lost.\n\nContinue?'
+    )) return;
+    setImportMessage('Importing…');
     setIsImporting(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -240,26 +244,43 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const resp = await fetch('/api/integrations/workthelead/import-tsv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId: campaign.id, eventId: importEventId, tsv: tsvText }),
+        body: JSON.stringify({
+          jobId: campaign.id,
+          eventId: importEventId,
+          tsv: tsvText,
+          replaceExisting,
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        setImportMessage(`Error: ${data?.error || resp.status}`);
+        setImportMessage(`[FAIL] ${data?.error || resp.status}`);
         return;
       }
-      const msg = [
-        `Import complete — inserted: ${data.inserted}, updated: ${data.updated}, skipped: ${data.skipped} (of ${data.total} attendee rows, ${data.rowsParsed} total rows parsed)`,
-        ...(data.errors?.length ? [`Errors: ${data.errors.join('; ')}`] : []),
-      ].join('\n');
-      setImportMessage(msg);
+      // Build rich diagnostics message
+      const lines = [
+        `✓ Import complete${data.replaceMode ? ' (REPLACE mode)' : ''}`,
+        `  Rows in paste:   ${data.rowsParsed ?? '?'} total  (${data.aRows ?? '?'} attendee A-rows, ${data.gRows ?? '?'} guest G-rows${data.unknownRows ? `, ${data.unknownRows} unknown` : ''})`,
+        `  Attendees found: ${data.total ?? '?'}`,
+        `  Inserted:        ${data.inserted ?? 0}`,
+        `  Updated:         ${data.updated ?? 0}`,
+        `  Skipped:         ${data.skipped ?? 0}`,
+        ...(data.skippedReasons?.length ? [`  Skip reasons:    ${data.skippedReasons.join(' | ')}`] : []),
+        ...(data.errors?.length ? [`  Errors:          ${data.errors.join(' | ')}`] : []),
+      ];
+      setImportMessage(lines.join('\n'));
       if (data.inserted > 0 || data.updated > 0) {
-        setTsvText('');
-        setImportEventId('');
-        setShowTsvImport(false);
         reloadResponders();
+        // Only auto-close if no skips/errors to review
+        if (!data.skipped && !data.errors?.length) {
+          setTsvText('');
+          setImportEventId('');
+          setShowTsvImport(false);
+          setReplaceExisting(false);
+        }
       }
-    } catch (err: any) {
-      setImportMessage(err?.message || 'Import error');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setImportMessage(`[FAIL] ${msg}`);
     } finally {
       setIsImporting(false);
     }
@@ -798,21 +819,55 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 className="w-full h-40 p-2 text-xs font-mono border border-slate-300 rounded resize-y focus:outline-none focus:ring-1 focus:ring-emerald-400"
                                 placeholder={`TimeStamp\tAttendee/Guest\tFirstName\tLastName\tPhoneNumber\tEmail...`}
                               />
+                              {tsvText.trim() && (
+                                <div className="text-xs text-slate-500">
+                                  {tsvText.split('\n').filter(l => l.trim()).length.toLocaleString()} lines pasted
+                                </div>
+                              )}
+                              {/* Replace mode checkbox */}
+                              <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={replaceExisting}
+                                  onChange={e => setReplaceExisting(e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded border-slate-300 text-red-600 focus:ring-red-400"
+                                />
+                                <span className="text-xs text-slate-700">
+                                  <span className={replaceExisting ? 'font-semibold text-red-600' : ''}>
+                                    Replace existing reservation data
+                                  </span>
+                                  <span className="text-slate-400 ml-1">
+                                    {replaceExisting
+                                      ? '— DELETES all current responders for this meeting first'
+                                      : '— (default) inserts new, updates existing, preserves manual edits'}
+                                  </span>
+                                </span>
+                              </label>
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={importTsvLeads}
                                   disabled={isImporting || !tsvText.trim() || !importEventId}
-                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-sm"
+                                  className={`px-3 py-1 disabled:opacity-50 text-white rounded text-sm ${
+                                    replaceExisting
+                                      ? 'bg-red-600 hover:bg-red-700'
+                                      : 'bg-emerald-600 hover:bg-emerald-700'
+                                  }`}
                                 >
-                                  {isImporting ? 'Importing…' : 'Run Import'}
+                                  {isImporting ? 'Importing…' : replaceExisting ? 'Replace & Import' : 'Run Import'}
                                 </button>
                                 <button
-                                  onClick={() => { setShowTsvImport(false); setTsvText(''); setImportEventId(''); setImportMessage(null); }}
+                                  onClick={() => { setShowTsvImport(false); setTsvText(''); setImportEventId(''); setImportMessage(null); setReplaceExisting(false); }}
                                   className="px-3 py-1 bg-slate-400 hover:bg-slate-500 text-white rounded text-sm"
                                 >Cancel</button>
                               </div>
                               {importMessage && (
-                                <div className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 whitespace-pre-wrap">{importMessage}</div>
+                                <div className={`p-2 border rounded text-xs font-mono whitespace-pre-wrap ${
+                                  importMessage.startsWith('[FAIL]')
+                                    ? 'bg-red-50 border-red-200 text-red-700'
+                                    : importMessage.startsWith('✓')
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : 'bg-slate-50 border-slate-200 text-slate-700'
+                                }`}>{importMessage}</div>
                               )}
                             </div>
                           )}

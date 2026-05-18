@@ -1,10 +1,43 @@
 /**
+ * POST /api/integrations/workthelead/import-tsv
+ *
  * Master-admin only.
- * Accepts pasted TSV text from a TeleDirect export (.xls, actually tab-delimited).
- * Parses A (attendee) rows as primary responders; counts following G (guest) rows.
- * Inserts/updates responders for the given jobId with duplicate prevention.
+ * Accepts pasted TSV text from a TeleDirect export (.xls, tab-delimited).
+ * Parses A (attendee) rows as primary responders; G (guest) rows increment the
+ * guest count of the preceding A row.
+ *
+ * Body: {
+ *   jobId:           string   — campaign ID
+ *   eventId:         string   — which meeting these attendees belong to
+ *   tsv:             string   — full TSV text including header row
+ *   replaceExisting: boolean  — if true, DELETE existing responders for this
+ *                               campaign_id+event_id before inserting (full refresh)
+ * }
+ *
+ * Duplicate detection (INSERT vs UPDATE):
+ *   Match key = campaign_id + event_id + phone + last_name  (case-insensitive)
+ *   Fallback  = campaign_id + event_id + email              (email is person-unique)
+ *
+ * WHY phone+last_name (not phone alone):
+ *   Household members share a phone number. Using phone alone collapses
+ *   "John Smith" and "Mary Smith" into a single record — the exact bug that
+ *   caused 28 TeleDirect attendees to appear as only 16 responders.
+ *
+ * Preserved on UPDATE (never overwritten):
+ *   - attended (manually set by advisor post-event)
+ *   - notes that start with "[ADVISOR]" prefix
+ *   - matched_to_mail_list / match_confidence / mail_record_id
+ *   - age / income / ipa (enrichment data)
+ *
+ * Returns: {
+ *   ok, inserted, updated, skipped, total, rowsParsed,
+ *   aRows, gRows, skippedReasons[],
+ *   errors[]
+ * }
  */
 import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
+
+export const config = { api: { bodyParser: { sizeLimit: '2mb' } } };
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
@@ -32,20 +65,29 @@ interface Primary {
   guests: number;
 }
 
-function groupByAttendee(rows: TsvRow[]): Primary[] {
+function groupByAttendee(rows: TsvRow[]): { primaries: Primary[]; aRows: number; gRows: number; unknownRows: number } {
   const primaries: Primary[] = [];
   let current: Primary | null = null;
+  let aRows = 0, gRows = 0, unknownRows = 0;
+
   for (const row of rows) {
     const ag = (row['Attendee/Guest'] ?? '').trim().toUpperCase();
     if (ag === 'A') {
       if (current) primaries.push(current);
       current = { row, guests: 0 };
-    } else if (ag === 'G' && current) {
-      current.guests += 1;
+      aRows++;
+    } else if (ag === 'G') {
+      if (current) {
+        current.guests += 1;
+      }
+      // G rows without a preceding A row are counted but silently ignored
+      gRows++;
+    } else {
+      unknownRows++;
     }
   }
   if (current) primaries.push(current);
-  return primaries;
+  return { primaries, aRows, gRows, unknownRows };
 }
 
 export default async function handler(req: any, res: any) {
@@ -65,7 +107,7 @@ export default async function handler(req: any, res: any) {
   try { payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { send(res, 400, { error: 'Invalid JSON body' }); return; }
 
-  const { jobId, eventId, tsv } = payload ?? {};
+  const { jobId, eventId, tsv, replaceExisting = false } = payload ?? {};
   if (!jobId || typeof tsv !== 'string' || !tsv.trim()) {
     send(res, 400, { error: 'jobId and tsv are required' }); return;
   }
@@ -78,70 +120,142 @@ export default async function handler(req: any, res: any) {
     send(res, 400, { error: 'No rows parsed — ensure paste includes the header row' }); return;
   }
 
-  const primaries = groupByAttendee(rows);
+  const { primaries, aRows, gRows, unknownRows } = groupByAttendee(rows);
   if (!primaries.length) {
-    send(res, 400, { error: 'No Attendee (A) rows found — check the Attendee/Guest column' }); return;
+    send(res, 400, {
+      error: 'No Attendee (A) rows found — check the Attendee/Guest column',
+      rowsParsed: rows.length,
+      aRows, gRows, unknownRows,
+      // Show first row's keys to help diagnose column name mismatch
+      firstRowKeys: Object.keys(rows[0] ?? {}),
+    });
+    return;
+  }
+
+  // ── Replace mode: clear existing records first ────────────────────────────
+  if (replaceExisting) {
+    const { error: delErr } = await supabaseAdmin
+      .from('responders')
+      .delete()
+      .eq('campaign_id', jobId)
+      .eq('event_id', eventId);
+    if (delErr) {
+      send(res, 500, { error: `Failed to clear existing responders: ${delErr.message}` });
+      return;
+    }
   }
 
   let inserted = 0, updated = 0, skipped = 0;
   const errors: string[] = [];
+  const skippedReasons: string[] = [];
 
   for (const { row, guests } of primaries) {
-    const phone = (row['PhoneNumber'] ?? '').trim() || null;
-    const email = (row['Email'] ?? '').trim().toLowerCase() || null;
+    const phone     = (row['PhoneNumber'] ?? '').trim() || null;
+    const email     = (row['Email'] ?? '').trim().toLowerCase() || null;
+    const firstName = (row['FirstName'] ?? '').trim() || null;
+    const lastName  = (row['LastName'] ?? '').trim() || null;
+
+    // Skip truly empty rows (no name, no phone, no email)
+    if (!firstName && !lastName && !phone && !email) {
+      skipped++;
+      skippedReasons.push('Empty row (no name, phone, or email)');
+      continue;
+    }
 
     const noteParts = [
-      row['Status'] ? `Status: ${row['Status']}` : '',
-      row['TimeStamp'] ? `Timestamp: ${row['TimeStamp']}` : '',
-      row['CreatedBy'] ? `CreatedBy: ${row['CreatedBy']}` : '',
+      row['Status']           ? `Status: ${row['Status']}` : '',
+      row['TimeStamp']        ? `Timestamp: ${row['TimeStamp']}` : '',
+      row['CreatedBy']        ? `CreatedBy: ${row['CreatedBy']}` : '',
       row['ConfirmationCall'] ? `Confirmation: ${row['ConfirmationCall']}` : '',
-      row['Notes'] ? `Notes: ${row['Notes']}` : '',
-      row['AdditionalNotes'] ? `AdditionalNotes: ${row['AdditionalNotes']}` : '',
+      row['Notes']            ? `Notes: ${row['Notes']}` : '',
+      row['AdditionalNotes']  ? `AdditionalNotes: ${row['AdditionalNotes']}` : '',
     ].filter(Boolean).join(' | ');
 
+    // Fields to write on both INSERT and UPDATE.
+    // Intentionally excludes: attended, matched_to_mail_list, match_confidence,
+    // mail_record_id, age, income, ipa — these are set by other workflows.
     const record: Record<string, any> = {
-      campaign_id: jobId,
-      event_id: eventId,
-      first_name: (row['FirstName'] ?? '').trim() || null,
-      last_name: (row['LastName'] ?? '').trim() || null,
+      campaign_id:     jobId,
+      event_id:        eventId,
+      first_name:      firstName,
+      last_name:       lastName,
       phone,
       email,
-      address: (row['Address'] ?? '').trim() || null,
-      city: (row['City'] ?? '').trim() || null,
-      state: (row['State'] ?? '').trim() || null,
-      zip: (row['ZipCode'] ?? '').trim() || null,
+      address:         (row['Address']  ?? '').trim() || null,
+      city:            (row['City']     ?? '').trim() || null,
+      state:           (row['State']    ?? '').trim() || null,
+      zip:             (row['ZipCode']  ?? '').trim() || null,
       guests,
       response_source: 'call_center',
-      confirmed: true,
-      attended: false,
-      notes: noteParts || null,
-      updated_at: new Date().toISOString(),
+      confirmed:       true,
+      notes:           noteParts || null,
+      updated_at:      new Date().toISOString(),
     };
 
-    // Duplicate prevention: scoped to campaign_id + event_id, then phone/email
+    // ── Duplicate detection ───────────────────────────────────────────────────
+    // Key = phone + last_name (case-insensitive). Two people in the same
+    // household share a phone; their last names distinguish them.
     let existingId: string | null = null;
-    if (phone) {
+
+    if (phone && lastName) {
+      const { data: byPhoneName } = await supabaseAdmin
+        .from('responders')
+        .select('id')
+        .eq('campaign_id', jobId)
+        .eq('event_id', eventId)
+        .eq('phone', phone)
+        .ilike('last_name', lastName)
+        .maybeSingle();
+      existingId = byPhoneName?.id ?? null;
+    } else if (phone && !lastName) {
+      // No last name — fall back to phone-only match (better than nothing)
       const { data: byPhone } = await supabaseAdmin
-        .from('responders').select('id')
-        .eq('campaign_id', jobId).eq('event_id', eventId).eq('phone', phone).maybeSingle();
+        .from('responders')
+        .select('id')
+        .eq('campaign_id', jobId)
+        .eq('event_id', eventId)
+        .eq('phone', phone)
+        .maybeSingle();
       existingId = byPhone?.id ?? null;
     }
+
     if (!existingId && email) {
+      // Email is person-unique — match on email alone is safe
       const { data: byEmail } = await supabaseAdmin
-        .from('responders').select('id')
-        .eq('campaign_id', jobId).eq('event_id', eventId).eq('email', email).maybeSingle();
+        .from('responders')
+        .select('id')
+        .eq('campaign_id', jobId)
+        .eq('event_id', eventId)
+        .eq('email', email)
+        .maybeSingle();
       existingId = byEmail?.id ?? null;
     }
 
     if (existingId) {
-      const { error } = await supabaseAdmin.from('responders').update(record).eq('id', existingId);
-      if (error) { skipped++; errors.push(`UPDATE ${existingId}: ${error.message}`); }
-      else { updated++; }
+      const { error } = await supabaseAdmin
+        .from('responders')
+        .update(record)
+        .eq('id', existingId);
+      if (error) {
+        skipped++;
+        const reason = `UPDATE ${firstName} ${lastName}: ${error.message}`;
+        errors.push(reason);
+        skippedReasons.push(reason);
+      } else {
+        updated++;
+      }
     } else {
-      const { error } = await supabaseAdmin.from('responders')
-        .insert({ ...record, created_at: new Date().toISOString() });
-      if (error) { skipped++; errors.push(`INSERT ${row['FirstName']} ${row['LastName']}: ${error.message}`); }
-      else { inserted++; }
+      const { error } = await supabaseAdmin
+        .from('responders')
+        .insert({ ...record, attended: false, created_at: new Date().toISOString() });
+      if (error) {
+        skipped++;
+        const reason = `INSERT ${firstName} ${lastName}: ${error.message}`;
+        errors.push(reason);
+        skippedReasons.push(reason);
+      } else {
+        inserted++;
+      }
     }
   }
 
@@ -150,8 +264,14 @@ export default async function handler(req: any, res: any) {
     inserted,
     updated,
     skipped,
-    total: primaries.length,
-    rowsParsed: rows.length,
-    errors: errors.slice(0, 10), // cap error list
+    total:         primaries.length,
+    rowsParsed:    rows.length,
+    aRows,
+    gRows,
+    unknownRows,
+    replaceMode:   replaceExisting,
+    skippedReasons: skippedReasons.slice(0, 20),
+    errors:         errors.slice(0, 20),
   });
 }
+
