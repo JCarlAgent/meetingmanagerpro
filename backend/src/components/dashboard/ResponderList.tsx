@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Responder, Event } from '@/types';
+import { decodeIPA, decodeIncome } from '@/lib/acxiomDecoders';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -423,8 +424,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
                       <td colSpan={colCount} className="px-6 pb-2 pt-0">
                         <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-xs text-slate-500">
                           {responder.age && <span>Age: <span className="font-medium text-slate-700">{responder.age}</span></span>}
-                          {responder.income && <span>Income: <span className="font-medium text-slate-700">{responder.income}</span></span>}
-                          {responder.ipa && <span>IPA: <span className="font-medium text-slate-700">{responder.ipa}</span></span>}
+                          {responder.income && <span>Income: <span className="font-medium text-slate-700">{decodeIncome(responder.income)}</span></span>}
+                          {responder.ipa && <span>IPA: <span className="font-medium text-slate-700">{decodeIPA(responder.ipa)}</span></span>}
                           {responder.matched_to_mail_list === true && (
                             <span className="text-green-600 font-medium">
                               &#x2713; On purchased list

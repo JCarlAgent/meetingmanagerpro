@@ -18,6 +18,7 @@
  */
 
 import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
+import { decodeIPA, decodeIncome } from '../../_lib/acxiomDecoders.js';
 
 function normName(s: string | null | undefined): string {
   return (s ?? '').toLowerCase().trim().replace(/[^a-z]/g, '');
@@ -90,8 +91,8 @@ export default async function handler(req: any, res: any) {
         match_confidence:     confidence,
         mail_record_id:       mr?.id ?? null,
         age:                  mr?.age_band ?? null,
-        income:               mr?.est_income_range ?? mr?.est_income_code ?? null,
-        ipa:                  mr?.claritas_ipa ?? null,
+        income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
+        ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
       };
       const { error: updErr } = await supabaseAdmin.from('responders').update(update).eq('id', responderId);
       if (updErr) return res.status(500).json({ ok: false, error: updErr.message });
@@ -138,8 +139,8 @@ export default async function handler(req: any, res: any) {
           match_confidence:     confidence,
           mail_record_id:       mr?.id ?? null,
           age:                  mr?.age_band ?? null,
-          income:               mr?.est_income_range ?? mr?.est_income_code ?? null,
-          ipa:                  mr?.claritas_ipa ?? null,
+          income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
+          ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
         };
 
         const { error: updErr } = await supabaseAdmin
