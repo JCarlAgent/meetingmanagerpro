@@ -43,6 +43,7 @@ const Dashboard: React.FC = () => {
 
   const prevActingOrgIdRef = useRef<string | null>(actingOrgId);
   const campaignsTableExistsRef = useRef<boolean | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => { fetchData(); }, [user]);
 
@@ -102,17 +103,27 @@ const Dashboard: React.FC = () => {
       // Determine org scope (same pattern used elsewhere)
       const orgId = user?.is_master_admin ? (actingOrgId ?? null) : (user?.org_id ?? null);
 
+      console.log('[DIAG] fetchData start', { userId: user?.id, orgId, isMaster: user?.is_master_admin, orgRole: (user as any)?.org_role, actingOrgId });
+
       // Try to fetch canonical jobs + job_meetings for this org. If found, prefer them for display.
       let jobsData: any[] | null = null;
       let jobMeetings: any[] = [];
+      let jobMeetingsError: any = null;
       if (orgId) {
-        const { data: jobs } = await supabase.from('jobs').select('*').eq('org_id', orgId).order('created_at', { ascending: false });
-        jobsData = jobs || null;
+        const jobsRes = await supabase.from('jobs').select('*').eq('org_id', orgId).order('created_at', { ascending: false });
+        jobsData = jobsRes.data || null;
+        console.log('[DIAG] jobs query', { orgId, count: jobsData?.length ?? 0, error: jobsRes.error, rows: (jobsData || []).map((j: any) => ({ id: j.id, job_number: j.job_number, org_id: j.org_id, status: j.status, created_by_user_id: j.created_by_user_id })) });
         if (jobsData && jobsData.length > 0) {
           const jobIds = jobsData.map((j: any) => j.id);
-          const { data: jm } = await supabase.from('job_meetings').select('*').in('job_id', jobIds).order('starts_at', { ascending: true });
-          jobMeetings = jm || [];
+          const jmRes = await supabase.from('job_meetings').select('*').in('job_id', jobIds).order('starts_at', { ascending: true });
+          jobMeetings = jmRes.data || [];
+          jobMeetingsError = jmRes.error ?? null;
+          console.log('[DIAG] job_meetings query', { jobIds, count: jobMeetings.length, error: jmRes.error, rows: jobMeetings.map((m: any) => ({ id: m.id, job_id: m.job_id, location_name: m.location_name, address1: m.address1, city: m.city, state: m.state, starts_at: m.starts_at, keys: Object.keys(m) })) });
+        } else {
+          console.log('[DIAG] jobs query returned 0 rows — skipping job_meetings query');
         }
+      } else {
+        console.log('[DIAG] orgId is null — skipping jobs + job_meetings queries', { user: user?.id, org_id: (user as any)?.org_id, is_master: user?.is_master_admin });
       }
 
       // Fetch org name and primary contact name for advisor display on job cards
@@ -272,16 +283,44 @@ const Dashboard: React.FC = () => {
           };
         });
 
+        console.log('[DIAG] jobMeetEvents mapped', { count: jobMeetEvents.length, events: jobMeetEvents.map((ev: any) => ({ id: ev.id, campaign_id: ev.campaign_id, venue_name: ev.venue_name, event_date: ev.event_date, event_time: ev.event_time })) });
         setCampaigns(jobsAsCampaigns as unknown as Campaign[]);
         setEvents(jobMeetEvents as unknown as Event[]);
+
+        setDebugInfo({
+          userId: user?.id,
+          orgId,
+          orgRole: (user as any)?.org_role,
+          isMaster: user?.is_master_admin,
+          jobsCount: jobsAsCampaigns.length,
+          jobs: jobsAsCampaigns.map((j: any) => ({ id: j.id, project_id: j.project_id })),
+          jobMeetingsCount: jobMeetings.length,
+          jobMeetingsError: jobMeetingsError ? { code: jobMeetingsError.code, message: jobMeetingsError.message, details: jobMeetingsError.details } : null,
+          jobMeetingsRaw: jobMeetings.map((m: any) => ({ id: m.id, job_id: m.job_id, location_name: m.location_name, address1: m.address1, city: m.city, state: m.state, starts_at: m.starts_at })),
+          eventsCount: jobMeetEvents.length,
+          events: jobMeetEvents.map((ev: any) => ({ id: ev.id, campaign_id: ev.campaign_id, venue_name: ev.venue_name, event_date: ev.event_date })),
+        });
       } else {
+        console.log('[DIAG] No jobs found — falling back to legacy campaigns/events');
         // Fallback to legacy campaigns/events
         setCampaigns(c || []);
         setEvents(e || []);
+        setDebugInfo({
+          userId: user?.id,
+          orgId,
+          orgRole: (user as any)?.org_role,
+          isMaster: user?.is_master_admin,
+          jobsCount: 0,
+          jobMeetingsCount: 0,
+          jobMeetingsError: null,
+          note: 'No jobs returned — orgId may be null or RLS blocking jobs query',
+        });
       }
 
       // Responders unchanged
-      const { data: r } = await supabase.from('responders').select('*').order('created_at', { ascending: false });
+      const rRes = await supabase.from('responders').select('*').order('created_at', { ascending: false });
+      const r = rRes.data;
+      console.log('[DIAG] responders query', { count: r?.length ?? 0, error: rRes.error, sample: (r || []).slice(0, 5).map((x: any) => ({ id: x.id, first_name: x.first_name, last_name: x.last_name, campaign_id: x.campaign_id, event_id: x.event_id })) });
       setResponders(r || []);
     } catch (error) { console.error('Error:', error); }
     finally { setIsLoading(false); }
@@ -566,6 +605,27 @@ const Dashboard: React.FC = () => {
 
   const renderDashboard = () => (
     <>
+      {/* ── TEMPORARY DIAGNOSTIC BLOCK — remove after meetings confirmed working ── */}
+      {debugInfo && (
+        <details className="mb-4 rounded border border-amber-300 bg-amber-50 text-[10px] font-mono" open>
+          <summary className="px-3 py-1.5 cursor-pointer font-semibold text-amber-800 select-none">🔍 DIAG: meeting/event load trace (click to collapse)</summary>
+          <div className="px-3 pb-3 pt-1 space-y-1 overflow-auto max-h-96 text-amber-900">
+            <div><b>userId:</b> {debugInfo.userId ?? '—'}</div>
+            <div><b>orgId:</b> {debugInfo.orgId ?? '—'}</div>
+            <div><b>orgRole:</b> {debugInfo.orgRole ?? '—'}</div>
+            <div><b>isMaster:</b> {String(debugInfo.isMaster)}</div>
+            <div><b>jobs loaded:</b> {debugInfo.jobsCount} — {JSON.stringify(debugInfo.jobs)}</div>
+            <div><b>job_meetings loaded:</b> {debugInfo.jobMeetingsCount}</div>
+            <div><b>job_meetings RLS error:</b> {debugInfo.jobMeetingsError ? JSON.stringify(debugInfo.jobMeetingsError) : 'none'}</div>
+            <div><b>job_meetings rows:</b> {JSON.stringify(debugInfo.jobMeetingsRaw)}</div>
+            <div><b>events mapped:</b> {debugInfo.eventsCount} — {JSON.stringify(debugInfo.events)}</div>
+            <div><b>note:</b> {debugInfo.note ?? '—'}</div>
+            <div><b>responders (first 5):</b> {JSON.stringify(responders.slice(0,5).map(r => ({ id: r.id, name: `${r.first_name} ${r.last_name}`, campaign_id: r.campaign_id, event_id: r.event_id })))}</div>
+            <div><b>getCampaignEvents check:</b> {campaigns.map(c => `job ${c.id} → ${events.filter(e => e.campaign_id === c.id).length} events`).join(' | ')}</div>
+          </div>
+        </details>
+      )}
+      {/* ── END DIAGNOSTIC BLOCK ── */}
       <StatsOverview campaigns={campaigns} events={events} responders={responders} />
       <div className="mt-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
