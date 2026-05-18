@@ -71,6 +71,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
   const [isMatchingMail, setIsMatchingMail] = useState(false);
   const [matchMailMessage, setMatchMailMessage] = useState<string | null>(null);
+  const [isDebuggingMatch, setIsDebuggingMatch] = useState(false);
+  const [debugMatchOutput, setDebugMatchOutput] = useState<string | null>(null);
 
   // Fetch responders from Supabase for this campaign (used both on mount and after sync)
   const reloadResponders = () => {
@@ -509,6 +511,31 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setMatchMailMessage('Error: ' + (err?.message ?? String(err)));
     } finally {
       setIsMatchingMail(false);
+    }
+  };
+
+  // Debug purchased-list matching for Nelson, Lee, Hart, French — read-only, no writes.
+  const runDebugMatches = async () => {
+    setIsDebuggingMatch(true);
+    setDebugMatchOutput(null);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('/api/integrations/workthelead/match-responders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, debugNames: true }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDebugMatchOutput('ERROR: ' + (json.error ?? res.status));
+        return;
+      }
+      setDebugMatchOutput(JSON.stringify(json, null, 2));
+    } catch (err: any) {
+      setDebugMatchOutput('ERROR: ' + (err?.message ?? String(err)));
+    } finally {
+      setIsDebuggingMatch(false);
     }
   };
 
@@ -1007,7 +1034,22 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                   disabled={isMatchingMail}
                                   className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-xs"
                                 >{isMatchingMail ? 'Matching…' : 'Match Responders to Purchased List'}</button>
+                                <button
+                                  type="button"
+                                  onClick={runDebugMatches}
+                                  disabled={isDebuggingMatch}
+                                  className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded text-xs"
+                                >{isDebuggingMatch ? 'Diagnosing…' : 'Debug Purchased Matches'}</button>
                               </div>
+                              {debugMatchOutput && (
+                                <div className="mt-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="text-xs font-medium text-orange-700">Match Diagnostics (Nelson / Lee / Hart / French)</div>
+                                    <button type="button" onClick={() => setDebugMatchOutput(null)} className="text-xs text-slate-400 hover:text-slate-600">✕ Clear</button>
+                                  </div>
+                                  <pre className="bg-orange-50 border border-orange-200 rounded p-2 text-[10px] font-mono text-slate-700 overflow-auto max-h-96 whitespace-pre-wrap break-words">{debugMatchOutput}</pre>
+                                </div>
+                              )}
                               {showMailedImport && (
                                 <div className="mt-2 space-y-2">
                                   {/* ── Primary: file upload ── */}

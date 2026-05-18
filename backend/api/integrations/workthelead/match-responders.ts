@@ -167,8 +167,106 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
     if (!adminRow) return res.status(403).json({ error: 'Master admin required' });
 
-    const { jobId, responderId, debug } = req.body as { jobId?: string; responderId?: string; debug?: boolean };
+    const { jobId, responderId, debug, debugNames } = req.body as {
+      jobId?: string;
+      responderId?: string;
+      debug?: boolean;
+      debugNames?: boolean;
+    };
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
+
+    // ── debugNames mode: raw data inspection, NO writes ──────────────────────
+    // Returns everything needed to understand why specific names fail to match.
+    if (debugNames) {
+      const TARGET_LAST_NAMES = ['nelson', 'lee', 'hart', 'french'];
+
+      // Count of ALL purchased records for this campaign
+      const { count: mailCount } = await supabaseAdmin
+        .from('campaign_mailed_list_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', jobId);
+
+      // Fetch purchased records for the 4 target last names only
+      const { data: purchasedRows, error: pErr } = await supabaseAdmin
+        .from('campaign_mailed_list_records')
+        .select('id, first_name, last_name, individual_name, address, city, state, zip, age_band, est_income_code, est_income_range, claritas_ipa')
+        .eq('campaign_id', jobId)
+        .or(TARGET_LAST_NAMES.map(n => `last_name.ilike.${n}`).join(','));
+      if (pErr) throw pErr;
+
+      // Fetch responder records for the 4 target last names
+      const { data: responderRows, error: rErr } = await supabaseAdmin
+        .from('responders')
+        .select('id, first_name, last_name, address, zip, matched_to_mail_list, match_confidence, mail_record_id, age, income, ipa')
+        .eq('campaign_id', jobId)
+        .or(TARGET_LAST_NAMES.map(n => `last_name.ilike.${n}`).join(','));
+      if (rErr) throw rErr;
+
+      // Build per-last-name comparison
+      const report = TARGET_LAST_NAMES.map(targetNL => {
+        const purchased = (purchasedRows ?? []).filter(p => normLast(p.last_name) === targetNL);
+        const responders = (responderRows ?? []).filter(r => normLast(r.last_name) === targetNL);
+
+        const purchasedKeyed = purchased.map(p => ({
+          raw: { first: p.first_name, last: p.last_name, individual: p.individual_name, zip: p.zip, addr: p.address, city: p.city, state: p.state, age: p.age_band, income: p.est_income_code, ipa: p.claritas_ipa },
+          keys: {
+            T1: `${normFirst(p.first_name)}|${normLast(p.last_name)}|${normZip(p.zip)}`,
+            T2: `${normLast(p.last_name)}|${streetNum(p.address)}`,
+            T3: `${normFirst(p.first_name).charAt(0)}|${normLast(p.last_name)}|${normZip(p.zip)}`,
+            T4: `${normFirst(p.first_name)}|${normLast(p.last_name)}`,
+            T5: `${normLast(p.last_name)}|${normZip(p.zip)}`,
+          },
+        }));
+
+        const responderAnalysis = responders.map(r => {
+          const nf = normFirst(r.first_name);
+          const nl = normLast(r.last_name);
+          const z  = normZip(r.zip);
+          const sn = streetNum(r.address);
+          const keysGenerated = {
+            T1: `${nf}|${nl}|${z}`,
+            T2: nl && sn ? `${nl}|${sn}` : '(skipped: no streetnum)',
+            T3: nf && z ? `${nf.charAt(0)}|${nl}|${z}` : '(skipped: no first or zip)',
+            T4: nl.length >= 4 ? `${nf}|${nl}` : '(skipped: last<4chars)',
+            T5: nl && z ? `${nl}|${z}` : '(skipped: no zip)',
+          };
+          // Check which purchased records would match at each tier
+          const tierMatches = purchasedKeyed.map(pk => {
+            const matchAt: string[] = [];
+            if (pk.keys.T1 === keysGenerated.T1) matchAt.push('T1');
+            if (!keysGenerated.T2.startsWith('(') && pk.keys.T2 === keysGenerated.T2) matchAt.push('T2');
+            if (!keysGenerated.T3.startsWith('(') && pk.keys.T3 === keysGenerated.T3) matchAt.push('T3');
+            if (!keysGenerated.T4.startsWith('(') && pk.keys.T4 === keysGenerated.T4) matchAt.push('T4_candidate');
+            if (!keysGenerated.T5.startsWith('(') && pk.keys.T5 === keysGenerated.T5) matchAt.push('T5_candidate');
+            return { purchasedFirst: pk.raw.first, purchasedZip: pk.raw.zip, matchAt };
+          });
+          return {
+            raw: { id: r.id, first: r.first_name, last: r.last_name, zip: r.zip, addr: r.address },
+            currentState: { matched_to_mail_list: r.matched_to_mail_list, match_confidence: r.match_confidence, age: r.age, income: r.income, ipa: r.ipa },
+            keysGenerated,
+            tierMatches,
+            diagnosis: tierMatches.some(t => t.matchAt.length > 0)
+              ? `Would match: ${tierMatches.filter(t => t.matchAt.length > 0).map(t => `${t.purchasedFirst} at ${t.matchAt.join('/')}`).join(', ')}`
+              : `NO MATCH — zip=${z||'(blank)'}, first=${nf||'(blank)'}, purchasedCandidates=${purchased.length}`,
+          };
+        });
+
+        return {
+          lastName: targetNL,
+          purchasedCount: purchased.length,
+          responderCount: responders.length,
+          purchased: purchasedKeyed,
+          responders: responderAnalysis,
+        };
+      });
+
+      return res.status(200).json({
+        ok: true,
+        campaignId: jobId,
+        mailListTotalForCampaign: mailCount ?? 0,
+        report,
+      });
+    }
 
     // Fetch all mailed list records for this campaign
     const { data: mailRecords, error: mailErr } = await supabaseAdmin
