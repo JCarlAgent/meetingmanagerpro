@@ -71,6 +71,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
   const [isMatchingMail, setIsMatchingMail] = useState(false);
   const [matchMailMessage, setMatchMailMessage] = useState<string | null>(null);
+  const [matchNameResults, setMatchNameResults] = useState<any[] | null>(null);
   const [isDebuggingMatch, setIsDebuggingMatch] = useState(false);
   const [debugMatchOutput, setDebugMatchOutput] = useState<string | null>(null);
 
@@ -512,6 +513,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         parts.push(`Errors: ${(json.errors as string[]).join(' | ')}`);
       }
       setMatchMailMessage(parts.join(' '));
+      if (json.nameResults?.length) setMatchNameResults(json.nameResults);
       reloadResponders();
     } catch (err: any) {
       setMatchMailMessage('Error: ' + (err?.message ?? String(err)));
@@ -1054,6 +1056,42 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     <button type="button" onClick={() => setDebugMatchOutput(null)} className="text-xs text-slate-400 hover:text-slate-600">✕ Clear</button>
                                   </div>
                                   <pre className="bg-orange-50 border border-orange-200 rounded p-2 text-[10px] font-mono text-slate-700 overflow-auto max-h-96 whitespace-pre-wrap break-words">{debugMatchOutput}</pre>
+                                </div>
+                              )}
+                              {matchNameResults && matchNameResults.length > 0 && (
+                                <div className="mt-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="text-xs font-medium text-slate-700">Real Match Results — all {matchNameResults.length} responder(s)</div>
+                                    <button type="button" onClick={() => setMatchNameResults(null)} className="text-xs text-slate-400 hover:text-slate-600">✕ Clear</button>
+                                  </div>
+                                  <div className="overflow-auto max-h-72 rounded border border-slate-200">
+                                    <table className="w-full text-[10px] font-mono border-collapse">
+                                      <thead className="sticky top-0 bg-slate-100">
+                                        <tr>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Name</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Zip</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Confidence</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Tier</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Matched To</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Write</th>
+                                          <th className="text-left px-1.5 py-1 border-b border-slate-200">Error</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {matchNameResults.map((r: any) => (
+                                          <tr key={r.id} className={r.confidence === 'none' ? 'bg-red-50' : r.confidence === 'exact' ? 'bg-green-50' : 'bg-yellow-50'}>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.name}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.zip || '—'}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.confidence}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.tier}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.matchedPurchasedName ?? '—'} {r.matchedPurchasedZip ? `(${r.matchedPurchasedZip})` : ''}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100">{r.writeOk ? '✓' : '✗'}</td>
+                                            <td className="px-1.5 py-0.5 border-b border-slate-100 text-red-600 max-w-xs truncate">{r.writeError ?? ''}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
                                 </div>
                               )}
                               {showMailedImport && (
