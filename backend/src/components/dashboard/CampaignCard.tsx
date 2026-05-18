@@ -80,20 +80,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
       .eq('campaign_id', campaign.id)
       .order('created_at', { ascending: false })
-      .limit(10)
       .then(({ data }) => { setLocalResponders(data ?? []); });
   };
 
-  // Load real responders for this campaign/job from Supabase (newest first, max 10 for preview)
+  // Load real responders for this campaign/job from Supabase (newest first)
   useEffect(() => {
     if (!campaign.id) return;
     let cancelled = false;
     supabase
       .from('responders')
-      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, created_at')
+      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
       .eq('campaign_id', campaign.id)
       .order('created_at', { ascending: false })
-      .limit(10)
       .then(({ data }) => {
         if (!cancelled) setLocalResponders(data ?? []);
       });
