@@ -510,6 +510,43 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
+  // Validate first row only — no DB write — surfaces column mapping issues quickly
+  const runValidateFirstRow = async () => {
+    if (!mailedCsv.trim()) {
+      setMailedImportMessage('[FAIL] No CSV loaded. Select a file first.');
+      return;
+    }
+    setMailedImportMessage('Validating first row…');
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      // Send only the first non-empty line
+      const firstLine = mailedCsv.split('\n').find(l => l.trim()) ?? '';
+      const res = await fetch('/api/integrations/workthelead/import-mailed-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, csv: firstLine, chunkIndex: 0, totalChunks: 1, validateOnly: true }),
+      });
+      const rawText = await res.text();
+      let j: Record<string, unknown>;
+      try { j = JSON.parse(rawText); } catch { setMailedImportMessage(`[FAIL] Response not JSON: ${rawText.slice(0, 400)}`); return; }
+      if (!res.ok) {
+        setMailedImportMessage(`[FAIL] step=${j.step} — ${j.error}\n${j.hint ?? ''}`);
+        return;
+      }
+      const mapped = j.firstRowMapped as Record<string, unknown> | null;
+      const lines = [
+        `✓ Validate OK — ${j.rawFieldCount} columns in raw CSV.`,
+        `Mapped: first_name=${mapped?.first_name ?? '(empty)'}, last_name=${mapped?.last_name ?? '(empty)'}, zip=${mapped?.zip ?? '(empty)'}`,
+        `age_band=${mapped?.age_band ?? '(empty)'}, claritas_ipa=${mapped?.claritas_ipa ?? '(empty)'}, est_income_range=${mapped?.est_income_range ?? '(empty)'}`,
+        `Raw first line: ${(j.rawFirstLine as string ?? '').slice(0, 200)}`,
+      ];
+      setMailedImportMessage(lines.join('\n'));
+    } catch (err: unknown) {
+      setMailedImportMessage(`[FAIL] ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
 
   const getStatusBgColor = (status: string) => {
     switch (status) {
@@ -959,7 +996,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     />
                                   </details>
                                   {/* ── Actions ── */}
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <button
                                       type="button"
                                       onClick={() => importMailedList()}
@@ -973,6 +1010,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                       className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
                                       title="Test: import first 100 rows only, no data cleared"
                                     >Test (100 rows)</button>
+                                    <button
+                                      type="button"
+                                      onClick={runValidateFirstRow}
+                                      disabled={isImportingMail || (!mailedCsv.trim())}
+                                      className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
+                                      title="Parse first row only — no DB write. Shows column mapping preview."
+                                    >Validate First Row</button>
                                     <button
                                       type="button"
                                       onClick={() => { setShowMailedImport(false); setMailedCsv(''); setMailedFileName(null); setMailedRowCount(null); setMailedImportMessage(null); }}
