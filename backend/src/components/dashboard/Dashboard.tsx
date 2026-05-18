@@ -532,7 +532,7 @@ const Dashboard: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'home':
-        return <HomeView onNavigate={(view) => setActiveView(view)} campaigns={campaigns} events={events} onUpdateCampaignStatus={handleUpdateCampaignStatus} />;
+        return <HomeView onNavigate={(view) => setActiveView(view)} campaigns={campaigns} events={events} onUpdateCampaignStatus={handleUpdateCampaignStatus} debugInfo={debugInfo} />;
       case 'master-clients':
         if (user?.is_master_admin && actingOrgId) {
           return <HomeView onNavigate={(view) => setActiveView(view)} onUpdateCampaignStatus={handleUpdateCampaignStatus} />;
@@ -703,7 +703,14 @@ const Dashboard: React.FC = () => {
           <div className="print:hidden">
             <Header onMenuClick={() => setSidebarOpen(true)} />
           </div>
-          <main className="p-4 lg:p-6 print:p-0 print:m-0">{renderContent()}</main>
+          <main className="p-4 lg:p-6 print:p-0 print:m-0">
+            {/* ── TEMP VERSION MARKER — remove after deploy confirmed ── */}
+            <div style={{background:'#1e40af',color:'#fff',fontFamily:'monospace',fontSize:'11px',padding:'4px 10px',marginBottom:'8px',borderRadius:'4px',userSelect:'none'}} className="print:hidden">
+              DEBUG BUILD 192d4af ACTIVE — user: {user?.id?.slice(0,8)} role: {(user as any)?.org_role ?? (user?.is_master_admin ? 'master' : '?')}
+            </div>
+            {/* ── END VERSION MARKER ── */}
+            {renderContent()}
+          </main>
         </div>
       </div>
       <NewCampaignModal isOpen={showNewCampaign} onClose={() => setShowNewCampaign(false)} onSubmit={handleCreateCampaign} />

@@ -12,9 +12,10 @@ export interface HomeViewProps {
   campaigns?: any[];
   events?: any[];
   onUpdateCampaignStatus?: (id: string, newStatus: boolean[]) => Promise<void> | void;
+  debugInfo?: any;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events, onUpdateCampaignStatus }) => {
+const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events, onUpdateCampaignStatus, debugInfo }) => {
   const { user } = useAuth();
   const { actingOrgId } = useActingOrg();
 
@@ -60,6 +61,28 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events, onUp
     };
   }, [user?.is_master_admin, actingOrgId]);
 
+  // ── TEMPORARY DIAGNOSTIC PANEL — remove after meetings confirmed working ──
+  const diagBlock = debugInfo ? (
+    <details style={{marginBottom:'12px'}} className="rounded border border-amber-300 bg-amber-50 text-[10px] font-mono" open>
+      <summary style={{padding:'4px 10px',cursor:'pointer',fontWeight:600,color:'#92400e',userSelect:'none'}}>🔍 DIAG (HomeView): job/meeting load trace — click to collapse</summary>
+      <div style={{padding:'4px 10px 10px',maxHeight:'380px',overflow:'auto',color:'#78350f',lineHeight:'1.6'}}>
+        <div><b>userId:</b> {debugInfo.userId ?? '—'}</div>
+        <div><b>orgId:</b> {debugInfo.orgId ?? '—'}</div>
+        <div><b>orgRole:</b> {debugInfo.orgRole ?? '—'}</div>
+        <div><b>isMaster:</b> {String(debugInfo.isMaster)}</div>
+        <div><b>jobs count:</b> {debugInfo.jobsCount} | rows: {JSON.stringify(debugInfo.jobs)}</div>
+        <div><b>job_meetings count:</b> {debugInfo.jobMeetingsCount}</div>
+        <div><b>job_meetings RLS error:</b> {debugInfo.jobMeetingsError ? JSON.stringify(debugInfo.jobMeetingsError) : 'none'}</div>
+        <div><b>job_meetings rows:</b> {JSON.stringify(debugInfo.jobMeetingsRaw)}</div>
+        <div><b>events mapped:</b> {debugInfo.eventsCount} | {JSON.stringify(debugInfo.events)}</div>
+        <div><b>campaigns prop (this component):</b> {(campaigns ?? []).length} | {JSON.stringify((campaigns ?? []).map((c:any)=>({id:c.id,job_number:c.job_number,status:c.status})))}</div>
+        <div><b>events prop (this component):</b> {(events ?? []).length} | {JSON.stringify((events ?? []).map((e:any)=>({id:e.id,campaign_id:e.campaign_id,venue_name:e.venue_name,event_date:e.event_date})))}</div>
+        <div><b>note:</b> {debugInfo.note ?? '—'}</div>
+      </div>
+    </details>
+  ) : null;
+  // ── END DIAGNOSTIC PANEL ──
+
   // Master admins stay in the master workflow unless they are acting as a client org.
   if (user?.is_master_admin && !actingOrgId) {
     return (
@@ -102,6 +125,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events, onUp
     if (isFmo) {
     return (
       <div className="space-y-6">
+        {diagBlock}
         <WeatherAlertWidget />
         <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} onUpdateCampaignStatus={onUpdateCampaignStatus} />
       </div>
@@ -110,6 +134,7 @@ const HomeView: React.FC<HomeViewProps> = ({ onNavigate, campaigns, events, onUp
 
   return (
     <div className="space-y-6">
+      {diagBlock}
       <WeatherAlertWidget />
       <ClientDashboard orgId={orgId} isFmo={isFmo} onNavigate={onNavigate} campaigns={campaigns} events={events} onUpdateCampaignStatus={onUpdateCampaignStatus} />
     </div>
