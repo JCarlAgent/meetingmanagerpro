@@ -321,7 +321,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
   };
 
-  const importMailedList = async () => {
+  const importMailedList = async (testLimit?: number) => {
     const csvToSend = mailedCsv.trim();
     if (!csvToSend) {
       setMailedImportMessage(
@@ -342,16 +342,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         return;
       }
 
-      const url = `/api/integrations/workthelead/import-mailed-list?jobId=${encodeURIComponent(campaign.id)}`;
-      setMailedImportMessage(`[4/6] Sending ${csvToSend.split('\n').filter(l => l.trim()).length.toLocaleString()} rows to server (${(new Blob([csvToSend]).size / 1024).toFixed(1)} KB as text/plain)…`);
+      const url = `/api/integrations/workthelead/import-mailed-list${testLimit ? `?limit=${testLimit}` : ''}`;
+      const isTest = !!testLimit;
+      setMailedImportMessage(`[4/6] Sending ${isTest ? `first ${testLimit}` : csvToSend.split('\n').filter(l => l.trim()).length.toLocaleString()} rows to server (${(new Blob([csvToSend]).size / 1024).toFixed(1)} KB as JSON)…`);
 
       const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: csvToSend,
+        body: JSON.stringify({ jobId: campaign.id, csv: csvToSend }),
       });
 
       setMailedImportMessage(`[5/6] Server responded HTTP ${res.status}. Reading response…`);
@@ -389,10 +390,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         return;
       }
 
+      const testNote = json.isTestRun ? ` [TEST RUN — ${json.total} of ${json.totalFileRows} rows]` : '';
+      const sampleNote = json.sampleRow
+        ? ` Sample: ${json.sampleRow.first_name} ${json.sampleRow.last_name}, ${json.sampleRow.zip}`
+        : '';
       setMailedImportMessage(
         `[6/6] ✓ Imported ${json.inserted?.toLocaleString() ?? '?'} records ` +
-        `(${json.skipped ?? 0} skipped, ${json.total ?? '?'} total rows). ` +
-        `Click "Match Responders to List" to enrich responders.`
+        `(${json.skipped ?? 0} skipped, ${json.total ?? '?'} total rows)${testNote}.${sampleNote}` +
+        (json.isTestRun ? '' : ` Click "Match Responders to List" to enrich responders.`)
       );
       setMailedCsv('');
       setMailedFileName(null);
@@ -851,10 +856,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                   <div className="flex items-center gap-2">
                                     <button
                                       type="button"
-                                      onClick={importMailedList}
+                                      onClick={() => importMailedList()}
                                       disabled={isImportingMail || (!mailedCsv.trim())}
                                       className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
                                     >{isImportingMail ? 'Importing…' : 'Import Mailed List'}</button>
+                                    <button
+                                      type="button"
+                                      onClick={() => importMailedList(100)}
+                                      disabled={isImportingMail || (!mailedCsv.trim())}
+                                      className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
+                                      title="Test: import first 100 rows only, no data cleared"
+                                    >Test (100 rows)</button>
                                     <button
                                       type="button"
                                       onClick={() => { setShowMailedImport(false); setMailedCsv(''); setMailedFileName(null); setMailedRowCount(null); setMailedImportMessage(null); }}
