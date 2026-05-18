@@ -502,10 +502,16 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Match failed');
-      setMatchMailMessage(
-        `✓ Match complete — ${json.matched} exact, ${json.fuzzyMatched} fuzzy, ${json.unmatched} unmatched (${json.total} total).` +
-        (json.errors?.length ? ` ${json.errors.length} errors.` : '')
-      );
+      const parts: string[] = [
+        `✓ Match complete — ${json.matched} exact, ${json.fuzzyMatched} fuzzy, ${json.unmatched} unmatched (${json.total} total).`,
+      ];
+      if (json.writeFailCount > 0) {
+        parts.push(`⚠ ${json.writeFailCount} write(s) failed.`);
+      }
+      if (json.errors?.length) {
+        parts.push(`Errors: ${(json.errors as string[]).join(' | ')}`);
+      }
+      setMatchMailMessage(parts.join(' '));
       reloadResponders();
     } catch (err: any) {
       setMatchMailMessage('Error: ' + (err?.message ?? String(err)));

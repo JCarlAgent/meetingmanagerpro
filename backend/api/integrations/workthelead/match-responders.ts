@@ -318,12 +318,10 @@ export default async function handler(req: any, res: any) {
       .eq('campaign_id', jobId);
     if (respErr) throw respErr;
     if (!responders?.length) {
-      return res.status(200).json({ ok: true, matched: 0, fuzzyMatched: 0, unmatched: 0, total: 0, errors: [] });
+      return res.status(200).json({ ok: true, matched: 0, fuzzyMatched: 0, unmatched: 0, total: 0, errors: [], nameResults: [] });
     }
 
-    // ── Step 1: compute all matches synchronously (no IO) ─────────────────────
-    // Separating matching from writing avoids interleaved-await overhead and
-    // makes it possible to batch-write in a single upsert call.
+    // ── Step 1: compute all matches synchronously (zero IO) ───────────────────
     type UpdateRow = {
       id: string;
       matched_to_mail_list: boolean;
@@ -334,10 +332,22 @@ export default async function handler(req: any, res: any) {
       ipa: string | null;
     };
 
+    type NameResult = {
+      id: string;
+      name: string;
+      tier: string;
+      confidence: string;
+      matchedPurchasedName: string | null;
+      matchedPurchasedZip: string | null;
+      writeOk: boolean;
+      writeError: string | null;
+    };
+
     let matched = 0;
     let fuzzyMatched = 0;
     let unmatched = 0;
     const updateRows: UpdateRow[] = [];
+    const nameResults: NameResult[] = [];
     const diagnostics: object[] = [];
 
     // Names to generate detailed diagnostics for (debug mode only)
@@ -383,31 +393,67 @@ export default async function handler(req: any, res: any) {
       else unmatched++;
 
       updateRows.push({
-        id: resp.id,
-        matched_to_mail_list: mr != null,
+        id:                   resp.id,
+        matched_to_mail_list: mr !== undefined,
         match_confidence:     confidence,
         mail_record_id:       mr?.id ?? null,
         age:                  mr?.age_band ?? null,
         income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
         ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
       });
+
+      nameResults.push({
+        id:                    resp.id,
+        name:                  `${resp.first_name ?? ''} ${resp.last_name ?? ''}`.trim(),
+        tier,
+        confidence,
+        matchedPurchasedName:  mr ? `${mr.first_name ?? ''} ${mr.last_name ?? ''}`.trim() : null,
+        matchedPurchasedZip:   mr?.zip ?? null,
+        writeOk:               false, // will be updated after writes
+        writeError:            null,
+      });
     }
 
-    // ── Step 2: batch upsert (one API call per 500 rows) ──────────────────────
-    // Upsert on primary key `id` — updates only the 7 enrichment columns;
-    // all other responder fields (email, phone, etc.) are untouched.
-    const BATCH_SIZE = 500;
+    // ── Step 2: parallel updates in batches of 50 ─────────────────────────────
+    // Using update().eq('id') instead of upsert() — upsert requires all NOT NULL
+    // columns (first_name, last_name, campaign_id, etc.) even when the row exists,
+    // because PostgreSQL validates the INSERT tuple before conflict detection.
+    // update() only touches the columns specified, no INSERT path, no constraint risk.
+    const PARALLEL_SIZE = 50;
     const errors: string[] = [];
 
-    for (let i = 0; i < updateRows.length; i += BATCH_SIZE) {
-      const batch = updateRows.slice(i, i + BATCH_SIZE);
-      const { error: upsertErr } = await supabaseAdmin
-        .from('responders')
-        .upsert(batch, { onConflict: 'id' });
-      if (upsertErr) {
-        errors.push(`Batch[${i}..${i + batch.length - 1}]: ${upsertErr.message}`);
-      }
+    for (let i = 0; i < updateRows.length; i += PARALLEL_SIZE) {
+      const batch = updateRows.slice(i, i + PARALLEL_SIZE);
+
+      const results = await Promise.allSettled(
+        batch.map(row => {
+          const { id, ...fields } = row;
+          return supabaseAdmin.from('responders').update(fields).eq('id', id);
+        })
+      );
+
+      results.forEach((result, j) => {
+        const row = batch[j];
+        const nameIdx = i + j;
+        if (result.status === 'rejected') {
+          const msg = `${row.id} (${nameResults[nameIdx]?.name}): ${String(result.reason)}`;
+          errors.push(msg);
+          nameResults[nameIdx].writeOk = false;
+          nameResults[nameIdx].writeError = String(result.reason);
+        } else if (result.value.error) {
+          const e = result.value.error as any;
+          const detail = [e.code, e.message, e.details, e.hint].filter(Boolean).join(' | ');
+          const msg = `${row.id} (${nameResults[nameIdx]?.name}): ${detail}`;
+          errors.push(msg);
+          nameResults[nameIdx].writeOk = false;
+          nameResults[nameIdx].writeError = detail;
+        } else {
+          nameResults[nameIdx].writeOk = true;
+        }
+      });
     }
+
+    const writeFailCount = nameResults.filter(r => !r.writeOk).length;
 
     const result: Record<string, unknown> = {
       ok: true,
@@ -415,8 +461,9 @@ export default async function handler(req: any, res: any) {
       fuzzyMatched,
       unmatched,
       total: responders.length,
-      updatedBatches: Math.ceil(updateRows.length / BATCH_SIZE),
+      writeFailCount,
       errors: errors.slice(0, 20),
+      nameResults,
     };
     if (debug && diagnostics.length) result.diagnostics = diagnostics;
 
