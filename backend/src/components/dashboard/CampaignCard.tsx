@@ -461,10 +461,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const testNote = isTestRun ? ` [TEST RUN — first ${linesToSend.length} rows only, data NOT cleared]` : '';
 
       setMailedImportMessage(
-        `✓ Imported ${totalInserted.toLocaleString()} records ` +
-        `(${totalSkipped} skipped, ${linesToSend.length.toLocaleString()} rows sent in ${chunks.length} chunk${chunks.length !== 1 ? 's' : ''})` +
+        `✓ Imported ${totalInserted.toLocaleString()} purchased list records ` +
+        `(${totalSkipped} skipped, ${linesToSend.length.toLocaleString()} rows in ${chunks.length} chunk${chunks.length !== 1 ? 's' : ''})` +
         `${testNote}${errNote}.${sampleNote}` +
-        (isTestRun ? '' : ` Click "Match Responders to List" to enrich responders.`)
+        (isTestRun ? '' : ` Now click "Match Responders to Purchased List" to enrich responders with age / income / IPA.`)
       );
 
       if (!isTestRun) {
@@ -499,7 +499,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Match failed');
       setMatchMailMessage(
-        `Matched ${json.matched} exact, ${json.fuzzyMatched} fuzzy, ${json.unmatched} not found (${json.total} total).`
+        `✓ Match complete — ${json.matched} exact match, ${json.fuzzyMatched} fuzzy match, ${json.unmatched} not found on purchased list (${json.total} responders total).` +
+        (json.errors?.length ? ` ${json.errors.length} errors.` : '')
       );
       reloadResponders();
     } catch (err: any) {
@@ -895,28 +896,29 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               )}
                             </div>
                           )}
-                          {/* ── Mailed list import & matching ── */}
+                          {/* ── Purchased demographic list import & matching ── */}
                           {user?.is_master_admin && (
                             <div className="w-full mt-2 pt-2 border-t border-slate-200">
-                              <div className="text-xs font-medium text-slate-600 mb-1.5">Mailed List Enrichment</div>
+                              <div className="text-xs font-medium text-slate-600 mb-1">Purchased Demographic List</div>
+                              <div className="text-xs text-slate-400 mb-1.5">Import the full AccuLeads CSV, then match responders to enrich age / income / IPA data.</div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={() => { setShowMailedImport(v => !v); setMailedImportMessage(null); }}
                                   className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs"
-                                >{showMailedImport ? 'Cancel' : 'Import Mailed List CSV'}</button>
+                                >{showMailedImport ? 'Cancel' : 'Import Purchased List CSV'}</button>
                                 <button
                                   type="button"
                                   onClick={runMatchResponders}
                                   disabled={isMatchingMail}
                                   className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded text-xs"
-                                >{isMatchingMail ? 'Matching…' : 'Match Responders to List'}</button>
+                                >{isMatchingMail ? 'Matching…' : 'Match Responders to Purchased List'}</button>
                               </div>
                               {showMailedImport && (
                                 <div className="mt-2 space-y-2">
                                   {/* ── Primary: file upload ── */}
                                   <div>
-                                    <div className="text-xs font-medium text-slate-600 mb-1">Upload Mailed List CSV</div>
+                                    <div className="text-xs font-medium text-slate-600 mb-1">Upload AccuLeads CSV (no header row)</div>
                                     <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-700 rounded text-xs cursor-pointer">
                                       <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" /></svg>
                                       {mailedFileName ? 'Change file' : 'Choose file…'}
@@ -963,7 +965,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                       onClick={() => importMailedList()}
                                       disabled={isImportingMail || (!mailedCsv.trim())}
                                       className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
-                                    >{isImportingMail ? 'Importing…' : 'Import Mailed List'}</button>
+                                    >{isImportingMail ? 'Importing…' : 'Import Purchased List'}</button>
                                     <button
                                       type="button"
                                       onClick={() => importMailedList(100)}

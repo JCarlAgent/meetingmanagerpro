@@ -427,13 +427,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
                           {responder.ipa && <span>IPA: <span className="font-medium text-slate-700">{responder.ipa}</span></span>}
                           {responder.matched_to_mail_list === true && (
                             <span className="text-green-600 font-medium">
-                              &#x2713; On mailed list
+                              &#x2713; On purchased list
                               {responder.match_confidence === 'fuzzy' && <span className="ml-1 text-amber-500 font-normal">(possible match)</span>}
                             </span>
                           )}
                           {responder.matched_to_mail_list === false && (
                             <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                              <AlertTriangle className="w-3 h-3" />Not found on mailed list
+                              <AlertTriangle className="w-3 h-3" />Not found on purchased list
                             </span>
                           )}
                         </div>
