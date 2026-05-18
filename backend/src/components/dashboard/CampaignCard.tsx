@@ -268,6 +268,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setImportMessage(lines.join('\n'));
       if (data.inserted > 0 || data.updated > 0) {
         reloadResponders();
+        // Auto-run purchased-list match in the background after every TeleDirect import
+        silentMatchResponders();
         // Only auto-close if no skips/errors to review
         if (!data.skipped && !data.errors?.length) {
           setTsvText('');
@@ -499,7 +501,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Match failed');
       setMatchMailMessage(
-        `✓ Match complete — ${json.matched} exact match, ${json.fuzzyMatched} fuzzy match, ${json.unmatched} not found on purchased list (${json.total} responders total).` +
+        `✓ Match complete — ${json.matched} exact, ${json.fuzzyMatched} fuzzy, ${json.unmatched} unmatched (${json.total} total).` +
         (json.errors?.length ? ` ${json.errors.length} errors.` : '')
       );
       reloadResponders();
@@ -507,6 +509,55 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setMatchMailMessage('Error: ' + (err?.message ?? String(err)));
     } finally {
       setIsMatchingMail(false);
+    }
+  };
+
+  // Silent full-campaign match — no spinner, updates matchMailMessage on completion.
+  // Used after TeleDirect import and other auto-triggers.
+  const silentMatchResponders = async () => {
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('/api/integrations/workthelead/match-responders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return; // silent fail — purchased list may not be uploaded yet
+      setMatchMailMessage(
+        `✓ Auto-matched — ${json.matched} exact, ${json.fuzzyMatched} fuzzy, ${json.unmatched} unmatched (${json.total} total).`
+      );
+      reloadResponders();
+    } catch {
+      // silent
+    }
+  };
+
+  // Single-responder rematch — called after manual edit touches name/address/zip.
+  const matchSingleResponder = async (responderId: string) => {
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      await fetch('/api/integrations/workthelead/match-responders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, responderId }),
+      });
+      reloadResponders();
+    } catch {
+      // silent
+    }
+  };
+
+  // Wrapped onUpdateResponder: triggers single-responder rematch when matching
+  // fields (first_name, last_name, zip, address) are included in the update.
+  const handleRespUpdateWithRematch = (responderId: string, updates: Partial<Responder>) => {
+    onUpdateResponder(responderId, updates);
+    const matchingFields: (keyof Responder)[] = ['first_name', 'last_name', 'zip', 'address'];
+    if (matchingFields.some(f => f in updates)) {
+      // Delay to allow parent DB write to complete before re-querying
+      setTimeout(() => matchSingleResponder(responderId), 700);
     }
   };
 
@@ -637,6 +688,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                         <div className="text-sm font-semibold">Responders</div>
                         <a href="#" onClick={(e) => { e.preventDefault(); setShowFullResponders(v => !v); }} className="text-xs text-slate-500 hover:underline">{showFullResponders ? 'Close full list' : 'See full list'}</a>
                       </div>
+                      {/* Purchased-list match summary — visible when matching has run */}
+                      {matchMailMessage && (
+                        <div className={`mb-2 px-2 py-1 rounded text-[10px] leading-snug ${matchMailMessage.startsWith('Error') ? 'bg-red-50 text-red-600' : 'bg-violet-50 text-violet-700'}`}>
+                          {matchMailMessage}
+                        </div>
+                      )}
                       <div className="text-sm">
                         <div className="grid grid-cols-12 gap-2 font-semibold text-xs text-slate-500 pb-2 border-b">
                           <div className="col-span-6">Name</div>
@@ -1121,7 +1178,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             events={events}
             selectedEventId={selectedEventId}
             onSelectEvent={setSelectedEventId}
-            onUpdateResponder={onUpdateResponder}
+            onUpdateResponder={handleRespUpdateWithRematch}
             isMasterAdmin={!!user?.is_master_admin}
             onDeleteResponder={handleDeleteResponder}
             campaignName={(campaign as any).project_name ?? (campaign as any).name ?? campaign.id}

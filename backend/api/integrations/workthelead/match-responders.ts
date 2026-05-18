@@ -46,7 +46,7 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
     if (!adminRow) return res.status(403).json({ error: 'Master admin required' });
 
-    const { jobId } = req.body as { jobId?: string };
+    const { jobId, responderId } = req.body as { jobId?: string; responderId?: string };
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
 
     // Fetch all mailed list records for this campaign
@@ -60,29 +60,59 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'No mailed list records found for this campaign. Import the CSV first.' });
     }
 
+    // Build lookup indices (used for both full-campaign and single-responder modes)
+    const exactIndex = new Map<string, typeof mailRecords[number]>();
+    const fuzzyIndex = new Map<string, typeof mailRecords[number]>();
+    for (const mr of mailRecords) {
+      const eKey = `${normName(mr.first_name)}|${normName(mr.last_name)}|${normZip(mr.zip)}`;
+      if (!exactIndex.has(eKey)) exactIndex.set(eKey, mr);
+      const fKey = `${normName(mr.last_name)}|${addrKey(mr.address)}`;
+      if (!fuzzyIndex.has(fKey)) fuzzyIndex.set(fKey, mr);
+    }
+
+    // ── Single-responder mode (re-match one responder after edit) ─────────────
+    if (responderId) {
+      const { data: singleResp, error: singleErr } = await supabaseAdmin
+        .from('responders')
+        .select('id, first_name, last_name, address, zip')
+        .eq('id', responderId)
+        .maybeSingle();
+      if (singleErr) throw singleErr;
+      if (!singleResp) return res.status(200).json({ ok: true, matched: 0, fuzzyMatched: 0, unmatched: 0, total: 0, errors: [] });
+
+      const eKey = `${normName(singleResp.first_name)}|${normName(singleResp.last_name)}|${normZip(singleResp.zip)}`;
+      const fKey = `${normName(singleResp.last_name)}|${addrKey(singleResp.address)}`;
+      let mr = exactIndex.get(eKey);
+      let confidence: 'exact' | 'fuzzy' | 'none' = mr ? 'exact' : 'none';
+      if (!mr) { mr = fuzzyIndex.get(fKey); if (mr) confidence = 'fuzzy'; }
+      const update = {
+        matched_to_mail_list: mr != null,
+        match_confidence:     confidence,
+        mail_record_id:       mr?.id ?? null,
+        age:                  mr?.age_band ?? null,
+        income:               mr?.est_income_range ?? mr?.est_income_code ?? null,
+        ipa:                  mr?.claritas_ipa ?? null,
+      };
+      const { error: updErr } = await supabaseAdmin.from('responders').update(update).eq('id', responderId);
+      if (updErr) return res.status(500).json({ ok: false, error: updErr.message });
+      return res.status(200).json({
+        ok: true,
+        matched:      confidence === 'exact' ? 1 : 0,
+        fuzzyMatched: confidence === 'fuzzy' ? 1 : 0,
+        unmatched:    confidence === 'none'  ? 1 : 0,
+        total: 1, errors: [],
+      });
+    }
+
+    // ── Full campaign mode ────────────────────────────────────────────────────
     // Fetch all responders for this campaign
     const { data: responders, error: respErr } = await supabaseAdmin
       .from('responders')
       .select('id, first_name, last_name, address, zip')
       .eq('campaign_id', jobId);
-
     if (respErr) throw respErr;
     if (!responders?.length) {
       return res.status(200).json({ ok: true, matched: 0, fuzzyMatched: 0, unmatched: 0, total: 0, errors: [] });
-    }
-
-    // Build lookup indices on the mail records
-    // Index 1: "normFirst|normLast|zip5" → mail record
-    const exactIndex = new Map<string, typeof mailRecords[number]>();
-    // Index 2: "normLast|addrKey" → mail record (first hit wins)
-    const fuzzyIndex = new Map<string, typeof mailRecords[number]>();
-
-    for (const mr of mailRecords) {
-      const eKey = `${normName(mr.first_name)}|${normName(mr.last_name)}|${normZip(mr.zip)}`;
-      if (!exactIndex.has(eKey)) exactIndex.set(eKey, mr);
-
-      const fKey = `${normName(mr.last_name)}|${addrKey(mr.address)}`;
-      if (!fuzzyIndex.has(fKey)) fuzzyIndex.set(fKey, mr);
     }
 
     let matched = 0;
