@@ -321,9 +321,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
   };
 
+  // Rows per HTTP request. Keeps each JSON payload ~40–60 KB — far under any Vercel limit.
+  const MAIL_CHUNK_SIZE = 200;
+
   const importMailedList = async (testLimit?: number) => {
-    const csvToSend = mailedCsv.trim();
-    if (!csvToSend) {
+    // ── 1. Slice lines client-side ──────────────────────────────────────────
+    const allLines = mailedCsv
+      .split('\n')
+      .map(l => l.replace(/\r$/, ''))
+      .filter(l => l.trim().length > 0);
+
+    if (!allLines.length) {
       setMailedImportMessage(
         mailedFileName
           ? '[WAIT] File is still loading — please wait a moment then try again.'
@@ -331,8 +339,27 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       );
       return;
     }
+
+    const isTestRun = !!testLimit;
+    // Client-side slice: test mode sends ONLY the first N rows, not the full file
+    const linesToSend = isTestRun ? allLines.slice(0, testLimit) : allLines;
+
+    // Build chunks — each chunk is MAIL_CHUNK_SIZE rows
+    const chunks: string[][] = [];
+    for (let i = 0; i < linesToSend.length; i += MAIL_CHUNK_SIZE) {
+      chunks.push(linesToSend.slice(i, i + MAIL_CHUNK_SIZE));
+    }
+
+    const totalKB = (new Blob([linesToSend.join('\n')]).size / 1024).toFixed(1);
+    const chunkKBEst = (new Blob([chunks[0]?.join('\n') ?? '']).size / 1024).toFixed(1);
+
     setIsImportingMail(true);
-    setMailedImportMessage(`[3/6] Getting auth token…`);
+    setMailedImportMessage(
+      isTestRun
+        ? `[auth] Getting token… (test: ${linesToSend.length} rows / ${totalKB} KB in 1 chunk)`
+        : `[auth] Getting token… (${linesToSend.length.toLocaleString()} rows / ${totalKB} KB → ${chunks.length} chunks of ${MAIL_CHUNK_SIZE} rows / ~${chunkKBEst} KB each)`
+    );
+
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -342,73 +369,97 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         return;
       }
 
-      const url = `/api/integrations/workthelead/import-mailed-list${testLimit ? `?limit=${testLimit}` : ''}`;
-      const isTest = !!testLimit;
-      setMailedImportMessage(`[4/6] Sending ${isTest ? `first ${testLimit}` : csvToSend.split('\n').filter(l => l.trim()).length.toLocaleString()} rows to server (${(new Blob([csvToSend]).size / 1024).toFixed(1)} KB as JSON)…`);
+      // ── 2. Send chunks sequentially ────────────────────────────────────────
+      let totalInserted = 0;
+      let totalSkipped = 0;
+      let sampleRow: Record<string, unknown> | null = null;
+      const allErrors: string[] = [];
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ jobId: campaign.id, csv: csvToSend }),
-      });
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const chunk = chunks[ci];
+        const chunkCsv = chunk.join('\n');
+        const ckKB = (new Blob([chunkCsv]).size / 1024).toFixed(1);
 
-      setMailedImportMessage(`[5/6] Server responded HTTP ${res.status}. Reading response…`);
-
-      const rawText = await res.text();
-      const contentType = res.headers.get('content-type') ?? '(none)';
-
-      if (!res.ok) {
-        // Try to parse error message from JSON; fall back to raw text
-        let errMsg = `HTTP ${res.status}`;
-        try {
-          const j = JSON.parse(rawText);
-          const stepLabel = j.step ? ` (at step: ${j.step})` : '';
-          const stackLine = j.stackFirstLine ? `\nStack: ${j.stackFirstLine}` : '';
-          errMsg += `${stepLabel}: ${j.error ?? rawText.slice(0, 300)}${stackLine}`;
-        } catch {
-          errMsg += ` — Response (${contentType}): ${rawText.slice(0, 500)}`;
-        }
-        setMailedImportMessage(`[FAIL] ${errMsg}`);
-        setIsImportingMail(false);
-        return;
-      }
-
-      // Parse success response
-      let json: any;
-      try {
-        json = JSON.parse(rawText);
-      } catch (parseErr) {
         setMailedImportMessage(
-          `[FAIL] Server returned HTTP ${res.status} but body is not valid JSON.\n` +
-          `Content-Type: ${contentType}\n` +
-          `Raw (first 500 chars): ${rawText.slice(0, 500)}`
+          isTestRun
+            ? `Sending test chunk: ${chunk.length} rows / ${ckKB} KB…`
+            : `Importing chunk ${ci + 1} of ${chunks.length} — ${chunk.length} rows / ${ckKB} KB…`
         );
-        setIsImportingMail(false);
-        return;
+
+        const res = await fetch('/api/integrations/workthelead/import-mailed-list', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            jobId:       campaign.id,
+            csv:         chunkCsv,
+            chunkIndex:  ci,
+            totalChunks: chunks.length,
+            isTestRun,
+          }),
+        });
+
+        const rawText = await res.text();
+        const contentType = res.headers.get('content-type') ?? '(none)';
+
+        if (!res.ok) {
+          let errMsg = `HTTP ${res.status} on chunk ${ci + 1} of ${chunks.length}`;
+          try {
+            const j = JSON.parse(rawText);
+            const stepLabel = j.step ? ` (step: ${j.step})` : '';
+            const stackLine = j.stackFirstLine ? `\nStack: ${j.stackFirstLine}` : '';
+            errMsg += `${stepLabel}: ${j.error ?? rawText.slice(0, 300)}${stackLine}`;
+          } catch {
+            errMsg += ` — (${contentType}): ${rawText.slice(0, 500)}`;
+          }
+          setMailedImportMessage(`[FAIL] ${errMsg}`);
+          setIsImportingMail(false);
+          return;
+        }
+
+        let json: Record<string, unknown>;
+        try {
+          json = JSON.parse(rawText);
+        } catch {
+          setMailedImportMessage(`[FAIL] Chunk ${ci + 1} response not valid JSON (${contentType}): ${rawText.slice(0, 200)}`);
+          setIsImportingMail(false);
+          return;
+        }
+
+        totalInserted += (json.inserted as number) ?? 0;
+        totalSkipped  += (json.skipped as number) ?? 0;
+        if (!sampleRow && json.sampleRow) sampleRow = json.sampleRow as Record<string, unknown>;
+        if (Array.isArray(json.errors)) allErrors.push(...(json.errors as string[]));
       }
 
-      const testNote = json.isTestRun ? ` [TEST RUN — ${json.total} of ${json.totalFileRows} rows]` : '';
-      const sampleNote = json.sampleRow
-        ? ` Sample: ${json.sampleRow.first_name} ${json.sampleRow.last_name}, ${json.sampleRow.zip}`
+      // ── 3. Done ────────────────────────────────────────────────────────────
+      const sampleNote = sampleRow
+        ? ` Sample: ${sampleRow.first_name} ${sampleRow.last_name}, ${sampleRow.zip}`
         : '';
+      const errNote  = allErrors.length ? ` (${allErrors.length} parse errors)` : '';
+      const testNote = isTestRun ? ` [TEST RUN — first ${linesToSend.length} rows only, data NOT cleared]` : '';
+
       setMailedImportMessage(
-        `[6/6] ✓ Imported ${json.inserted?.toLocaleString() ?? '?'} records ` +
-        `(${json.skipped ?? 0} skipped, ${json.total ?? '?'} total rows)${testNote}.${sampleNote}` +
-        (json.isTestRun ? '' : ` Click "Match Responders to List" to enrich responders.`)
+        `✓ Imported ${totalInserted.toLocaleString()} records ` +
+        `(${totalSkipped} skipped, ${linesToSend.length.toLocaleString()} rows sent in ${chunks.length} chunk${chunks.length !== 1 ? 's' : ''})` +
+        `${testNote}${errNote}.${sampleNote}` +
+        (isTestRun ? '' : ` Click "Match Responders to List" to enrich responders.`)
       );
-      setMailedCsv('');
-      setMailedFileName(null);
-      setMailedRowCount(null);
-      setShowMailedImport(false);
-    } catch (err: any) {
-      const msg = err?.message ?? String(err);
+
+      if (!isTestRun) {
+        setMailedCsv('');
+        setMailedFileName(null);
+        setMailedRowCount(null);
+        setShowMailedImport(false);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
-        setMailedImportMessage(`[FAIL] Network error — the request never reached the server. Check connection. (${msg})`);
+        setMailedImportMessage(`[FAIL] Network error — request never reached server. (${msg})`);
       } else {
-        setMailedImportMessage(`[FAIL] Unexpected error at step unknown: ${msg}`);
+        setMailedImportMessage(`[FAIL] Unexpected error: ${msg}`);
       }
     } finally {
       setIsImportingMail(false);

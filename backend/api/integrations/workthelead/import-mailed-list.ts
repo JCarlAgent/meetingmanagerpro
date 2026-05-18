@@ -1,34 +1,34 @@
 /**
  * POST /api/integrations/workthelead/import-mailed-list
  *
- * Master-admin only.
- * Body: { jobId: string; csv: string }   (JSON, up to 5 MB)
- * Query: ?limit=N  (optional — import only first N rows, for testing)
+ * Master-admin only. Accepts one chunk of CSV rows at a time.
+ * The client splits the full CSV into chunks of ~200 rows and sends them
+ * sequentially, keeping each JSON payload ~40–60 KB — well under Vercel limits.
  *
- * Why JSON body (not text/plain + bodyParser:false):
- *   bodyParser:false causes the Lambda body stream to hang until the Vercel
- *   10-second function timeout is hit, producing FUNCTION_INVOCATION_FAILED
- *   before any response is written. JSON body with sizeLimit:'5mb' avoids
- *   this entirely and is the documented approach for @vercel/node.
+ * Body: {
+ *   jobId:       string   — campaign/job ID
+ *   csv:         string   — raw CSV rows for this chunk (no header row)
+ *   chunkIndex:  number   — 0-based index of this chunk
+ *   totalChunks: number   — total number of chunks being sent
+ *   isTestRun?:  boolean  — if true, do NOT delete existing records (read-only test)
+ * }
  *
- * Why BATCH_SIZE=1000:
- *   11,228 rows / 1000 = 12 Supabase round-trips ≈ 2–4 seconds total,
- *   well within the 10-second Hobby plan limit.
+ * Chunk 0 + !isTestRun → DELETE existing records for jobId first, then INSERT.
+ * All other chunks     → INSERT only.
  *
- * Returns: { ok, step, inserted, skipped, parsed, total, errors[] }
+ * Returns: { ok, step, inserted, skipped, parsed, total, errors[], sampleRow }
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin';
 import { createClient } from '@supabase/supabase-js';
 
-// Raise JSON body limit from default 1 MB to 5 MB.
-// This is the documented @vercel/node API config — it applies to
-// standalone Vercel Functions (not just Next.js).
+// Each chunk is ~200 rows × ~200 bytes ≈ 40 KB raw → ~50 KB JSON-encoded.
+// sizeLimit:'1mb' is more than enough; keeping 5mb as a safety margin.
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '5mb',
+      sizeLimit: '1mb',
     },
   },
 };
@@ -99,7 +99,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── Parse request ─────────────────────────────────────────────────────────
     step = 'parse-request';
-    const body = req.body as { jobId?: string; csv?: string } | null;
+    const body = req.body as {
+      jobId?: string;
+      csv?: string;
+      chunkIndex?: number;
+      totalChunks?: number;
+      isTestRun?: boolean;
+    } | null;
+
     if (!body || typeof body !== 'object') {
       return res.status(400).json({ ok: false, step,
         error: `Expected JSON body object. Received type: ${typeof body}. ` +
@@ -115,21 +122,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ ok: false, step, error: 'csv field is required and must not be empty' });
     }
 
-    // ?limit=N — test mode: imports only first N rows, skips clear-existing
-    const limitParam = req.query?.limit ? parseInt(req.query.limit as string, 10) : null;
-    const isTestRun = limitParam !== null && limitParam > 0;
+    const chunkIndex  = typeof body.chunkIndex  === 'number' ? body.chunkIndex  : 0;
+    const totalChunks = typeof body.totalChunks === 'number' ? body.totalChunks : 1;
+    const isTestRun   = body.isTestRun === true;
 
     // ── Parse CSV rows ────────────────────────────────────────────────────────
     step = 'parse-csv';
     const allLines = csv.split('\n').map(l => l.replace(/\r$/, ''));
-    const linesToProcess = isTestRun ? allLines.slice(0, limitParam!) : allLines;
 
     const records: object[] = [];
     const errors: string[] = [];
     let skipped = 0;
 
-    for (let i = 0; i < linesToProcess.length; i++) {
-      const line = linesToProcess[i].trim();
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i].trim();
       if (!line) { skipped++; continue; }
       try {
         const fields = parseCsvLine(line);
@@ -156,8 +162,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── Clear existing records (full run only) ────────────────────────────────
-    if (!isTestRun) {
+    // ── Clear existing records (first chunk of a full run only) ──────────────
+    // chunkIndex === 0 && !isTestRun: wipe old data before inserting the first chunk.
+    // Subsequent chunks (chunkIndex > 0) skip this — data is already cleared.
+    if (chunkIndex === 0 && !isTestRun) {
       step = 'clear-existing';
       const { error: delErr } = await supabaseAdmin
         .from('campaign_mailed_list_records').delete().eq('campaign_id', jobId);
@@ -189,8 +197,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       inserted,
       skipped,
       parsed: records.length,
-      total: linesToProcess.length,
-      totalFileRows: allLines.length,
+      total: allLines.length,
+      chunkIndex,
+      totalChunks,
       isTestRun,
       errors: errors.slice(0, 20),
       // First parsed row helps verify column mapping
