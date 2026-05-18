@@ -422,21 +422,24 @@ const ResponderList: React.FC<ResponderListProps> = ({
                   {hasEnrichment && (
                     <tr className={`${!responder.event_id ? 'bg-amber-50/40' : 'bg-slate-50/50'}`}>
                       <td colSpan={colCount} className="px-6 pb-2 pt-0">
-                        <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-xs text-slate-500">
-                          {responder.age && <span>Age: <span className="font-medium text-slate-700">{responder.age}</span></span>}
-                          {responder.income && <span>Income: <span className="font-medium text-slate-700">{decodeIncome(responder.income)}</span></span>}
-                          {responder.ipa && <span>IPA: <span className="font-medium text-slate-700">{decodeIPA(responder.ipa)}</span></span>}
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-0.5 text-xs text-slate-500">
+                          {/* Purchased-list match indicator — icon only, title for tooltip */}
                           {responder.matched_to_mail_list === true && (
-                            <span className="text-green-600 font-medium">
-                              &#x2713; On purchased list
-                              {responder.match_confidence === 'fuzzy' && <span className="ml-1 text-amber-500 font-normal">(possible match)</span>}
+                            <span
+                              className={`inline-flex items-center gap-0.5 ${responder.match_confidence === 'fuzzy' ? 'text-amber-500' : 'text-green-600'}`}
+                              title={`On purchased list${responder.match_confidence === 'fuzzy' ? ' (possible match)' : ''}`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
                             </span>
                           )}
                           {responder.matched_to_mail_list === false && (
-                            <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                              <AlertTriangle className="w-3 h-3" />Not found on purchased list
+                            <span className="inline-flex items-center gap-0.5 text-amber-400" title="Not found on purchased list">
+                              <AlertTriangle className="w-3 h-3" />
                             </span>
                           )}
+                          {responder.age && <span>Age: <span className="font-medium text-slate-700">{responder.age}</span></span>}
+                          {responder.income && <span>Income: <span className="font-medium text-slate-700">{decodeIncome(responder.income)}</span></span>}
+                          {responder.ipa && <span>IPA: <span className="font-medium text-slate-700">{decodeIPA(responder.ipa)}</span></span>}
                         </div>
                       </td>
                     </tr>

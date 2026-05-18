@@ -6,31 +6,151 @@
  * in `campaign_mailed_list_records` and enriches the responder with
  * age/income/IPA demographic data.
  *
- * Matching strategy (in order):
- *   1. Exact:  normalize(first_name) + normalize(last_name) + zip
- *   2. Fuzzy:  normalize(last_name) + first word of address (street number)
- *   3. None:   no match found → matched_to_mail_list = false
+ * Matching strategy (applied in order, first match wins):
+ *   T1 Exact:          normFirst + normLast + zip5
+ *   T2 Addr-fuzzy:     normLast  + streetNum(address)
+ *   T3 Initial+last+zip: firstChar(normFirst) + normLast + zip5
+ *   T4 Name-only:      normFirst + normLast — only when unique on mail list, normLast ≥ 4 chars
+ *   T5 Last+zip-unique: normLast + zip5     — only when exactly one candidate on mail list
  *
- * Normalize: lowercase, trim, strip non-alpha (for names); lowercase+trim for zip.
+ * normFirst strips middle initials (takes first word only), lowercases, alpha-only.
+ * normLast lowercases, alpha-only.
+ * normZip takes first 5 chars (handles zip+4 and 9-digit zips).
  *
- * Body: { jobId: string }
- * Returns: { ok, matched, fuzzyMatched, unmatched, total, errors[] }
+ * Body: { jobId: string, responderId?: string, debug?: boolean }
+ * Returns: { ok, matched, fuzzyMatched, unmatched, total, errors[], diagnostics? }
  */
 
 import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
 import { decodeIPA, decodeIncome } from '../../_lib/acxiomDecoders.js';
 
-function normName(s: string | null | undefined): string {
+/** Normalize first name — takes first word only (strips middle initial/name). */
+function normFirst(s: string | null | undefined): string {
+  const word = (s ?? '').trim().split(/\s+/)[0] ?? '';
+  return word.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+/** Normalize last name — lowercase, alpha-only. */
+function normLast(s: string | null | undefined): string {
   return (s ?? '').toLowerCase().trim().replace(/[^a-z]/g, '');
 }
 
 function normZip(s: string | null | undefined): string {
-  return (s ?? '').trim().slice(0, 5);
+  return (s ?? '').trim().replace(/[^0-9]/g, '').slice(0, 5);
 }
 
-function addrKey(s: string | null | undefined): string {
-  // First token (street number) of address
-  return (s ?? '').trim().split(/\s+/)[0].toLowerCase();
+/** Street number = first word of address (e.g. "123 Main St" → "123"). */
+function streetNum(s: string | null | undefined): string {
+  return (s ?? '').trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+}
+
+type MailRecord = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  address: string | null;
+  zip: string | null;
+  claritas_ipa: string | null;
+  age_band: string | null;
+  est_income_code: string | null;
+  est_income_range: string | null;
+};
+
+function buildIndices(mailRecords: MailRecord[]) {
+  // T1: normFirst|normLast|zip5
+  const t1 = new Map<string, MailRecord>();
+  // T2: normLast|streetNum
+  const t2 = new Map<string, MailRecord>();
+  // T3: firstChar(normFirst)|normLast|zip5
+  const t3 = new Map<string, MailRecord>();
+  // T4: normFirst|normLast — unique check via count
+  const t4 = new Map<string, MailRecord>();
+  const t4Count = new Map<string, number>();
+  // T5: normLast|zip5 — unique check via count
+  const t5 = new Map<string, MailRecord>();
+  const t5Count = new Map<string, number>();
+
+  for (const mr of mailRecords) {
+    const nf = normFirst(mr.first_name);
+    const nl = normLast(mr.last_name);
+    const z  = normZip(mr.zip);
+    const sn = streetNum(mr.address);
+
+    const k1 = `${nf}|${nl}|${z}`;
+    if (!t1.has(k1)) t1.set(k1, mr);
+
+    const k2 = `${nl}|${sn}`;
+    if (sn && !t2.has(k2)) t2.set(k2, mr);
+
+    const k3 = `${nf.charAt(0)}|${nl}|${z}`;
+    if (nf && z && !t3.has(k3)) t3.set(k3, mr);
+
+    const k4 = `${nf}|${nl}`;
+    if (nf && nl) {
+      if (!t4.has(k4)) t4.set(k4, mr);
+      t4Count.set(k4, (t4Count.get(k4) ?? 0) + 1);
+    }
+
+    const k5 = `${nl}|${z}`;
+    if (nl && z) {
+      if (!t5.has(k5)) t5.set(k5, mr);
+      t5Count.set(k5, (t5Count.get(k5) ?? 0) + 1);
+    }
+  }
+
+  return { t1, t2, t3, t4, t4Count, t5, t5Count };
+}
+
+type Indices = ReturnType<typeof buildIndices>;
+
+function findMatch(
+  firstName: string | null | undefined,
+  lastName: string | null | undefined,
+  zip: string | null | undefined,
+  address: string | null | undefined,
+  idx: Indices,
+): { mr: MailRecord | undefined; confidence: 'exact' | 'fuzzy' | 'none'; tier: string } {
+  const nf = normFirst(firstName);
+  const nl = normLast(lastName);
+  const z  = normZip(zip);
+  const sn = streetNum(address);
+
+  // T1 — exact: first + last + zip
+  let mr: MailRecord | undefined = idx.t1.get(`${nf}|${nl}|${z}`);
+  if (mr) return { mr, confidence: 'exact', tier: 'T1:first+last+zip' };
+
+  // T2 — addr-fuzzy: last + street number (skips if no street number)
+  if (sn) {
+    mr = idx.t2.get(`${nl}|${sn}`);
+    if (mr) return { mr, confidence: 'fuzzy', tier: 'T2:last+streetnum' };
+  }
+
+  // T3 — initial+last+zip (handles name abbreviations like Don/Donald, Mike/Michael)
+  if (nf && z) {
+    mr = idx.t3.get(`${nf.charAt(0)}|${nl}|${z}`);
+    if (mr) return { mr, confidence: 'fuzzy', tier: 'T3:initial+last+zip' };
+  }
+
+  // T4 — name-only, unique match (handles missing/wrong zip)
+  // Guard: last name ≥ 4 chars and exactly one candidate with this first+last
+  if (nf && nl.length >= 4) {
+    const k4 = `${nf}|${nl}`;
+    if ((idx.t4Count.get(k4) ?? 0) === 1) {
+      mr = idx.t4.get(k4);
+      if (mr) return { mr, confidence: 'fuzzy', tier: 'T4:name-only-unique' };
+    }
+  }
+
+  // T5 — last+zip, unique match (handles first-name variation when zip is correct)
+  if (nl && z) {
+    const k5 = `${nl}|${z}`;
+    if ((idx.t5Count.get(k5) ?? 0) === 1) {
+      mr = idx.t5.get(k5);
+      if (mr) return { mr, confidence: 'fuzzy', tier: 'T5:last+zip-unique' };
+    }
+  }
+
+  return { mr: undefined, confidence: 'none', tier: 'none' };
 }
 
 export default async function handler(req: any, res: any) {
@@ -47,7 +167,7 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
     if (!adminRow) return res.status(403).json({ error: 'Master admin required' });
 
-    const { jobId, responderId } = req.body as { jobId?: string; responderId?: string };
+    const { jobId, responderId, debug } = req.body as { jobId?: string; responderId?: string; debug?: boolean };
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
 
     // Fetch all mailed list records for this campaign
@@ -61,17 +181,9 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'No mailed list records found for this campaign. Import the CSV first.' });
     }
 
-    // Build lookup indices (used for both full-campaign and single-responder modes)
-    const exactIndex = new Map<string, typeof mailRecords[number]>();
-    const fuzzyIndex = new Map<string, typeof mailRecords[number]>();
-    for (const mr of mailRecords) {
-      const eKey = `${normName(mr.first_name)}|${normName(mr.last_name)}|${normZip(mr.zip)}`;
-      if (!exactIndex.has(eKey)) exactIndex.set(eKey, mr);
-      const fKey = `${normName(mr.last_name)}|${addrKey(mr.address)}`;
-      if (!fuzzyIndex.has(fKey)) fuzzyIndex.set(fKey, mr);
-    }
+    const idx = buildIndices(mailRecords as MailRecord[]);
 
-    // ── Single-responder mode (re-match one responder after edit) ─────────────
+    // ── Single-responder mode ─────────────────────────────────────────────────
     if (responderId) {
       const { data: singleResp, error: singleErr } = await supabaseAdmin
         .from('responders')
@@ -81,11 +193,7 @@ export default async function handler(req: any, res: any) {
       if (singleErr) throw singleErr;
       if (!singleResp) return res.status(200).json({ ok: true, matched: 0, fuzzyMatched: 0, unmatched: 0, total: 0, errors: [] });
 
-      const eKey = `${normName(singleResp.first_name)}|${normName(singleResp.last_name)}|${normZip(singleResp.zip)}`;
-      const fKey = `${normName(singleResp.last_name)}|${addrKey(singleResp.address)}`;
-      let mr = exactIndex.get(eKey);
-      let confidence: 'exact' | 'fuzzy' | 'none' = mr ? 'exact' : 'none';
-      if (!mr) { mr = fuzzyIndex.get(fKey); if (mr) confidence = 'fuzzy'; }
+      const { mr, confidence } = findMatch(singleResp.first_name, singleResp.last_name, singleResp.zip, singleResp.address, idx);
       const update = {
         matched_to_mail_list: mr != null,
         match_confidence:     confidence,
@@ -106,7 +214,6 @@ export default async function handler(req: any, res: any) {
     }
 
     // ── Full campaign mode ────────────────────────────────────────────────────
-    // Fetch all responders for this campaign
     const { data: responders, error: respErr } = await supabaseAdmin
       .from('responders')
       .select('id, first_name, last_name, address, zip')
@@ -120,18 +227,46 @@ export default async function handler(req: any, res: any) {
     let fuzzyMatched = 0;
     let unmatched = 0;
     const errors: string[] = [];
+    const diagnostics: object[] = [];
+
+    // Names to generate detailed diagnostics for (temporarily — remove after confirming match accuracy)
+    const DIAG_NAMES = new Set(['donald nelson', 'lisa lee', 'michael hart', 'catherine french']);
 
     for (const resp of responders) {
       try {
-        const eKey = `${normName(resp.first_name)}|${normName(resp.last_name)}|${normZip(resp.zip)}`;
-        const fKey = `${normName(resp.last_name)}|${addrKey(resp.address)}`;
+        const { mr, confidence, tier } = findMatch(resp.first_name, resp.last_name, resp.zip, resp.address, idx);
 
-        let mr = exactIndex.get(eKey);
-        let confidence: 'exact' | 'fuzzy' | 'none' = mr ? 'exact' : 'none';
-
-        if (!mr) {
-          mr = fuzzyIndex.get(fKey);
-          if (mr) confidence = 'fuzzy';
+        // Diagnostic output for specific responders
+        if (debug) {
+          const fullName = `${(resp.first_name ?? '').toLowerCase()} ${(resp.last_name ?? '').toLowerCase()}`.trim();
+          const wantDiag = DIAG_NAMES.has(fullName) || confidence === 'none';
+          if (wantDiag) {
+            const nl = normLast(resp.last_name);
+            const nf = normFirst(resp.first_name);
+            const z  = normZip(resp.zip);
+            // Candidates with same last name on the mail list
+            const lastNameCandidates = (mailRecords as MailRecord[])
+              .filter(m => normLast(m.last_name) === nl)
+              .slice(0, 5)
+              .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
+            const lastZipCandidates = (mailRecords as MailRecord[])
+              .filter(m => normLast(m.last_name) === nl && normZip(m.zip) === z)
+              .slice(0, 5)
+              .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
+            diagnostics.push({
+              responder: { first: resp.first_name, last: resp.last_name, zip: resp.zip, addr: resp.address },
+              normalized: { nf, nl, z, sn: streetNum(resp.address) },
+              keysTriedT1: `${nf}|${nl}|${z}`,
+              keysTriedT2: `${nl}|${streetNum(resp.address)}`,
+              keysTriedT3: `${nf.charAt(0)}|${nl}|${z}`,
+              keysTriedT4: nl.length >= 4 ? `${nf}|${nl}` : '(skipped: last<4)',
+              keysTriedT5: `${nl}|${z}`,
+              confidence,
+              tier,
+              lastNameCandidates,
+              lastZipCandidates,
+            });
+          }
         }
 
         const update: Record<string, unknown> = {
@@ -162,14 +297,17 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    return res.status(200).json({
+    const result: Record<string, unknown> = {
       ok: true,
       matched,
       fuzzyMatched,
       unmatched,
       total: responders.length,
       errors: errors.slice(0, 20),
-    });
+    };
+    if (debug && diagnostics.length) result.diagnostics = diagnostics;
+
+    return res.status(200).json(result);
   } catch (err: any) {
     console.error('[match-responders]', err);
     return res.status(500).json({ error: err?.message ?? 'Internal server error' });
