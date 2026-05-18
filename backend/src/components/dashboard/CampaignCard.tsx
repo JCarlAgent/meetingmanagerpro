@@ -364,7 +364,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         let errMsg = `HTTP ${res.status}`;
         try {
           const j = JSON.parse(rawText);
-          errMsg += `: ${j.error ?? rawText.slice(0, 300)}`;
+          const stepLabel = j.step ? ` (at step: ${j.step})` : '';
+          const stackLine = j.stackFirstLine ? `\nStack: ${j.stackFirstLine}` : '';
+          errMsg += `${stepLabel}: ${j.error ?? rawText.slice(0, 300)}${stackLine}`;
         } catch {
           errMsg += ` — Response (${contentType}): ${rawText.slice(0, 500)}`;
         }

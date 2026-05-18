@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/integrations/workthelead/import-mailed-list.ts": {
+      "maxDuration": 60
+    }
+  }
+}
