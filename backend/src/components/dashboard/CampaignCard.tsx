@@ -798,6 +798,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                         {events.slice(0,4).map((ev: any) => {
                           const parts = formatDateParts(ev.event_date);
                           const isPast = ev.event_date ? new Date(ev.event_date + 'T23:59:59') < new Date() : false;
+                          const evAttendees = displayResponders
+                            .filter(r => r.event_id === ev.id)
+                            .reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
                           return (
                             <div key={ev.id} className={`flex items-center gap-3 p-2 rounded-md ${isPast ? 'bg-gray-50 text-gray-500' : 'bg-white shadow-sm'}`}>
                               <div className={`w-20 text-center p-2 rounded ${isPast ? 'bg-gray-100' : 'bg-emerald-600 text-white'}`}>
@@ -808,6 +811,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               <div className="flex-1">
                                 <div className="font-medium text-sm">{ev.venue_name || 'TBD'}</div>
                                 <div className="text-xs text-slate-500">{ev.venue_city ? `${ev.venue_city}${ev.venue_state ? `, ${ev.venue_state}` : ''}` : ''}</div>
+                                <div className="text-xs text-slate-400">Attendees: {evAttendees}</div>
                               </div>
                               <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
                             </div>
