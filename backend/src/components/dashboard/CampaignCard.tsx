@@ -72,6 +72,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [isMatchingMail, setIsMatchingMail] = useState(false);
   const [matchMailMessage, setMatchMailMessage] = useState<string | null>(null);
   const [matchNameResults, setMatchNameResults] = useState<any[] | null>(null);
+  const [matcherVersion, setMatcherVersion] = useState<string | null>(null);
   const [isDebuggingMatch, setIsDebuggingMatch] = useState(false);
   const [debugMatchOutput, setDebugMatchOutput] = useState<string | null>(null);
 
@@ -514,6 +515,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       }
       setMatchMailMessage(parts.join(' '));
       if (json.nameResults?.length) setMatchNameResults(json.nameResults);
+      if (json.matcherVersion) setMatcherVersion(json.matcherVersion);
       reloadResponders();
     } catch (err: any) {
       setMatchMailMessage('Error: ' + (err?.message ?? String(err)));
@@ -1072,7 +1074,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               {matchNameResults && matchNameResults.length > 0 && (
                                 <div className="mt-2">
                                   <div className="flex items-center justify-between mb-1">
-                                    <div className="text-xs font-medium text-slate-700">Real Match Results — all {matchNameResults.length} responder(s)</div>
+                                    <div className="text-xs font-medium text-slate-700">Real Match Results — all {matchNameResults.length} responder(s){matcherVersion && <span className="ml-2 font-mono text-[9px] text-slate-400">[{matcherVersion}]</span>}</div>
                                     <button type="button" onClick={() => setMatchNameResults(null)} className="text-xs text-slate-400 hover:text-slate-600">✕ Clear</button>
                                   </div>
                                   <div className="overflow-auto max-h-72 rounded border border-slate-200">

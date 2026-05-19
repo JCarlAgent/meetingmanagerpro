@@ -205,6 +205,8 @@ function findMatch(
   return { mr: undefined, confidence: 'none', tier: 'none', failReason };
 }
 
+const MATCHER_VERSION = 'match-debug-live-2026-05-18';
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -267,7 +269,7 @@ export default async function handler(req: any, res: any) {
       // Fetch responder records for the 4 target last names
       const { data: responderRows, error: rErr } = await supabaseAdmin
         .from('responders')
-        .select('id, first_name, last_name, address, zip, matched_to_mail_list, match_confidence, mail_record_id, age, income, ipa')
+        .select('id, first_name, last_name, address, zip, phone, matched_to_mail_list, match_confidence, mail_record_id, age, income, ipa')
         .eq('campaign_id', jobId)
         .or(TARGET_LAST_NAMES.map(n => `last_name.ilike.${n}`).join(','));
       if (rErr) throw rErr;
@@ -277,8 +279,9 @@ export default async function handler(req: any, res: any) {
         const purchased = (purchasedRows ?? []).filter(p => normLast(p.last_name) === targetNL);
         const responders = (responderRows ?? []).filter(r => normLast(r.last_name) === targetNL);
 
-        const purchasedKeyed = purchased.map(p => ({
-          raw: { first: p.first_name, last: p.last_name, individual: p.individual_name, zip: p.zip, addr: p.address, city: p.city, state: p.state, age: p.age_band, income: p.est_income_code, ipa: p.claritas_ipa },
+        const purchasedKeyed = purchased.slice(0, 10).map(p => ({
+          raw: { first: p.first_name, last: p.last_name, individual: p.individual_name, zip: p.zip, addr: p.address, city: p.city, state: p.state, age: p.age_band, income: p.est_income_code, ipa: p.claritas_ipa, decodedIncome: decodeIncome(p.est_income_code) ?? p.est_income_range ?? null, decodedIpa: decodeIPA(p.claritas_ipa) ?? null },
+          normalized: { normFirst: normFirst(p.first_name), normLast: normLast(p.last_name), normFullName: `${normFirst(p.first_name)} ${normLast(p.last_name)}`.trim(), normZip: normZip(p.zip) },
           keys: {
             T1: `${normFirst(p.first_name)}|${normLast(p.last_name)}|${normZip(p.zip)}`,
             T2: `${normLast(p.last_name)}|${streetNum(p.address)}`,
@@ -336,8 +339,15 @@ export default async function handler(req: any, res: any) {
           const realMatches = actualResult.mr !== undefined;
           const diverged = keyWouldMatch !== realMatches;
 
+          const purchasedCountByFirstLast = purchased.filter(
+            p => normFirst(p.first_name) === nf && normLast(p.last_name) === nl
+          ).length;
+
           return {
-            raw: { id: r.id, first: r.first_name, last: r.last_name, zip: r.zip, addr: r.address },
+            raw: { id: r.id, first: r.first_name, last: r.last_name, zip: r.zip, addr: r.address, phone: (r as any).phone ?? null },
+            normFullName: `${nf} ${nl}`.trim(),
+            purchasedCountByLastName: purchased.length,
+            purchasedCountByFirstLast,
             currentDbState: { matched_to_mail_list: r.matched_to_mail_list, match_confidence: r.match_confidence, age: r.age, income: r.income, ipa: r.ipa },
             keysGenerated,
             keyPrediction,
@@ -372,6 +382,7 @@ export default async function handler(req: any, res: any) {
 
       return res.status(200).json({
         ok: true,
+        matcherVersion: MATCHER_VERSION,
         campaignId: jobId,
         mailListTotalForCampaign: allMailCount,
         DIVERGENCE_DETECTED: anyDiverged,
@@ -418,6 +429,7 @@ export default async function handler(req: any, res: any) {
       if (updErr) return res.status(500).json({ ok: false, error: updErr.message });
       return res.status(200).json({
         ok: true,
+        matcherVersion: MATCHER_VERSION,
         matched:      confidence === 'exact' ? 1 : 0,
         fuzzyMatched: confidence === 'fuzzy' ? 1 : 0,
         unmatched:    confidence === 'none'  ? 1 : 0,
@@ -585,6 +597,7 @@ export default async function handler(req: any, res: any) {
 
     const result: Record<string, unknown> = {
       ok: true,
+      matcherVersion: MATCHER_VERSION,
       matched,
       fuzzyMatched,
       unmatched,
