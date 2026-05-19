@@ -78,6 +78,7 @@ const HEADER_TO_COL: Record<string, string> = {
   last_name:               'last_name',
   // Address fields
   address:                 'address',
+  streetaddress:           'address',   // "Street Address" → stripped of space → streetaddress
   address2line:            'address2',
   address2:                'address2',
   city:                    'city',
@@ -85,10 +86,18 @@ const HEADER_TO_COL: Record<string, string> = {
   zip:                     'zip',
   zip5:                    'zip',
   zip4:                    'zip4',
-  // Demographics
-  age_band:                'age_band',
+  // Demographics — age (multiple possible headers from different export formats)
+  age:                     'age_band',  // simple export: "Age" column header
+  ageband:                 'age_band',  // "AGE BAND" stripped of space → ageband
+  age_band:                'age_band',  // AccuData header: "AGE_BAND"
+  age_code:                'age_band',
+  age_range:               'age_band',
+  agerange:                'age_band',
+  // Demographics — income (simple export uses "Income"; AccuData uses "EST_INCOME_CODE")
+  income:                  'est_income_code', // simple export: raw dollar value stored as-is
   claritas_ipa:            'claritas_ipa',
-  claritas_ipa_code:       'claritas_ipa',    // actual header in cleaned CSV
+  claritas_ipa_code:       'claritas_ipa',    // actual header in cleaned AccuData CSV
+  ipa:                     'claritas_ipa',    // simple export: "IPA" column header
   est_income_code:         'est_income_code',
   est_income_narrow_range: 'est_income_range',
   est_income_range:        'est_income_range',
@@ -297,6 +306,17 @@ export default async function handler(req: any, res: any) {
     // All data rows in this chunk will be mapped by those positions.
     const colNames: (string | null)[] | null = headerRowRaw ? parseHeaderRow(headerRowRaw) : null;
     const importMode = colNames ? 'header-based' : 'position-based';
+
+    // Diagnostic log — visible in Vercel function logs
+    if (chunkIndex === 0) {
+      console.log(`[import-mailed-list] mode=${importMode} chunk=${chunkIndex}/${totalChunks} jobId=${jobId}`);
+      if (headerRowRaw) {
+        const parsed = parseCsvLine(headerRowRaw);
+        const normalized = parsed.map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''));
+        const mapped = normalized.map((n, i) => `${parsed[i]}→${HEADER_TO_COL[n] ?? '(skip)'}`);
+        console.log(`[import-mailed-list] headers: ${mapped.join(', ')}`);
+      }
+    }
 
     // Build debug info for the validateOnly response
     const headerDebug = headerRowRaw ? {
