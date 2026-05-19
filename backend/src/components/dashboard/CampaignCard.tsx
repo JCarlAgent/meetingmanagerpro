@@ -365,9 +365,21 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       return;
     }
 
+    // Detect and strip header row: if the first field of the first line is a
+    // known header token (e.g. "firstname"), treat it as headers and pass it to
+    // the backend so it can map columns by name instead of position.
+    const firstField = (allLines[0] ?? '').split(',')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const HEADER_TOKENS = new Set(['firstname', 'lastname', 'first_name', 'last_name']);
+    let headerRow: string | undefined;
+    let dataLines = allLines;
+    if (HEADER_TOKENS.has(firstField)) {
+      headerRow = allLines[0];
+      dataLines = allLines.slice(1);
+    }
+
     const isTestRun = !!testLimit;
     // Client-side slice: test mode sends ONLY the first N rows, not the full file
-    const linesToSend = isTestRun ? allLines.slice(0, testLimit) : allLines;
+    const linesToSend = isTestRun ? dataLines.slice(0, testLimit) : dataLines;
 
     // Build chunks — each chunk is MAIL_CHUNK_SIZE rows
     const chunks: string[][] = [];
@@ -381,8 +393,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     setIsImportingMail(true);
     setMailedImportMessage(
       isTestRun
-        ? `[auth] Getting token… (test: ${linesToSend.length} rows / ${totalKB} KB in 1 chunk)`
-        : `[auth] Getting token… (${linesToSend.length.toLocaleString()} rows / ${totalKB} KB → ${chunks.length} chunks of ${MAIL_CHUNK_SIZE} rows / ~${chunkKBEst} KB each)`
+        ? `[auth] Getting token… (test: ${linesToSend.length} rows / ${totalKB} KB in 1 chunk${headerRow ? ' — header-based' : ' — position-based'})`
+        : `[auth] Getting token… (${linesToSend.length.toLocaleString()} rows / ${totalKB} KB → ${chunks.length} chunks of ${MAIL_CHUNK_SIZE} rows / ~${chunkKBEst} KB each${headerRow ? ' — header-based' : ' — position-based'})`
     );
 
     try {
@@ -423,6 +435,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             chunkIndex:  ci,
             totalChunks: chunks.length,
             isTestRun,
+            ...(headerRow ? { headerRow } : {}),
           }),
         });
 
@@ -608,12 +621,29 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      // Send only the first non-empty line
-      const firstLine = mailedCsv.split('\n').find(l => l.trim()) ?? '';
+      // Detect and separate header row from first data row
+      const allCsvLines = mailedCsv.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim());
+      const firstFieldV = (allCsvLines[0] ?? '').split(',')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+      const HEADER_TOKENS_V = new Set(['firstname', 'lastname', 'first_name', 'last_name']);
+      let headerRowV: string | undefined;
+      let firstDataLine: string;
+      if (HEADER_TOKENS_V.has(firstFieldV)) {
+        headerRowV = allCsvLines[0];
+        firstDataLine = allCsvLines[1] ?? allCsvLines[0]; // second line is first data row
+      } else {
+        firstDataLine = allCsvLines[0] ?? '';
+      }
       const res = await fetch('/api/integrations/workthelead/import-mailed-list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jobId: campaign.id, csv: firstLine, chunkIndex: 0, totalChunks: 1, validateOnly: true }),
+        body: JSON.stringify({
+          jobId: campaign.id,
+          csv: firstDataLine,
+          chunkIndex: 0,
+          totalChunks: 1,
+          validateOnly: true,
+          ...(headerRowV ? { headerRow: headerRowV } : {}),
+        }),
       });
       const rawText = await res.text();
       let j: Record<string, unknown>;
@@ -624,9 +654,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       }
       const mapped = j.firstRowMapped as Record<string, unknown> | null;
       const lines = [
-        `✓ Validate OK — ${j.rawFieldCount} columns in raw CSV.`,
+        `✓ Validate OK — ${j.rawFieldCount} columns in raw CSV (${j.importMode ?? 'position-based'}).`,
         `Mapped: first_name=${mapped?.first_name ?? '(empty)'}, last_name=${mapped?.last_name ?? '(empty)'}, zip=${mapped?.zip ?? '(empty)'}`,
         `age_band=${mapped?.age_band ?? '(empty)'}, claritas_ipa=${mapped?.claritas_ipa ?? '(empty)'}, est_income_range=${mapped?.est_income_range ?? '(empty)'}`,
+        `gender_code=${mapped?.gender_code ?? '(empty)'}, homeowner=${mapped?.homeowner_flag1 ?? '(empty)'}, full_name=${mapped?.full_name ?? '(empty)'}`,
         `Raw first line: ${(j.rawFirstLine as string ?? '').slice(0, 200)}`,
       ];
       setMailedImportMessage(lines.join('\n'));
@@ -1111,7 +1142,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 <div className="mt-2 space-y-2">
                                   {/* ── Primary: file upload ── */}
                                   <div>
-                                    <div className="text-xs font-medium text-slate-600 mb-1">Upload AccuLeads CSV (no header row)</div>
+                                    <div className="text-xs font-medium text-slate-600 mb-1">Upload AccuLeads CSV (header row optional — auto-detected)</div>
                                     <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-700 rounded text-xs cursor-pointer">
                                       <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" /></svg>
                                       {mailedFileName ? 'Change file' : 'Choose file…'}

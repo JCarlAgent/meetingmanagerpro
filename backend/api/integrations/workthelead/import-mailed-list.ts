@@ -33,6 +33,7 @@ export const config = {
 };
 
 // ── Column mapping (0-indexed) from AccuLeads / 11240729_lay.txt ─────────────
+// Used as the legacy POSITION-BASED fallback when no header row is detected.
 //
 //  Index  Layout col  Field
 //  ─────  ──────────  ─────
@@ -63,6 +64,73 @@ const COL_CLARITAS_IPA     = 15;
 const COL_AGE_BAND         = 17;
 const COL_EST_INCOME_CODE  = 30;
 const COL_EST_INCOME_RANGE = 32;
+
+// ── Header-based column mapping (cleaned CSV with explicit headers) ───────────
+// Maps normalized header name → DB column name.
+// Normalized: lowercase, non-alphanumeric (except _) stripped.
+const HEADER_TO_COL: Record<string, string> = {
+  firstname:               'first_name',
+  lastname:                'last_name',
+  address:                 'address',
+  address2line:            'address2',
+  city:                    'city',
+  state:                   'state',
+  zip:                     'zip',
+  zip4:                    'zip4',
+  claritas_ipa:            'claritas_ipa',
+  est_income_code:         'est_income_code',
+  est_income_narrow_range: 'est_income_range',
+  gender_code:             'gender_code',
+  homeowner_flag1:         'homeowner_flag1',
+  length_residence:        'length_residence',
+  marital_status:          'marital_status',
+  veh1_make_desc:          'veh1_make_desc',
+  veh1_model_desc:         'veh1_model_desc',
+  veh2_make_desc:          'veh2_make_desc',
+  veh2_model_desc:         'veh2_model_desc',
+  // also accept underscore variants
+  first_name:              'first_name',
+  last_name:               'last_name',
+  est_income_range:        'est_income_range',
+  address2:                'address2',
+};
+
+/**
+ * Parse a header CSV line into an ordered list of DB column names.
+ * Returns null for unrecognized columns (they are skipped during insert).
+ */
+function parseHeaderRow(headerLine: string): (string | null)[] {
+  return parseCsvLine(headerLine).map(h => {
+    const norm = h.toLowerCase().trim().replace(/[^a-z0-9_]/g, '');
+    return HEADER_TO_COL[norm] ?? null;
+  });
+}
+
+/**
+ * Map a data row to a DB insert row using header-derived column positions.
+ * Normalizes zip to 5 digits. Computes full_name.
+ */
+function mapRowFromHeaders(
+  fields: string[],
+  colNames: (string | null)[],
+  jobId: string,
+): Record<string, string | null> {
+  const row: Record<string, string | null> = { campaign_id: jobId };
+  for (let i = 0; i < colNames.length; i++) {
+    const dbCol = colNames[i];
+    if (!dbCol) continue;
+    const v = fields[i];
+    row[dbCol] = (v === undefined || v.trim() === '') ? null : v.trim();
+  }
+  // Normalize zip to 5 digits (strip non-digits, take first 5)
+  if (row.zip) {
+    const digits = row.zip.replace(/\D/g, '');
+    row.zip = digits.slice(0, 5) || row.zip.slice(0, 5) || null;
+  }
+  // Compute full_name from first_name + last_name
+  row.full_name = [row.first_name ?? '', row.last_name ?? ''].filter(Boolean).join(' ') || null;
+  return row;
+}
 
 /**
  * RFC-4180-compatible CSV line parser.
@@ -102,7 +170,7 @@ function col(fields: string[], idx: number): string | null {
   return (v === undefined || v === '' || v === null) ? null : v;
 }
 
-/** Map a parsed fields array to a DB insert row. */
+/** Map a parsed fields array to a DB insert row (legacy position-based). */
 function mapRow(fields: string[], jobId: string): Record<string, string | null> {
   return {
     campaign_id:      jobId,
@@ -168,6 +236,7 @@ export default async function handler(req: any, res: any) {
       totalChunks?: number;
       isTestRun?: boolean;
       validateOnly?: boolean;
+      headerRow?: string;   // optional: first CSV line with column headers
     } | null;
 
     if (!body || typeof body !== 'object') {
@@ -187,6 +256,12 @@ export default async function handler(req: any, res: any) {
     const totalChunks  = typeof body.totalChunks === 'number' ? body.totalChunks : 1;
     const isTestRun    = body.isTestRun    === true;
     const validateOnly = body.validateOnly === true;
+    const headerRowRaw = typeof body.headerRow === 'string' ? body.headerRow.trim() : null;
+
+    // If a header row was provided, parse its column positions once.
+    // All data rows in this chunk will be mapped by those positions.
+    const colNames: (string | null)[] | null = headerRowRaw ? parseHeaderRow(headerRowRaw) : null;
+    const importMode = colNames ? 'header-based' : 'position-based';
 
     // ── Parse CSV rows ────────────────────────────────────────────────────────
     step = 'parse-csv';
@@ -200,7 +275,7 @@ export default async function handler(req: any, res: any) {
       if (!line) { skipped++; continue; }
       try {
         const fields = parseCsvLine(line);
-        const row = mapRow(fields, jobId);
+        const row = colNames ? mapRowFromHeaders(fields, colNames, jobId) : mapRow(fields, jobId);
         if (!row.last_name && !row.first_name) { skipped++; continue; }
         records.push(row);
       } catch (e: any) {
@@ -216,6 +291,8 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         ok: true,
         step: 'validate-only',
+        importMode,
+        headerColumns: colNames ? colNames.map((c, i) => ({ pos: i, dbCol: c ?? '(unmapped)' })) : null,
         parsed: records.length,
         skipped,
         rawFieldCount: rawFields.length,
@@ -294,14 +371,18 @@ export default async function handler(req: any, res: any) {
       isTestRun,
       errors: allErrors.slice(0, 20),
       sampleRow: firstRow ? {
-        first_name:      firstRow.first_name,
-        last_name:       firstRow.last_name,
-        address:         firstRow.address,
-        zip:             firstRow.zip,
-        age_band:        firstRow.age_band,
-        claritas_ipa:    firstRow.claritas_ipa,
+        first_name:       firstRow.first_name,
+        last_name:        firstRow.last_name,
+        full_name:        firstRow.full_name,
+        address:          firstRow.address,
+        zip:              firstRow.zip,
+        age_band:         firstRow.age_band,
+        claritas_ipa:     firstRow.claritas_ipa,
         est_income_range: firstRow.est_income_range,
+        gender_code:      firstRow.gender_code,
+        homeowner_flag1:  firstRow.homeowner_flag1,
       } : null,
+      importMode,
     });
 
   } catch (err: any) {
