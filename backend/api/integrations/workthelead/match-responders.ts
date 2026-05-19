@@ -269,21 +269,24 @@ export default async function handler(req: any, res: any) {
       const TARGET_LAST_NAMES = ['nelson', 'lee', 'hart', 'french'];
 
       // Fetch ALL mail records for this campaign — same query as real match path.
+      // Include display columns (individual_name, city, state) so we can reuse
+      // this set for the purchasedKeyed diagnostic without a second DB call.
+      // NOTE: We CANNOT use last_name.ilike.hart to filter here because that is an
+      // exact ilike match and would miss "HART SR", "HART JR", etc. Instead we
+      // load all records and filter client-side via normLast().
       const { data: allMailRecords, error: allMailErr } = await supabaseAdmin
         .from('campaign_mailed_list_records')
-        .select('id, first_name, last_name, address, zip, claritas_ipa, age_band, est_income_code, est_income_range')
+        .select('id, first_name, last_name, individual_name, address, city, state, zip, claritas_ipa, age_band, est_income_code, est_income_range')
         .eq('campaign_id', jobId);
       if (allMailErr) throw allMailErr;
 
       const allMailCount = allMailRecords?.length ?? 0;
 
-      // Also fetch display columns for the target names
-      const { data: purchasedRows, error: pErr } = await supabaseAdmin
-        .from('campaign_mailed_list_records')
-        .select('id, first_name, last_name, individual_name, address, city, state, zip, age_band, est_income_code, est_income_range, claritas_ipa')
-        .eq('campaign_id', jobId)
-        .or(TARGET_LAST_NAMES.map(n => `last_name.ilike.${n}`).join(','));
-      if (pErr) throw pErr;
+      // purchasedRows: target-name subset filtered client-side via normLast so that
+      // suffix variants (HART SR, HART JR) are not silently excluded.
+      const purchasedRows = (allMailRecords ?? []).filter(
+        p => TARGET_LAST_NAMES.includes(normLast(p.last_name))
+      );
 
       // Build REAL indices from the full list — identical to real match path
       const realIdx = allMailCount > 0
