@@ -67,32 +67,39 @@ const COL_EST_INCOME_RANGE = 32;
 
 // ── Header-based column mapping (cleaned CSV with explicit headers) ───────────
 // Maps normalized header name → DB column name.
-// Normalized: lowercase, non-alphanumeric (except _) stripped.
+// Normalized: lowercase, all non-alphanumeric chars (except _) stripped.
 const HEADER_TO_COL: Record<string, string> = {
+  // Name fields
+  full_name:               'full_name',
+  fullname:                'full_name',
   firstname:               'first_name',
+  first_name:              'first_name',
   lastname:                'last_name',
+  last_name:               'last_name',
+  // Address fields
   address:                 'address',
   address2line:            'address2',
+  address2:                'address2',
   city:                    'city',
   state:                   'state',
   zip:                     'zip',
+  zip5:                    'zip',
   zip4:                    'zip4',
+  // Demographics
   claritas_ipa:            'claritas_ipa',
+  claritas_ipa_code:       'claritas_ipa',    // actual header in cleaned CSV
   est_income_code:         'est_income_code',
   est_income_narrow_range: 'est_income_range',
+  est_income_range:        'est_income_range',
   gender_code:             'gender_code',
   homeowner_flag1:         'homeowner_flag1',
   length_residence:        'length_residence',
+  length_residence_years:  'length_residence', // actual header in cleaned CSV
   marital_status:          'marital_status',
   veh1_make_desc:          'veh1_make_desc',
   veh1_model_desc:         'veh1_model_desc',
   veh2_make_desc:          'veh2_make_desc',
   veh2_model_desc:         'veh2_model_desc',
-  // also accept underscore variants
-  first_name:              'first_name',
-  last_name:               'last_name',
-  est_income_range:        'est_income_range',
-  address2:                'address2',
 };
 
 /**
@@ -104,6 +111,20 @@ function parseHeaderRow(headerLine: string): (string | null)[] {
     const norm = h.toLowerCase().trim().replace(/[^a-z0-9_]/g, '');
     return HEADER_TO_COL[norm] ?? null;
   });
+}
+
+/**
+ * Detect whether a CSV line is a header row.
+ * A line is considered a header if its parsed fields — when normalized —
+ * contain BOTH a first-name token AND a last-name token AND a zip token.
+ * This is field-order-independent (full_name may precede firstname, etc.).
+ */
+function isHeaderRow(line: string): boolean {
+  const fields = parseCsvLine(line).map(f => f.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''));
+  const hasFirst = fields.some(f => f === 'firstname' || f === 'first_name');
+  const hasLast  = fields.some(f => f === 'lastname'  || f === 'last_name');
+  const hasZip   = fields.some(f => f === 'zip' || f === 'zip5');
+  return hasFirst && hasLast && hasZip;
 }
 
 /**
@@ -256,16 +277,51 @@ export default async function handler(req: any, res: any) {
     const totalChunks  = typeof body.totalChunks === 'number' ? body.totalChunks : 1;
     const isTestRun    = body.isTestRun    === true;
     const validateOnly = body.validateOnly === true;
-    const headerRowRaw = typeof body.headerRow === 'string' ? body.headerRow.trim() : null;
 
-    // If a header row was provided, parse its column positions once.
+    // Resolve headerRow: prefer the explicitly-passed value, then auto-detect
+    // from the first non-empty line of the csv payload using isHeaderRow().
+    // isHeaderRow() is field-order-independent: it scans ALL fields for
+    // firstname + lastname + zip tokens, so it works even when full_name is col 0.
+    let headerRowRaw = typeof body.headerRow === 'string' ? body.headerRow.trim() : null;
+    let autoDetected = false;
+    if (!headerRowRaw) {
+      const firstLine = csv.split('\n').find(l => l.trim());
+      if (firstLine && isHeaderRow(firstLine)) {
+        headerRowRaw = firstLine.trim();
+        autoDetected = true;
+      }
+    }
+
+    // If a header row was resolved, parse its column positions once.
     // All data rows in this chunk will be mapped by those positions.
     const colNames: (string | null)[] | null = headerRowRaw ? parseHeaderRow(headerRowRaw) : null;
     const importMode = colNames ? 'header-based' : 'position-based';
 
+    // Build debug info for the validateOnly response
+    const headerDebug = headerRowRaw ? {
+      headerRowRaw,
+      autoDetected,
+      parsedHeaders: parseCsvLine(headerRowRaw).map(h => h.trim()),
+      normalizedHeaders: parseCsvLine(headerRowRaw).map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, '')),
+      colNames: colNames?.map((c, i) => ({ pos: i, dbCol: c ?? '(unmapped)' })),
+    } : {
+      headerRowRaw: null,
+      autoDetected: false,
+      reason: 'isHeaderRow() returned false — row does not contain firstname+lastname+zip tokens',
+      firstLineNormalized: csv.split('\n').find(l => l.trim())
+        ? parseCsvLine(csv.split('\n').find(l => l.trim())!)
+            .map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''))
+        : [],
+    };
+
     // ── Parse CSV rows ────────────────────────────────────────────────────────
     step = 'parse-csv';
-    const allLines = csv.split('\n').map(l => l.replace(/\r$/, ''));
+    // In header-based mode the first line is the header — skip it when it was
+    // auto-detected server-side (client already stripped it when it passes headerRow).
+    const rawLines = csv.split('\n').map(l => l.replace(/\r$/, ''));
+    const allLines = (autoDetected && headerRowRaw)
+      ? rawLines.slice(1)   // drop the header line we consumed
+      : rawLines;
     const records: Record<string, string | null>[] = [];
     const parseErrors: string[] = [];
     let skipped = 0;
@@ -292,7 +348,7 @@ export default async function handler(req: any, res: any) {
         ok: true,
         step: 'validate-only',
         importMode,
-        headerColumns: colNames ? colNames.map((c, i) => ({ pos: i, dbCol: c ?? '(unmapped)' })) : null,
+        headerDebug,
         parsed: records.length,
         skipped,
         rawFieldCount: rawFields.length,

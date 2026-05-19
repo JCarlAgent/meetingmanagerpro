@@ -365,14 +365,16 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       return;
     }
 
-    // Detect and strip header row: if the first field of the first line is a
-    // known header token (e.g. "firstname"), treat it as headers and pass it to
-    // the backend so it can map columns by name instead of position.
-    const firstField = (allLines[0] ?? '').split(',')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
-    const HEADER_TOKENS = new Set(['firstname', 'lastname', 'first_name', 'last_name']);
+    // Detect and strip header row.
+    // Parse ALL fields of the first line and check for presence of
+    // firstname+lastname+zip tokens regardless of column order.
+    const firstLineFields = (allLines[0] ?? '').split(',').map(f => f.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+    const hasFirstToken = firstLineFields.some(f => f === 'firstname' || f === 'first_name');
+    const hasLastToken  = firstLineFields.some(f => f === 'lastname'  || f === 'last_name');
+    const hasZipToken   = firstLineFields.some(f => f === 'zip' || f === 'zip5');
     let headerRow: string | undefined;
     let dataLines = allLines;
-    if (HEADER_TOKENS.has(firstField)) {
+    if (hasFirstToken && hasLastToken && hasZipToken) {
       headerRow = allLines[0];
       dataLines = allLines.slice(1);
     }
@@ -621,15 +623,19 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      // Detect and separate header row from first data row
+      // Detect and separate header row from first data row.
+      // Scan ALL fields of the first line for firstname+lastname+zip tokens
+      // regardless of column order (full_name may appear before firstname).
       const allCsvLines = mailedCsv.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim());
-      const firstFieldV = (allCsvLines[0] ?? '').split(',')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
-      const HEADER_TOKENS_V = new Set(['firstname', 'lastname', 'first_name', 'last_name']);
+      const firstLineFieldsV = (allCsvLines[0] ?? '').split(',').map(f => f.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+      const hasFirstV = firstLineFieldsV.some(f => f === 'firstname' || f === 'first_name');
+      const hasLastV  = firstLineFieldsV.some(f => f === 'lastname'  || f === 'last_name');
+      const hasZipV   = firstLineFieldsV.some(f => f === 'zip' || f === 'zip5');
       let headerRowV: string | undefined;
       let firstDataLine: string;
-      if (HEADER_TOKENS_V.has(firstFieldV)) {
+      if (hasFirstV && hasLastV && hasZipV) {
         headerRowV = allCsvLines[0];
-        firstDataLine = allCsvLines[1] ?? allCsvLines[0]; // second line is first data row
+        firstDataLine = allCsvLines[1] ?? allCsvLines[0];
       } else {
         firstDataLine = allCsvLines[0] ?? '';
       }
@@ -653,11 +659,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         return;
       }
       const mapped = j.firstRowMapped as Record<string, unknown> | null;
+      const dbg = j.headerDebug as Record<string, unknown> | null;
       const lines = [
         `✓ Validate OK — ${j.rawFieldCount} columns in raw CSV (${j.importMode ?? 'position-based'}).`,
         `Mapped: first_name=${mapped?.first_name ?? '(empty)'}, last_name=${mapped?.last_name ?? '(empty)'}, zip=${mapped?.zip ?? '(empty)'}`,
         `age_band=${mapped?.age_band ?? '(empty)'}, claritas_ipa=${mapped?.claritas_ipa ?? '(empty)'}, est_income_range=${mapped?.est_income_range ?? '(empty)'}`,
         `gender_code=${mapped?.gender_code ?? '(empty)'}, homeowner=${mapped?.homeowner_flag1 ?? '(empty)'}, full_name=${mapped?.full_name ?? '(empty)'}`,
+        dbg?.reason ? `⚠ Header detection: ${dbg.reason}` : `Header detect: autoDetected=${dbg?.autoDetected ?? false}`,
         `Raw first line: ${(j.rawFirstLine as string ?? '').slice(0, 200)}`,
       ];
       setMailedImportMessage(lines.join('\n'));
