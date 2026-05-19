@@ -1303,13 +1303,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-white">Full Responder List</span>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => { window.print(); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded-lg transition-colors"
-              >
-                <Printer className="w-3.5 h-3.5" /> Print Sign-In Sheet
-              </button>
               <button type="button" onClick={() => setShowFullResponders(false)} className="text-xs text-slate-400 hover:text-slate-200 underline">Close</button>
             </div>
           </div>

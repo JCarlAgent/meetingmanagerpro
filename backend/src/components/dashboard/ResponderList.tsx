@@ -141,35 +141,165 @@ const ResponderList: React.FC<ResponderListProps> = ({
     onDeleteResponder?.(responder.id);
   };
 
-  // Print a sign-in sheet in a new window
+  // Print a professional sign-in sheet in a new window
   const printResponders = (forEventId: string | null) => {
-    const toPrint = forEventId ? responders.filter(r => r.event_id === forEventId) : responders;
+    const toPrint = forEventId
+      ? responders.filter(r => r.event_id === forEventId)
+      : responders;
     const ev = forEventId ? eventMap.get(forEventId) : null;
-    const eventLabel = ev ? formatEventShort(ev) : 'All Meetings';
-    const totalAttendees = toPrint.reduce((s, r) => s + 1 + (r.guests ?? 0), 0);
+
+    // Build header subtitle: Date · Time · Venue
+    const headerParts: string[] = [];
+    if (ev?.event_date) headerParts.push(formatDate(ev.event_date));
+    if (ev?.event_time) headerParts.push(formatTime(ev.event_time));
+    if (ev?.venue_name) headerParts.push(ev.venue_name);
+    const subHeader = headerParts.length ? headerParts.join(' &middot; ') : 'All Meetings';
+
+    // Sort alphabetically by last name
     const sorted = [...toPrint].sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? ''));
-    const rows = sorted.map(r =>
-      `<tr><td>${(r.last_name ?? '').toUpperCase()}, ${r.first_name ?? ''}</td>` +
-      `<td>${r.phone ?? ''}</td>` +
-      `<td style="text-align:center">${(r.guests ?? 0) + 1}</td>` +
-      `<td style="text-align:center">${r.confirmed ? '&#x2713;' : ''}</td>` +
-      `<td></td></tr>`
+
+    // Build table rows: guest row (if any) ABOVE the responder row
+    const rows = sorted.map(r => {
+      const guestName = (r as any).guest_name as string | null | undefined;
+      const guestCount = r.guests ?? 0;
+      let guestRow = '';
+      if (guestName) {
+        guestRow = `<tr class="guest-row">
+          <td class="guest-cell"><span class="guest-label">Guest:</span> ${guestName}</td>
+          <td></td><td></td><td class="sig-cell"></td><td></td>
+        </tr>`;
+      } else if (guestCount > 0) {
+        guestRow = `<tr class="guest-row">
+          <td class="guest-cell"><span class="guest-label">Guest${guestCount > 1 ? 's' : ''}:</span> +${guestCount}</td>
+          <td></td><td></td><td class="sig-cell"></td><td></td>
+        </tr>`;
+      }
+      const respRow = `<tr>
+        <td>${(r.last_name ?? '').toUpperCase()}, ${r.first_name ?? ''}</td>
+        <td>${r.phone ?? ''}</td>
+        <td>${r.email ?? ''}</td>
+        <td class="sig-cell"></td>
+        <td>${r.notes ?? ''}</td>
+      </tr>`;
+      return guestRow + respRow;
+    }).join('');
+
+    // 5 blank walk-in rows
+    const blankRows = Array(5).fill(
+      '<tr><td>&nbsp;</td><td></td><td></td><td class="sig-cell"></td><td></td></tr>'
     ).join('');
-    const html = [
-      '<!DOCTYPE html><html><head><title>', campaignName, ' Sign-In Sheet</title>',
-      '<style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}',
-      'h2{font-size:15px;margin-bottom:2px}p{margin:0 0 10px;color:#555}',
-      'table{width:100%;border-collapse:collapse}',
-      'th{background:#e8e8e8;font-weight:bold;border:1px solid #bbb;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase}',
-      'td{border:1px solid #ccc;padding:5px 8px}',
-      'tr:nth-child(even) td{background:#f9f9f9}</style></head><body>',
-      '<h2>', campaignName, ' \u2014 Sign-In Sheet</h2>',
-      '<p>', eventLabel, ' &nbsp;|&nbsp; ', toPrint.length, ' responder', toPrint.length !== 1 ? 's' : '', ', ', totalAttendees, ' total attendees</p>',
-      '<table><thead><tr><th>Name</th><th>Phone</th><th>Party Size</th><th>Confirmed</th><th>Signature</th></tr></thead>',
-      '<tbody>', rows, '</tbody></table>',
-      '<scr', 'ipt>window.onload=function(){window.print();}</scr', 'ipt>',
-      '</body></html>',
-    ].join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sign-In Sheet</title>
+  <style>
+    @page { size: landscape; margin: 0.6in 0.5in; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 15px;
+      color: #000;
+      background: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 18px;
+      border-bottom: 3px solid #000;
+      padding-bottom: 10px;
+    }
+    .header h1 {
+      font-size: 26px;
+      font-weight: bold;
+      margin: 0 0 6px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .header p {
+      font-size: 17px;
+      margin: 0;
+      color: #000;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      background: #000;
+      color: #fff;
+      font-weight: bold;
+      font-size: 15px;
+      border: 2px solid #000;
+      padding: 8px 10px;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    td {
+      border: 1.5px solid #333;
+      padding: 7px 10px;
+      font-size: 15px;
+      vertical-align: middle;
+      min-height: 36px;
+    }
+    .sig-cell {
+      min-width: 200px;
+    }
+    tr.guest-row td {
+      background: #f5f5f5;
+      border-top: none;
+      padding-top: 4px;
+      padding-bottom: 4px;
+      font-size: 14px;
+    }
+    .guest-cell {
+      padding-left: 24px;
+    }
+    .guest-label {
+      font-style: italic;
+      color: #555;
+      font-size: 13px;
+    }
+    .blank-divider td {
+      border-top: 2px dashed #aaa;
+      background: #fafafa;
+    }
+    .blank-label {
+      font-size: 12px;
+      color: #888;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Sign In Sheet</h1>
+    <p>${subHeader}</p>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:22%">Name</th>
+        <th style="width:13%">Phone</th>
+        <th style="width:20%">Email</th>
+        <th class="sig-cell" style="width:25%">Signature</th>
+        <th style="width:20%">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+      <tr class="blank-divider">
+        <td colspan="5" class="blank-label">&nbsp;&nbsp;Walk-ins</td>
+      </tr>
+      ${blankRows}
+    </tbody>
+  </table>
+  <script>window.onload = function() { window.print(); };</script>
+</body>
+</html>`;
+
     const win = window.open('', '_blank');
     if (win) { win.document.write(html); win.document.close(); }
   };
