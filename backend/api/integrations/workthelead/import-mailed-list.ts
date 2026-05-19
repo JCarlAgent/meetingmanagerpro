@@ -360,6 +360,31 @@ export default async function handler(req: any, res: any) {
 
     // ── Clear existing records (first chunk of a full run only) ──────────────
     if (chunkIndex === 0 && !isTestRun) {
+      // Step 1: null out enrichment links on responders for this campaign so the
+      // FK constraint (responders.mail_record_id → campaign_mailed_list_records.id)
+      // doesn't block deletion of the old purchased-list rows.
+      step = 'clear-responder-links';
+      const { error: unlinkErr } = await supabaseAdmin
+        .from('responders')
+        .update({
+          mail_record_id:       null,
+          matched_to_mail_list: null,
+          match_confidence:     null,
+          income:               null,
+          ipa:                  null,
+          age:                  null,
+        })
+        .eq('campaign_id', jobId);
+      if (unlinkErr) {
+        return res.status(500).json({
+          ok: false, step,
+          error: `Failed to unlink responder enrichment data: ${unlinkErr.message}`,
+          supabaseCode: unlinkErr.code,
+          hint: unlinkErr.hint,
+        });
+      }
+
+      // Step 2: now safe to delete the old purchased-list rows.
       step = 'clear-existing';
       const { error: delErr } = await supabaseAdmin
         .from('campaign_mailed_list_records').delete().eq('campaign_id', jobId);
