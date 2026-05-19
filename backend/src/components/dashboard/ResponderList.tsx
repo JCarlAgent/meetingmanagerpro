@@ -158,10 +158,17 @@ const ResponderList: React.FC<ResponderListProps> = ({
     // Sort alphabetically by last name
     const sorted = [...toPrint].sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? ''));
 
-    // Build table rows: guest row (if any) ABOVE the responder row
+    // Build table rows: responder row first, guest row (if any) BELOW
     const rows = sorted.map(r => {
       const guestName = (r as any).guest_name as string | null | undefined;
       const guestCount = r.guests ?? 0;
+      const respRow = `<tr>
+        <td>${(r.last_name ?? '').toUpperCase()}, ${r.first_name ?? ''}</td>
+        <td>${r.phone ?? ''}</td>
+        <td>${r.email ?? ''}</td>
+        <td class="sig-cell"></td>
+        <td></td>
+      </tr>`;
       let guestRow = '';
       if (guestName) {
         guestRow = `<tr class="guest-row">
@@ -174,14 +181,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
           <td></td><td></td><td class="sig-cell"></td><td></td>
         </tr>`;
       }
-      const respRow = `<tr>
-        <td>${(r.last_name ?? '').toUpperCase()}, ${r.first_name ?? ''}</td>
-        <td>${r.phone ?? ''}</td>
-        <td>${r.email ?? ''}</td>
-        <td class="sig-cell"></td>
-        <td>${r.notes ?? ''}</td>
-      </tr>`;
-      return guestRow + respRow;
+      return respRow + guestRow;
     }).join('');
 
     // 5 blank walk-in rows
@@ -239,10 +239,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
     }
     td {
       border: 1.5px solid #333;
-      padding: 7px 10px;
+      padding: 0 10px;
       font-size: 15px;
       vertical-align: middle;
-      min-height: 36px;
+      height: 40px;
+      max-height: 40px;
+      overflow: hidden;
+      white-space: nowrap;
     }
     .sig-cell {
       min-width: 200px;
@@ -250,8 +253,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
     tr.guest-row td {
       background: #f5f5f5;
       border-top: none;
-      padding-top: 4px;
-      padding-bottom: 4px;
+      height: 32px;
+      max-height: 32px;
+      padding: 0 10px;
       font-size: 14px;
     }
     .guest-cell {
