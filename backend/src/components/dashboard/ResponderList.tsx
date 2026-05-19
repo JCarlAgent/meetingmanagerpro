@@ -340,6 +340,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
                   {/* Name */}
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{responder.first_name} {responder.last_name}</div>
+                    {(responder.guests ?? 0) > 0 && (
+                      <div className="text-xs text-slate-400">+{responder.guests} guest{responder.guests === 1 ? '' : 's'}</div>
+                    )}
                     <div className="text-xs text-slate-500 md:hidden">{responder.phone}</div>
                   </td>
 

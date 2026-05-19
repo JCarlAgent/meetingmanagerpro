@@ -86,9 +86,11 @@ const HEADER_TO_COL: Record<string, string> = {
   zip:                     'zip',
   zip5:                    'zip',
   zip4:                    'zip4',
-  // Demographics — age (multiple possible headers from different export formats)
-  age:                     'age_band',  // simple export: "Age" column header
-  ageband:                 'age_band',  // "AGE BAND" stripped of space → ageband
+  // Demographics — age
+  // NOTE: do NOT map plain 'age' here — that column in some CSVs is NOT the
+  // head-of-household age (it may be youngest-member or other household data).
+  // Only accept the unambiguous AccuData column names.
+  ageband:                 'age_band',  // "AGE BAND" → stripped to ageband
   age_band:                'age_band',  // AccuData header: "AGE_BAND"
   age_code:                'age_band',
   age_range:               'age_band',
