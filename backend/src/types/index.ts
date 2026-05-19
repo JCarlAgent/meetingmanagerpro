@@ -64,6 +64,7 @@ export interface Responder {
   state: string;
   zip: string;
   guests: number;
+  guest_name?: string | null;
   response_source: 'qr_code' | 'call_center' | 'manual';
   confirmed: boolean;
   attended: boolean;

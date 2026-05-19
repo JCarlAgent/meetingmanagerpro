@@ -63,6 +63,7 @@ function parseTsv(text: string): TsvRow[] {
 interface Primary {
   row: TsvRow;
   guests: number;
+  guestName: string | null;  // full name from the G row, e.g. "Steve Jasnosz"
 }
 
 function groupByAttendee(rows: TsvRow[]): { primaries: Primary[]; aRows: number; gRows: number; unknownRows: number } {
@@ -74,11 +75,18 @@ function groupByAttendee(rows: TsvRow[]): { primaries: Primary[]; aRows: number;
     const ag = (row['Attendee/Guest'] ?? '').trim().toUpperCase();
     if (ag === 'A') {
       if (current) primaries.push(current);
-      current = { row, guests: 0 };
+      current = { row, guests: 0, guestName: null };
       aRows++;
     } else if (ag === 'G') {
       if (current) {
         current.guests += 1;
+        // Capture guest name from the G row (first match only — max 1 guest per reservation)
+        if (!current.guestName) {
+          const gFirst = (row['FirstName'] ?? '').trim();
+          const gLast  = (row['LastName']  ?? '').trim();
+          const full   = [gFirst, gLast].filter(Boolean).join(' ');
+          if (full) current.guestName = full;
+        }
       }
       // G rows without a preceding A row are counted but silently ignored
       gRows++;
@@ -149,7 +157,7 @@ export default async function handler(req: any, res: any) {
   const errors: string[] = [];
   const skippedReasons: string[] = [];
 
-  for (const { row, guests } of primaries) {
+  for (const { row, guests, guestName } of primaries) {
     const phone     = (row['PhoneNumber'] ?? '').trim() || null;
     const email     = (row['Email'] ?? '').trim().toLowerCase() || null;
     const firstName = (row['FirstName'] ?? '').trim() || null;
@@ -186,6 +194,7 @@ export default async function handler(req: any, res: any) {
       state:           (row['State']    ?? '').trim() || null,
       zip:             (row['ZipCode']  ?? '').trim() || null,
       guests,
+      guest_name:      guestName ?? null,
       response_source: 'call_center',
       confirmed:       true,
       notes:           noteParts || null,

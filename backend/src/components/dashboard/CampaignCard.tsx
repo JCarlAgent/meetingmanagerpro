@@ -81,7 +81,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     if (!campaign.id) return;
     supabase
       .from('responders')
-        .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
+        .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, guest_name, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
       .eq('campaign_id', campaign.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => { setLocalResponders(data ?? []); });
@@ -93,7 +93,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     let cancelled = false;
     supabase
       .from('responders')
-      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
+      .select('id, campaign_id, event_id, first_name, last_name, email, phone, guests, guest_name, response_source, confirmed, attended, notes, age, income, ipa, matched_to_mail_list, match_confidence, created_at')
       .eq('campaign_id', campaign.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
