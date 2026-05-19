@@ -90,7 +90,7 @@ type MailRecord = {
   est_income_range: string | null;
 };
 
-function buildIndices(mailRecords: MailRecord[]) {
+function buildIndices(mailRecords: MailRecord[], enableHartLog = false) {
   // T1: normFirst|normLast|zip5
   const t1 = new Map<string, MailRecord>();
   // T2: normLast|streetNum
@@ -114,6 +114,19 @@ function buildIndices(mailRecords: MailRecord[]) {
     const nl = normLast(mr.last_name);
     const z  = normZip(mr.zip);
     const sn = streetNum(mr.address);
+
+    // ── HART RUNTIME LOG ────────────────────────────────────────────────────
+    if (enableHartLog && (nl === 'hart' || nl === 'hartsr' || nf === 'michael')) {
+      console.log('[HART-INDEX]', JSON.stringify({
+        raw_first: mr.first_name, raw_last: mr.last_name, raw_zip: mr.zip,
+        norm_first: nf, norm_last: nl, norm_zip: z,
+        k1: `${nf}|${nl}|${z}`,
+        k2: sn ? `${nl}|${sn}` : '(no-streetnum)',
+        k4: `${nf}|${nl}`,
+        k5: `${nl}|${z}`,
+      }));
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const k1 = `${nf}|${nl}|${z}`;
     if (!t1.has(k1)) t1.set(k1, mr);
@@ -147,6 +160,14 @@ function buildIndices(mailRecords: MailRecord[]) {
       existing.push(mr);
       lastOnly.set(nl, existing);
     }
+  }
+
+  if (enableHartLog) {
+    // Dump all last-name index keys starting with 'hart'
+    const hartKeys = [...lastOnly.keys()].filter(k => k.startsWith('hart'));
+    console.log('[HART-INDEX-SUMMARY] lastOnly keys starting with hart:', JSON.stringify(hartKeys));
+    console.log('[HART-INDEX-SUMMARY] t1 keys containing |hart|:', JSON.stringify([...t1.keys()].filter(k => k.includes('|hart|'))));
+    console.log('[HART-INDEX-SUMMARY] has hart:', lastOnly.has('hart'), '| has hartsr:', lastOnly.has('hartsr'));
   }
 
   return { t1, t2, t3, t4, t4Count, t5, t5Count, t6, t6Count, lastOnly };
@@ -442,7 +463,7 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'No mailed list records found for this campaign. Import the CSV first.' });
     }
 
-    const idx = buildIndices(mailRecords as MailRecord[]);
+    const idx = buildIndices(mailRecords as MailRecord[], /* enableHartLog */ true);
 
     // ── Single-responder mode ─────────────────────────────────────────────────
     if (responderId) {
@@ -523,6 +544,31 @@ export default async function handler(req: any, res: any) {
 
     for (const resp of responders) {
       const { mr, confidence, tier, failReason } = findMatch(resp.first_name, resp.last_name, resp.zip, resp.address, idx);
+
+      // ── HART RUNTIME LOG (responder side) ────────────────────────────────────
+      if (normLast(resp.last_name) === 'hart' || normLast(resp.last_name) === 'hartsr') {
+        const _nf = normFirst(resp.first_name);
+        const _nl = normLast(resp.last_name);
+        const _nlFull = normLastFull(resp.last_name);
+        const _z  = normZip(resp.zip);
+        const _t1key = `${_nf}|${_nl}|${_z}`;
+        console.log('[HART-RESP]', JSON.stringify({
+          raw: { first: resp.first_name, last: resp.last_name, zip: resp.zip, addr: resp.address },
+          norm: { nf: _nf, nl: _nl, z: _z, suffixStripped: _nlFull.suffixStripped },
+          t1key_searched: _t1key,
+          t1key_found: idx.t1.has(_t1key),
+          t1key_candidate: idx.t1.has(_t1key)
+            ? { first: idx.t1.get(_t1key)!.first_name, last: idx.t1.get(_t1key)!.last_name, zip: idx.t1.get(_t1key)!.zip }
+            : null,
+          lastOnly_has_hart: idx.lastOnly.has('hart'),
+          lastOnly_has_hartsr: idx.lastOnly.has('hartsr'),
+          lastOnly_hart_count: idx.lastOnly.get('hart')?.length ?? 0,
+          result_confidence: confidence,
+          result_tier: tier,
+          failReason: failReason ?? null,
+        }));
+      }
+      // ─────────────────────────────────────────────────────────────────────────────
 
       // Diagnostic output for specific responders (debug mode)
       if (debug) {
