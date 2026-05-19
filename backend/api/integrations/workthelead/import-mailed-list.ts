@@ -86,6 +86,7 @@ const HEADER_TO_COL: Record<string, string> = {
   zip5:                    'zip',
   zip4:                    'zip4',
   // Demographics
+  age_band:                'age_band',
   claritas_ipa:            'claritas_ipa',
   claritas_ipa_code:       'claritas_ipa',    // actual header in cleaned CSV
   est_income_code:         'est_income_code',
