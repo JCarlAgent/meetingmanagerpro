@@ -855,6 +855,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     </div>
                     {isExpanded && (
                       <div className="mt-3 space-y-3">
+                        {/* Read-only details — visible to all users */}
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
+                          {(campaign as any).job_number && <div><span className="font-medium text-slate-500">Job #:</span> {(campaign as any).job_number}</div>}
+                          {campaign.template_type && <div><span className="font-medium text-slate-500">Type:</span> {campaign.template_type}</div>}
+                          {((campaign as any).rep_name || (campaign as any).repName) && <div><span className="font-medium text-slate-500">Rep:</span> {(campaign as any).rep_name || (campaign as any).repName}</div>}
+                          {((campaign as any).rep_phone || (campaign as any).repPhone) && <div><span className="font-medium text-slate-500">Phone:</span> {(campaign as any).rep_phone || (campaign as any).repPhone}</div>}
+                          {((campaign as any).rep_email || (campaign as any).repEmail) && <div className="col-span-2"><span className="font-medium text-slate-500">Email:</span> {(campaign as any).rep_email || (campaign as any).repEmail}</div>}
+                          {campaign.mail_quantity > 0 && <div><span className="font-medium text-slate-500">Mail qty:</span> {campaign.mail_quantity.toLocaleString()}</div>}
+                          {(campaign as any).org_name && <div><span className="font-medium text-slate-500">Org:</span> {(campaign as any).org_name}</div>}
+                          <div className="col-span-2 text-slate-400 select-all break-all"><span className="font-medium text-slate-500">ID:</span> {campaign.id}</div>
+                        </div>
                         <div className="flex flex-wrap items-center gap-2">
                           {user?.is_master_admin && (
                             <button onClick={async () => { await persistChecklistIndex(campaign.id, 4, !isPaid); }} className="px-3 py-1 bg-indigo-600 text-white rounded">{isPaid ? 'Mark Unpaid' : 'Mark Paid'}</button>
