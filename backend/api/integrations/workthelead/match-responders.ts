@@ -258,6 +258,36 @@ function findMatch(
   return { mr: undefined, confidence: 'none', tier: 'none', failReason };
 }
 
+/**
+ * Paginated fetch of all rows from campaign_mailed_list_records for a campaign.
+ * Supabase PostgREST has a project-level max_rows cap (default 1000).
+ * Without explicit pagination, queries on 11k+ row campaigns silently return
+ * only the first 1000 rows, causing ~90% of purchased records to be invisible
+ * to the matcher index.
+ */
+async function fetchAllMailRecords(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  campaignId: string,
+  selectCols: string,
+): Promise<{ data: any[]; error: any }> {
+  const PAGE_SIZE = 1000;
+  const all: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('campaign_mailed_list_records')
+      .select(selectCols)
+      .eq('campaign_id', campaignId)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) return { data: all, error };
+    if (!data?.length) break;
+    all.push(...data);
+    if (data.length < PAGE_SIZE) break; // last page
+    from += PAGE_SIZE;
+  }
+  return { data: all, error: null };
+}
+
 const MATCHER_VERSION = 'match-debug-live-2026-05-18';
 
 export default async function handler(req: any, res: any) {
@@ -295,10 +325,10 @@ export default async function handler(req: any, res: any) {
       // NOTE: We CANNOT use last_name.ilike.hart to filter here because that is an
       // exact ilike match and would miss "HART SR", "HART JR", etc. Instead we
       // load all records and filter client-side via normLast().
-      const { data: allMailRecords, error: allMailErr } = await supabaseAdmin
-        .from('campaign_mailed_list_records')
-        .select('id, first_name, last_name, individual_name, address, city, state, zip, claritas_ipa, age_band, est_income_code, est_income_range')
-        .eq('campaign_id', jobId);
+      const { data: allMailRecords, error: allMailErr } = await fetchAllMailRecords(
+        supabaseAdmin, jobId,
+        'id, first_name, last_name, individual_name, address, city, state, zip, claritas_ipa, age_band, est_income_code, est_income_range',
+      );
       if (allMailErr) throw allMailErr;
 
       const allMailCount = allMailRecords?.length ?? 0;
@@ -452,11 +482,11 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Fetch all mailed list records for this campaign
-    const { data: mailRecords, error: mailErr } = await supabaseAdmin
-      .from('campaign_mailed_list_records')
-      .select('id, first_name, last_name, address, zip, claritas_ipa, age_band, est_income_code, est_income_range')
-      .eq('campaign_id', jobId);
+    // Fetch all mailed list records for this campaign (paginated — Supabase caps at 1000/page)
+    const { data: mailRecords, error: mailErr } = await fetchAllMailRecords(
+      supabaseAdmin, jobId,
+      'id, first_name, last_name, address, zip, claritas_ipa, age_band, est_income_code, est_income_range',
+    );
 
     if (mailErr) throw mailErr;
     if (!mailRecords?.length) {
