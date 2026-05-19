@@ -128,15 +128,24 @@ function parseHeaderRow(headerLine: string): (string | null)[] {
 /**
  * Detect whether a CSV line is a header row.
  * A line is considered a header if its parsed fields — when normalized —
- * contain BOTH a first-name token AND a last-name token AND a zip token.
- * This is field-order-independent (full_name may precede firstname, etc.).
+ * contain BOTH a first-name token AND a last-name token, PLUS either:
+ *   • a zip-like column name (zip, zip5, zipcode, zip_code), OR
+ *   • any recognized column name from HEADER_TO_COL (e.g. age_band, claritas_ipa).
+ * This is field-order-independent and tolerates unusual zip column names.
  */
 function isHeaderRow(line: string): boolean {
   const fields = parseCsvLine(line).map(f => f.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''));
   const hasFirst = fields.some(f => f === 'firstname' || f === 'first_name');
   const hasLast  = fields.some(f => f === 'lastname'  || f === 'last_name');
-  const hasZip   = fields.some(f => f === 'zip' || f === 'zip5');
-  return hasFirst && hasLast && hasZip;
+  // Accept various zip column name spellings
+  const hasZip   = fields.some(f =>
+    f === 'zip' || f === 'zip5' || f === 'zipcode' || f === 'zip_code' ||
+    f === 'postalcode' || f === 'postal_code'
+  );
+  // Fallback: if a recognized demographic header is present, that also signals a header row
+  // (data rows would never have literal strings like 'age_band', 'claritas_ipa' as values)
+  const hasDemographic = fields.some(f => HEADER_TO_COL[f] !== undefined);
+  return hasFirst && hasLast && (hasZip || hasDemographic);
 }
 
 /**
@@ -313,29 +322,45 @@ export default async function handler(req: any, res: any) {
     if (chunkIndex === 0) {
       console.log(`[import-mailed-list] mode=${importMode} chunk=${chunkIndex}/${totalChunks} jobId=${jobId}`);
       if (headerRowRaw) {
-        const parsed = parseCsvLine(headerRowRaw);
-        const normalized = parsed.map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''));
-        const mapped = normalized.map((n, i) => `${parsed[i]}→${HEADER_TO_COL[n] ?? '(skip)'}`);
-        console.log(`[import-mailed-list] headers: ${mapped.join(', ')}`);
+        const parsed    = parseCsvLine(headerRowRaw);
+        const normed    = parsed.map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''));
+        const ageBandPos = normed.indexOf('age_band') !== -1
+          ? normed.indexOf('age_band')
+          : normed.findIndex(n => HEADER_TO_COL[n] === 'age_band');
+        console.log(`[import-mailed-list] headers (${parsed.length} cols): ${normed.slice(0, 20).join(', ')}`);
+        console.log(`[import-mailed-list] age_band @ header pos ${ageBandPos} (raw: '${ageBandPos >= 0 ? parsed[ageBandPos] : 'NOT FOUND'}')`);
       }
     }
 
     // Build debug info for the validateOnly response
-    const headerDebug = headerRowRaw ? {
-      headerRowRaw,
-      autoDetected,
-      parsedHeaders: parseCsvLine(headerRowRaw).map(h => h.trim()),
-      normalizedHeaders: parseCsvLine(headerRowRaw).map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, '')),
-      colNames: colNames?.map((c, i) => ({ pos: i, dbCol: c ?? '(unmapped)' })),
-    } : {
-      headerRowRaw: null,
-      autoDetected: false,
-      reason: 'isHeaderRow() returned false — row does not contain firstname+lastname+zip tokens',
-      firstLineNormalized: csv.split('\n').find(l => l.trim())
-        ? parseCsvLine(csv.split('\n').find(l => l.trim())!)
-            .map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''))
-        : [],
-    };
+    let headerDebug: Record<string, unknown>;
+    if (headerRowRaw) {
+      const parsedHdrs  = parseCsvLine(headerRowRaw).map(h => h.trim());
+      const normedHdrs  = parsedHdrs.map(h => h.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+      const ageBandPos  = normedHdrs.findIndex(n => HEADER_TO_COL[n] === 'age_band');
+      headerDebug = {
+        headerRowRaw,
+        autoDetected,
+        parsedHeaders:     parsedHdrs,
+        normalizedHeaders: normedHdrs,
+        ageBandPosition:   ageBandPos,
+        ageBandHeaderRaw:  ageBandPos >= 0 ? parsedHdrs[ageBandPos] : null,
+        colNames: colNames?.map((c, i) => ({ pos: i, header: parsedHdrs[i], dbCol: c ?? '(unmapped)' })),
+      };
+    } else {
+      const firstLine = csv.split('\n').find(l => l.trim()) ?? '';
+      const normedFirst = parseCsvLine(firstLine).map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''));
+      headerDebug = {
+        headerRowRaw: null,
+        autoDetected: false,
+        reason: 'isHeaderRow() returned false — row missing firstname+lastname+(zip|demographic) tokens',
+        firstLineNormalized: normedFirst,
+        hasFirst: normedFirst.some(f => f === 'firstname' || f === 'first_name'),
+        hasLast:  normedFirst.some(f => f === 'lastname'  || f === 'last_name'),
+        hasZip:   normedFirst.some(f => f === 'zip' || f === 'zip5' || f === 'zipcode' || f === 'zip_code'),
+        hasDemographic: normedFirst.some(f => HEADER_TO_COL[f] !== undefined),
+      };
+    }
 
     // ── Parse CSV rows ────────────────────────────────────────────────────────
     step = 'parse-csv';
@@ -364,14 +389,36 @@ export default async function handler(req: any, res: any) {
 
     // ── Validate-only mode: return first row preview, no DB write ─────────────
     if (validateOnly) {
-      const firstRow = records[0] ?? null;
+      const firstRow     = records[0] ?? null;
       const rawFirstLine = allLines.find(l => l.trim()) ?? '';
-      const rawFields = rawFirstLine ? parseCsvLine(rawFirstLine) : [];
+      const rawFields    = rawFirstLine ? parseCsvLine(rawFirstLine) : [];
+
+      // Pinpoint the age_band value: find its header position and read the raw field
+      let ageBandDiag: Record<string, unknown> = { mapped: firstRow?.age_band ?? null };
+      if (colNames) {
+        const pos = colNames.findIndex(c => c === 'age_band');
+        ageBandDiag = {
+          headerPos:  pos,
+          rawValue:   pos >= 0 && rawFields.length > pos ? rawFields[pos] : null,
+          mapped:     firstRow?.age_band ?? null,
+        };
+      } else {
+        // Position-based fallback — age_band is at COL_AGE_BAND = 17
+        ageBandDiag = {
+          headerPos:  COL_AGE_BAND,
+          rawValue:   rawFields.length > COL_AGE_BAND ? rawFields[COL_AGE_BAND] : null,
+          mapped:     firstRow?.age_band ?? null,
+          note:       'position-based fallback',
+        };
+      }
+      console.log(`[import-mailed-list] validateOnly ageBandDiag:`, JSON.stringify(ageBandDiag));
+
       return res.status(200).json({
         ok: true,
         step: 'validate-only',
         importMode,
         headerDebug,
+        ageBandDiag,
         parsed: records.length,
         skipped,
         rawFieldCount: rawFields.length,

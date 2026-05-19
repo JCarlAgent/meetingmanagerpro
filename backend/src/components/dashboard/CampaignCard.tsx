@@ -659,15 +659,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         return;
       }
       const mapped = j.firstRowMapped as Record<string, unknown> | null;
-      const dbg = j.headerDebug as Record<string, unknown> | null;
+      const dbg    = j.headerDebug   as Record<string, unknown> | null;
+      const abd    = j.ageBandDiag   as Record<string, unknown> | null;
       const lines = [
         `✓ Validate OK — ${j.rawFieldCount} columns in raw CSV (${j.importMode ?? 'position-based'}).`,
         `Mapped: first_name=${mapped?.first_name ?? '(empty)'}, last_name=${mapped?.last_name ?? '(empty)'}, zip=${mapped?.zip ?? '(empty)'}`,
         `age_band=${mapped?.age_band ?? '(empty)'}, claritas_ipa=${mapped?.claritas_ipa ?? '(empty)'}, est_income_range=${mapped?.est_income_range ?? '(empty)'}`,
         `gender_code=${mapped?.gender_code ?? '(empty)'}, homeowner=${mapped?.homeowner_flag1 ?? '(empty)'}, full_name=${mapped?.full_name ?? '(empty)'}`,
+        abd ? `age_band diag: headerPos=${abd.headerPos ?? '?'}, rawValue='${abd.rawValue ?? ''}', mapped='${abd.mapped ?? ''}'${abd.note ? ` (${abd.note})` : ''}` : '',
         dbg?.reason ? `⚠ Header detection: ${dbg.reason}` : `Header detect: autoDetected=${dbg?.autoDetected ?? false}`,
         `Raw first line: ${(j.rawFirstLine as string ?? '').slice(0, 200)}`,
-      ];
+      ].filter(Boolean);
       setMailedImportMessage(lines.join('\n'));
     } catch (err: unknown) {
       setMailedImportMessage(`[FAIL] ${err instanceof Error ? err.message : String(err)}`);
