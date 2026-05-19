@@ -32,9 +32,41 @@ function normFirst(s: string | null | undefined): string {
   return word.toLowerCase().replace(/[^a-z]/g, '');
 }
 
-/** Normalize last name — lowercase, alpha-only. */
+/**
+ * Common generational/professional suffixes to strip from last names.
+ * Applied after splitting on whitespace so "HART SR" → ["HART","SR"] → strip "SR" → "hart".
+ * All comparison is case-insensitive.
+ */
+const SUFFIXES = new Set(['sr', 'jr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq']);
+
+/**
+ * Normalize last name — lowercase, alpha-only, suffix stripped.
+ * "HART SR"  → "hart"
+ * "SMITH JR" → "smith"
+ * "LEE"      → "lee"
+ * Returns { norm, suffixStripped } for diagnostics; callers that only need
+ * the string can call normLast() which returns the string directly.
+ */
+function normLastFull(s: string | null | undefined): { norm: string; suffixStripped: boolean } {
+  const parts = (s ?? '').trim().split(/\s+/);
+  let suffixStripped = false;
+  // Strip any trailing suffix tokens
+  while (parts.length > 1) {
+    const last = (parts[parts.length - 1] ?? '').toLowerCase().replace(/[^a-z]/g, '');
+    if (SUFFIXES.has(last)) {
+      parts.pop();
+      suffixStripped = true;
+    } else {
+      break;
+    }
+  }
+  const norm = parts.join('').toLowerCase().replace(/[^a-z]/g, '');
+  return { norm, suffixStripped };
+}
+
+/** Normalize last name — lowercase, alpha-only, suffix stripped. */
 function normLast(s: string | null | undefined): string {
-  return (s ?? '').toLowerCase().trim().replace(/[^a-z]/g, '');
+  return normLastFull(s).norm;
 }
 
 function normZip(s: string | null | undefined): string {
@@ -281,7 +313,7 @@ export default async function handler(req: any, res: any) {
 
         const purchasedKeyed = purchased.slice(0, 10).map(p => ({
           raw: { first: p.first_name, last: p.last_name, individual: p.individual_name, zip: p.zip, addr: p.address, city: p.city, state: p.state, age: p.age_band, income: p.est_income_code, ipa: p.claritas_ipa, decodedIncome: decodeIncome(p.est_income_code) ?? p.est_income_range ?? null, decodedIpa: decodeIPA(p.claritas_ipa) ?? null },
-          normalized: { normFirst: normFirst(p.first_name), normLast: normLast(p.last_name), normFullName: `${normFirst(p.first_name)} ${normLast(p.last_name)}`.trim(), normZip: normZip(p.zip) },
+          normalized: { normFirst: normFirst(p.first_name), normLast: normLast(p.last_name), suffixStripped: normLastFull(p.last_name).suffixStripped, normFullName: `${normFirst(p.first_name)} ${normLast(p.last_name)}`.trim(), normZip: normZip(p.zip) },
           keys: {
             T1: `${normFirst(p.first_name)}|${normLast(p.last_name)}|${normZip(p.zip)}`,
             T2: `${normLast(p.last_name)}|${streetNum(p.address)}`,
@@ -293,7 +325,7 @@ export default async function handler(req: any, res: any) {
 
         const responderAnalysis = responders.map(r => {
           const nf = normFirst(r.first_name);
-          const nl = normLast(r.last_name);
+          const { norm: nl, suffixStripped: respSuffixStripped } = normLastFull(r.last_name);
           const z  = normZip(r.zip);
           const sn = streetNum(r.address);
 
@@ -346,6 +378,9 @@ export default async function handler(req: any, res: any) {
           return {
             raw: { id: r.id, first: r.first_name, last: r.last_name, zip: r.zip, addr: r.address, phone: (r as any).phone ?? null },
             normFullName: `${nf} ${nl}`.trim(),
+            rawLastName: r.last_name,
+            normalizedLastName: nl,
+            suffixStripped: respSuffixStripped,
             purchasedCountByLastName: purchased.length,
             purchasedCountByFirstLast,
             currentDbState: { matched_to_mail_list: r.matched_to_mail_list, match_confidence: r.match_confidence, age: r.age, income: r.income, ipa: r.ipa },
@@ -491,7 +526,7 @@ export default async function handler(req: any, res: any) {
         const fullName = `${(resp.first_name ?? '').toLowerCase()} ${(resp.last_name ?? '').toLowerCase()}`.trim();
         const wantDiag = DIAG_NAMES.has(fullName) || confidence === 'none';
         if (wantDiag) {
-          const nl = normLast(resp.last_name);
+          const { norm: nl, suffixStripped } = normLastFull(resp.last_name);
           const nf = normFirst(resp.first_name);
           const z  = normZip(resp.zip);
           const lastNameCandidates = (mailRecords as MailRecord[])
@@ -504,7 +539,10 @@ export default async function handler(req: any, res: any) {
             .map(m => ({ first: m.first_name, last: m.last_name, zip: m.zip, addr: m.address }));
           diagnostics.push({
             responder: { first: resp.first_name, last: resp.last_name, zip: resp.zip, addr: resp.address },
-            normalized: { nf, nl, z, sn: streetNum(resp.address) },
+            normalized: { nf, nl, z, sn: streetNum(resp.address), suffixStripped },
+            rawLastName: resp.last_name,
+            normalizedLastName: nl,
+            suffixStripped,
             keysTriedT1: `${nf}|${nl}|${z}`,
             keysTriedT2: `${nl}|${streetNum(resp.address)}`,
             keysTriedT3: `${nf.charAt(0)}|${nl}|${z}`,
