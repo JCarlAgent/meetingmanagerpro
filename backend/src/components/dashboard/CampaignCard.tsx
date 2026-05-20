@@ -58,7 +58,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   // --- Edit Meeting state (master admin only) ---
   const [editingMeeting, setEditingMeeting] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ event_date: '', event_time: '', venue_name: '', venue_address: '', venue_city: '', venue_state: '', venue_zip: '' });
+  const [editForm, setEditForm] = useState({ event_date: '', event_time: '', venue_name: '', venue_address: '', venue_city: '', venue_state: '' });
   const [isSavingMeeting, setIsSavingMeeting] = useState(false);
   const [editMeetingError, setEditMeetingError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -339,7 +339,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       venue_address: ev.venue_address ?? '',
       venue_city: ev.venue_city ?? '',
       venue_state: ev.venue_state ?? '',
-      venue_zip: ev.venue_zip ?? '',
     });
     setEditMeetingError(null);
   };
@@ -359,7 +358,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         address1: editForm.venue_address,
         city: editForm.venue_city,
         state: editForm.venue_state,
-        zip: editForm.venue_zip,
       };
       if (startsAt) updates.starts_at = startsAt;
       const { error } = await supabase.from('job_meetings').update(updates).eq('id', editingMeeting.id);
@@ -1425,18 +1423,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                 <label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
                 <input type="text" value={editForm.venue_address} onChange={e => setEditForm(f => ({ ...f, venue_address: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
                   <input type="text" value={editForm.venue_city} onChange={e => setEditForm(f => ({ ...f, venue_city: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">State</label>
                   <input type="text" maxLength={2} value={editForm.venue_state} onChange={e => setEditForm(f => ({ ...f, venue_state: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">ZIP</label>
-                  <input type="text" maxLength={10} value={editForm.venue_zip} onChange={e => setEditForm(f => ({ ...f, venue_zip: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
                 </div>
               </div>
             </div>
