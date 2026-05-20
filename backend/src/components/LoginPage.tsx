@@ -209,7 +209,7 @@ const LoginPage: React.FC = () => {
 
         {/* Footer */}
         <p className="text-center text-slate-500 text-sm mt-6">
-          © 2025 Meeting Manager Pro. All rights reserved.
+          © {new Date().getFullYear()} Meeting Manager Pro. All rights reserved.
         </p>
       </div>
     </div>

@@ -261,11 +261,13 @@ const Dashboard: React.FC = () => {
           // meeting clock time shown matches what the admin originally entered.
           const d = m.starts_at ? new Date(m.starts_at) : null;
           const pad = (n: number) => String(n).padStart(2, '0');
+          // Use getUTC* so the stored UTC value is read back as-is (no browser
+          // timezone offset applied — meeting times are literal local times).
           const localDate = d
-            ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+            ? `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
             : '';
           const localTime = d
-            ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
+            ? `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
             : '';
           return {
             id: m.id,
@@ -446,9 +448,10 @@ const Dashboard: React.FC = () => {
       // Insert job_meetings for each event
       for (const event of data.events || []) {
         if (event.venue_name && event.event_date) {
-          const startsAt = event.event_time
-            ? new Date(`${event.event_date}T${event.event_time}`).toISOString()
-            : new Date(event.event_date).toISOString();
+          // Treat entered time as a literal local business time — store as UTC
+          // by appending Z directly (no JS timezone offset applied).
+          const timeVal = (event.event_time || '00:00').substring(0, 5);
+          const startsAt = `${event.event_date}T${timeVal}:00Z`;
 
           const { error: jmErr } = await supabase.from('job_meetings').insert({
             job_id: jobId,

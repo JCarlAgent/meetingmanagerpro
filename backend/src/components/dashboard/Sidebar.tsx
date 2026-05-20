@@ -331,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activeView, onViewCh
               className="h-6 object-contain"
             />
           </div>
-          <p className="text-xs text-slate-500 mt-2">© 2025 Meeting Manager Pro</p>
+          <p className="text-xs text-slate-500 mt-2">© {new Date().getFullYear()} Meeting Manager Pro</p>
         </div>
       </aside>
     </>
