@@ -25,7 +25,6 @@ import ResponderList from './ResponderList';
 import DeliveryTracking from './DeliveryTracking';
 import PostMeetingROIModal from './PostMeetingROIModal';
 import CampaignMapPreview from './map/CampaignMapPreview';
-import { toErrorMessage } from '@/lib/errors';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -35,6 +34,8 @@ interface CampaignCardProps {
   onUpdateCampaign: (campaignId: string, updates: Partial<Campaign>) => void;
   // optional callback to open add responder UI; if not provided the component will emit a global event
   onAddResponder?: (campaignId: string) => void;
+  // optional callback to re-fetch campaign/event data after a meeting edit
+  onRefresh?: () => void;
 }
 
 const CampaignCard: React.FC<CampaignCardProps> = ({ 
@@ -43,6 +44,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   responders,
   onUpdateResponder,
   onUpdateCampaign,
+  onRefresh,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullResponders, setShowFullResponders] = useState(false);
@@ -53,6 +55,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [showAllZips, setShowAllZips] = useState(false);
   const [localResponders, setLocalResponders] = useState<Responder[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // --- Edit Meeting state (master admin only) ---
+  const [editingMeeting, setEditingMeeting] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ event_date: '', event_time: '', venue_name: '', venue_address: '', venue_city: '', venue_state: '', venue_zip: '' });
+  const [isSavingMeeting, setIsSavingMeeting] = useState(false);
+  const [editMeetingError, setEditMeetingError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [showTsvImport, setShowTsvImport] = useState(false);
   const [tsvText, setTsvText] = useState('');
@@ -321,6 +329,49 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   };
 
   const { user } = useAuth();
+
+  const openEditMeeting = (ev: any) => {
+    setEditingMeeting(ev);
+    setEditForm({
+      event_date: ev.event_date ?? '',
+      event_time: ev.event_time ?? '',
+      venue_name: ev.venue_name ?? '',
+      venue_address: ev.venue_address ?? '',
+      venue_city: ev.venue_city ?? '',
+      venue_state: ev.venue_state ?? '',
+      venue_zip: ev.venue_zip ?? '',
+    });
+    setEditMeetingError(null);
+  };
+
+  const saveMeetingEdit = async () => {
+    if (!editingMeeting) return;
+    setIsSavingMeeting(true);
+    setEditMeetingError(null);
+    try {
+      // Store time as UTC-literal (no browser timezone offset): append Z directly.
+      const timeVal = (editForm.event_time || '00:00').substring(0, 5);
+      const startsAt = editForm.event_date
+        ? `${editForm.event_date}T${timeVal}:00Z`
+        : undefined;
+      const updates: Record<string, string | undefined> = {
+        location_name: editForm.venue_name,
+        address1: editForm.venue_address,
+        city: editForm.venue_city,
+        state: editForm.venue_state,
+        zip: editForm.venue_zip,
+      };
+      if (startsAt) updates.starts_at = startsAt;
+      const { error } = await supabase.from('job_meetings').update(updates).eq('id', editingMeeting.id);
+      if (error) throw error;
+      setEditingMeeting(null);
+      onRefresh?.();
+    } catch (err) {
+      setEditMeetingError((err as any)?.message ?? String(err));
+    } finally {
+      setIsSavingMeeting(false);
+    }
+  };
 
   const handleMailedFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -813,7 +864,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 <div className="text-xs text-slate-500">{ev.venue_city ? `${ev.venue_city}${ev.venue_state ? `, ${ev.venue_state}` : ''}` : ''}</div>
                                 <div className="text-xs text-slate-400">Attendees: {evAttendees}</div>
                               </div>
-                              <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
+                                {user?.is_master_admin && (
+                                  <button
+                                    type="button"
+                                    title="Edit meeting"
+                                    onClick={() => openEditMeeting(ev)}
+                                    className="text-xs text-slate-400 hover:text-blue-600 underline leading-none"
+                                  >Edit</button>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -1338,6 +1399,54 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
       {showRoiForm && (
         <PostMeetingROIModal jobId={campaign.id} jobTitle={`Campaign ${campaign.project_id}`} isOpen={showRoiForm} onClose={() => setShowRoiForm(false)} onSuccess={() => setShowRoiForm(false)} />
+      )}
+
+      {/* Edit Meeting Modal — master admin only */}
+      {editingMeeting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setEditingMeeting(null); }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Edit Meeting</h3>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
+                  <input type="date" value={editForm.event_date} onChange={e => setEditForm(f => ({ ...f, event_date: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Time (local)</label>
+                  <input type="time" value={editForm.event_time} onChange={e => setEditForm(f => ({ ...f, event_time: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Venue / Location Name</label>
+                <input type="text" value={editForm.venue_name} onChange={e => setEditForm(f => ({ ...f, venue_name: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+                <input type="text" value={editForm.venue_address} onChange={e => setEditForm(f => ({ ...f, venue_address: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
+                  <input type="text" value={editForm.venue_city} onChange={e => setEditForm(f => ({ ...f, venue_city: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">State</label>
+                  <input type="text" maxLength={2} value={editForm.venue_state} onChange={e => setEditForm(f => ({ ...f, venue_state: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ZIP</label>
+                  <input type="text" maxLength={10} value={editForm.venue_zip} onChange={e => setEditForm(f => ({ ...f, venue_zip: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+            </div>
+            {editMeetingError && <p className="mt-3 text-xs text-red-600">{editMeetingError}</p>}
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setEditingMeeting(null)} className="px-4 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button type="button" onClick={saveMeetingEdit} disabled={isSavingMeeting} className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">{isSavingMeeting ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -687,6 +687,7 @@ const Dashboard: React.FC = () => {
                 responders={getCampaignResponders(campaign.id)}
                 onUpdateResponder={handleUpdateResponder}
                 onUpdateCampaign={handleUpdateCampaign}
+                onRefresh={fetchData}
               />
             ))}
           </div>
