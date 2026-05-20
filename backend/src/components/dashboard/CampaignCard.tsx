@@ -348,18 +348,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     setIsSavingMeeting(true);
     setEditMeetingError(null);
     try {
-      // Store time as UTC-literal (no browser timezone offset): append Z directly.
+      // Always write starts_at — use form date if set, fall back to existing meeting date.
+      const dateVal = editForm.event_date || editingMeeting.event_date || '';
       const timeVal = (editForm.event_time || '00:00').substring(0, 5);
-      const startsAt = editForm.event_date
-        ? `${editForm.event_date}T${timeVal}:00Z`
-        : undefined;
+      // UTC-literal storage: append Z so no browser timezone offset is applied.
+      const startsAt = dateVal ? `${dateVal}T${timeVal}:00Z` : undefined;
       const updates: Record<string, string | undefined> = {
         location_name: editForm.venue_name,
         address1: editForm.venue_address,
         city: editForm.venue_city,
         state: editForm.venue_state,
+        ...(startsAt ? { starts_at: startsAt } : {}),
       };
-      if (startsAt) updates.starts_at = startsAt;
       const { error } = await supabase.from('job_meetings').update(updates).eq('id', editingMeeting.id);
       if (error) throw error;
       setEditingMeeting(null);
@@ -864,7 +864,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               </div>
                               <div className="flex items-center gap-2">
                                 <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
-                                {user?.is_master_admin && (
+                                {!!user && (
                                   <button
                                     type="button"
                                     title="Edit meeting"
