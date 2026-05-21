@@ -39,6 +39,17 @@ import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supaba
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' } } };
 
+/**
+ * Strip everything except digits from a phone string.
+ * "(702) 555-1234", "702-555-1234", and "7025551234" all become "7025551234".
+ * Stored value and lookup value are both normalized so re-imports always
+ * match the existing row regardless of formatting differences between exports.
+ */
+function normalizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '');
+  return digits.length >= 7 ? digits : null;   // discard obviously-invalid strings
+}
+
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
@@ -158,7 +169,7 @@ export default async function handler(req: any, res: any) {
   const skippedReasons: string[] = [];
 
   for (const { row, guests, guestName } of primaries) {
-    const phone     = (row['PhoneNumber'] ?? '').trim() || null;
+    const phone     = normalizePhone((row['PhoneNumber'] ?? '').trim());
     const email     = (row['Email'] ?? '').trim().toLowerCase() || null;
     const firstName = (row['FirstName'] ?? '').trim() || null;
     const lastName  = (row['LastName'] ?? '').trim() || null;
@@ -171,7 +182,6 @@ export default async function handler(req: any, res: any) {
     }
 
     const noteParts = [
-      row['Status']           ? `Status: ${row['Status']}` : '',
       row['TimeStamp']        ? `Timestamp: ${row['TimeStamp']}` : '',
       row['CreatedBy']        ? `CreatedBy: ${row['CreatedBy']}` : '',
       row['ConfirmationCall'] ? `Confirmation: ${row['ConfirmationCall']}` : '',
@@ -208,6 +218,8 @@ export default async function handler(req: any, res: any) {
     let existingId: string | null = null;
 
     if (phone && lastName) {
+      // Primary lookup: normalized-digits phone + last name.
+      // Both are now stored normalized, so this is an exact match.
       const { data: byPhoneName } = await supabaseAdmin
         .from('responders')
         .select('id')
@@ -218,7 +230,7 @@ export default async function handler(req: any, res: any) {
         .maybeSingle();
       existingId = byPhoneName?.id ?? null;
     } else if (phone && !lastName) {
-      // No last name — fall back to phone-only match (better than nothing)
+      // No last name — match on normalized phone only
       const { data: byPhone } = await supabaseAdmin
         .from('responders')
         .select('id')
