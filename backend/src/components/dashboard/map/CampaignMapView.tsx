@@ -1,14 +1,15 @@
 /**
  * CampaignMapView — Interactive Mapbox map for a single campaign.
  *
- * Current: Venue pin + target ZIP centroids.
- * Future: mailed-list heat-map, responder markers.
+ * Current: Venue pin + 20-min drive-time polygon + target ZIP list in legend.
+ * Next: Responder markers.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import Map, { Marker } from 'react-map-gl/mapbox';
+import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox';
+import type { FillLayer, LineLayer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { ArrowLeft, MapPin, Mail, Users, Loader2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Users, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const MAPBOX_TOKEN: string = (import.meta.env.VITE_MAPBOX_TOKEN as string) || '';
@@ -27,7 +28,6 @@ interface CampaignMapViewProps {
 }
 
 interface Coords { lat: number; lng: number }
-interface ZipMarker { zip: string; lat: number; lng: number }
 
 export default function CampaignMapView({
   jobId,
@@ -46,10 +46,10 @@ export default function CampaignMapView({
   const [geocoding, setGeocoding] = useState(!hasCoords);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
 
-  // ZIP state
-  const [zipMarkers, setZipMarkers] = useState<ZipMarker[]>([]);
+  // Drive-time polygon + ZIP list
+  const [isochroneGeoJson, setIsochroneGeoJson] = useState<any>(null);
+  const [targetZips, setTargetZips] = useState<string[]>([]);
   const [zipsLoading, setZipsLoading] = useState(false);
-  const [zipsNote, setZipsNote] = useState<string | null>(null);
   const zipsLoadedRef = useRef(false);
 
   // Only geocode once per mount
@@ -113,14 +113,13 @@ export default function CampaignMapView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load target ZIP markers once venue coords are known
+  // Load isochrone + ZIP list once venue coords are known
   useEffect(() => {
     if (!coords || zipsLoadedRef.current || !MAPBOX_TOKEN) return;
     zipsLoadedRef.current = true;
 
     let cancelled = false;
     setZipsLoading(true);
-    setZipsNote(null);
 
     (async () => {
       try {
@@ -132,51 +131,21 @@ export default function CampaignMapView({
         const isoData = await isoRes.json();
         if (cancelled) return;
 
-        if (!isoData?.features?.length) {
-          setZipsNote('No target ZIPs available.');
-          return;
-        }
+        if (!isoData?.features?.length) return;
 
         const isochroneGeojson = { type: 'FeatureCollection', features: isoData.features };
+        setIsochroneGeoJson(isochroneGeojson);
 
-        // 2. Extract ZIP codes within the isochrone
+        // 2. Extract ZIP codes within the isochrone (text list only — no map markers)
         const { data: extractData, error: extractErr } = await supabase.functions.invoke('extract-zip-codes', {
           body: { isochroneGeojson },
         });
         if (cancelled) return;
 
-        if (extractErr || !extractData?.zip_codes?.length) {
-          setZipsNote('No target ZIPs available.');
-          return;
+        if (!extractErr && extractData?.zip_codes?.length) {
+          setTargetZips((extractData.zip_codes as string[]).sort());
         }
-
-        const zipCodes: string[] = extractData.zip_codes;
-
-        // 3. Fetch centroids from us_zipcodes table
-        const { data: centroidRows, error: centroidErr } = await supabase
-          .from('us_zipcodes')
-          .select('zip, lat, lng')
-          .in('zip', zipCodes);
-
-        if (cancelled) return;
-
-        if (centroidErr || !centroidRows?.length) {
-          // Fall back: show zip list note without map markers
-          setZipsNote(`${zipCodes.length} target ZIP${zipCodes.length === 1 ? '' : 's'} found (centroids unavailable).`);
-          return;
-        }
-
-        const markers: ZipMarker[] = centroidRows.map((r: any) => ({
-          zip: r.zip,
-          lat: parseFloat(r.lat),
-          lng: parseFloat(r.lng),
-        })).filter((m: ZipMarker) => !isNaN(m.lat) && !isNaN(m.lng));
-
-        setZipMarkers(markers);
-        setZipsNote(markers.length === 0 ? 'No target ZIPs available.' : null);
-      } catch {
-        if (!cancelled) setZipsNote('No target ZIPs available.');
-      } finally {
+      } catch { /* ignore */ } finally {
         if (!cancelled) setZipsLoading(false);
       }
     })();
@@ -207,28 +176,33 @@ export default function CampaignMapView({
         <span className="ml-auto text-xs text-slate-400">Job #{jobId}</span>
       </div>
 
-      {/* Legend bar */}
-      <div className="flex items-center gap-5 px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-600 shrink-0">
-        <span className="flex items-center gap-1.5">
+      {/* Info / legend bar */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-600 shrink-0">
+        {/* Legend items */}
+        <span className="flex items-center gap-1.5 shrink-0">
           <span className="inline-block w-3 h-3 rounded-full bg-indigo-600" />
           Venue
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-full bg-blue-400/70 border border-blue-500" />
-          Target ZIPs
-          {zipsLoading && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
-          {!zipsLoading && zipMarkers.length > 0 && <span className="text-slate-400">({zipMarkers.length})</span>}
-          {!zipsLoading && zipsNote && zipMarkers.length === 0 && <span className="text-slate-400 italic">— {zipsNote}</span>}
+        <span className="flex items-center gap-1.5 shrink-0">
+          <span className="inline-block w-3 h-3 rounded bg-blue-200 border border-blue-400" />
+          20-min drive area
         </span>
-        <span className="flex items-center gap-1.5 opacity-40">
-          <Mail className="w-3 h-3 text-blue-500" />
-          Mailed List
-          <span className="italic">— coming soon</span>
-        </span>
-        <span className="flex items-center gap-1.5 opacity-40">
+        <span className="flex items-center gap-1.5 shrink-0 opacity-40">
           <Users className="w-3 h-3 text-emerald-500" />
           Responders
           <span className="italic">— coming soon</span>
+        </span>
+        {/* Target ZIP list */}
+        <span className="flex items-center gap-1.5 ml-auto">
+          {zipsLoading && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
+          {!zipsLoading && (
+            <span className="text-slate-500">
+              <span className="font-semibold text-slate-700">Target ZIPs:</span>{' '}
+              {targetZips.length === 0
+                ? <span className="italic text-slate-400">None found</span>
+                : targetZips.join(', ')}
+            </span>
+          )}
         </span>
       </div>
 
@@ -284,20 +258,23 @@ export default function CampaignMapView({
             style={{ width: '100%', height: '100%' }}
             mapStyle="mapbox://styles/mapbox/streets-v12"
           >
-            {/* ZIP centroid markers */}
-            {zipMarkers.map(zm => (
-              <Marker key={zm.zip} longitude={zm.lng} latitude={zm.lat} anchor="center">
-                <div
-                  title={zm.zip}
-                  className="flex items-center justify-center rounded-full bg-blue-400/70 border border-blue-500 text-[9px] font-bold text-white shadow"
-                  style={{ width: 32, height: 32 }}
-                >
-                  {zm.zip}
-                </div>
-              </Marker>
-            ))}
+            {/* Drive-time polygon */}
+            {isochroneGeoJson && (
+              <Source id="isochrone" type="geojson" data={isochroneGeoJson}>
+                <Layer
+                  id="isochrone-fill"
+                  type="fill"
+                  paint={{ 'fill-color': '#3b82f6', 'fill-opacity': 0.12 } as FillLayer['paint']}
+                />
+                <Layer
+                  id="isochrone-outline"
+                  type="line"
+                  paint={{ 'line-color': '#3b82f6', 'line-width': 1.5, 'line-opacity': 0.6 } as LineLayer['paint']}
+                />
+              </Source>
+            )}
 
-            {/* Venue marker — rendered last so it sits on top */}
+            {/* Venue marker — on top */}
             <Marker longitude={coords.lng} latitude={coords.lat} anchor="bottom">
               <div className="flex flex-col items-center" title={venueName ?? venueAddress ?? 'Venue'}>
                 <div className="w-8 h-8 rounded-full bg-indigo-600 border-2 border-white shadow-lg flex items-center justify-center">
@@ -316,7 +293,7 @@ export default function CampaignMapView({
 
       {/* Footer */}
       <div className="px-4 py-2 border-t border-slate-100 text-xs text-slate-400 text-right shrink-0">
-        Campaign #{jobId} · Map Mailed List &amp; Responders
+        Campaign #{jobId}
       </div>
     </div>
   );
