@@ -197,6 +197,7 @@ export default async function handler(req: any, res: any) {
       guest_name:      guestName ?? null,
       response_source: 'call_center',
       confirmed:       true,
+      status:          ((row['Status'] ?? '').trim().toLowerCase()) || 'registered',
       notes:           noteParts || null,
       updated_at:      new Date().toISOString(),
     };

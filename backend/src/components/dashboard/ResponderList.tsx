@@ -57,7 +57,14 @@ const ResponderList: React.FC<ResponderListProps> = ({
 
   const eventMap = new Map(events.map(e => [e.id, e]));
 
+  // Split waitlist out first, then apply normal filters to registered
+  const waitlistResponders = responders.filter(r =>
+    (r.status ?? 'registered') === 'waitlist' &&
+    (!selectedEventId || r.event_id === selectedEventId)
+  );
+
   const filteredResponders = responders.filter(r => {
+    if ((r.status ?? 'registered') === 'waitlist') return false; // shown separately
     if (selectedEventId && r.event_id !== selectedEventId) return false;
     if (filter === 'confirmed') return r.confirmed;
     if (filter === 'unconfirmed') return !r.confirmed;
@@ -65,8 +72,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
     return true;
   });
 
-  const unassignedCount = responders.filter(r => !r.event_id).length;
-  // Attendees = primary responders + their guests (for the current filtered view)
+  const unassignedCount = responders.filter(r => !r.event_id && (r.status ?? 'registered') !== 'waitlist').length;
+  // Attendees = primary responders + their guests (registered only)
   const attendeesCount = filteredResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
 
   const formatDate = (dateStr: string) => {
@@ -143,9 +150,10 @@ const ResponderList: React.FC<ResponderListProps> = ({
 
   // Print a professional sign-in sheet in a new window
   const printResponders = (forEventId: string | null) => {
-    const toPrint = forEventId
+    const toPrint = (forEventId
       ? responders.filter(r => r.event_id === forEventId)
-      : responders;
+      : responders
+    ).filter(r => (r.status ?? 'registered') !== 'waitlist');
     const ev = forEventId ? eventMap.get(forEventId) : null;
 
     // Build header subtitle: Date · Time · Venue
@@ -365,8 +373,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
       {/* Responder Count */}
       <div className="px-4 py-2 border-b border-slate-200 flex items-center gap-4 flex-wrap">
         <span className="text-sm text-slate-600">
-          Showing <span className="font-semibold text-slate-900">{filteredResponders.length}</span> responder{filteredResponders.length !== 1 ? 's' : ''}
+          Showing <span className="font-semibold text-slate-900">{filteredResponders.length}</span> registered
         </span>
+        {waitlistResponders.length > 0 && (
+          <span className="text-sm text-amber-700">
+            <span className="font-semibold">{waitlistResponders.length}</span> on waitlist
+          </span>
+        )}
         <span className="text-sm text-slate-600">
           <span className="font-semibold text-slate-900">{attendeesCount}</span> total attendees
           <span className="text-xs text-slate-400 ml-1">(primary + guests)</span>
@@ -429,6 +442,109 @@ const ResponderList: React.FC<ResponderListProps> = ({
               <button onClick={saveEdit} className="px-3 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded flex items-center gap-1"><Save className="w-4 h-4" />Save</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Waitlist Section ── */}
+      {waitlistResponders.length > 0 && (
+        <div className="mx-4 mt-4 mb-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-100 border border-amber-300 text-amber-800 text-xs font-bold uppercase tracking-wide">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Waitlist — {waitlistResponders.length} {waitlistResponders.length === 1 ? 'person' : 'people'}
+            </span>
+            <span className="text-xs text-slate-400 italic">Not on sign-in sheet</span>
+          </div>
+          <div className="overflow-x-auto rounded border border-amber-200">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-xs text-amber-700 uppercase bg-amber-50 border-b border-amber-200">
+                  <th className="px-4 py-2">Name</th>
+                  <th className="px-4 py-2 hidden md:table-cell">Contact</th>
+                  <th className="px-4 py-2 hidden lg:table-cell">Location</th>
+                  <th className="px-4 py-2">Guests</th>
+                  <th className="px-4 py-2 hidden sm:table-cell">Meeting</th>
+                  <th className="px-4 py-2">Notes</th>
+                  {isMasterAdmin && <th className="px-4 py-2">Admin</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100">
+                {waitlistResponders.map(responder => {
+                  const assignedEvent = responder.event_id ? eventMap.get(responder.event_id) : null;
+                  return (
+                    <tr key={responder.id} className="bg-amber-50/40 hover:bg-amber-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">{responder.first_name} {responder.last_name}</div>
+                        {responder.guest_name
+                          ? <div className="text-xs text-slate-400">Guest: {responder.guest_name}</div>
+                          : (responder.guests ?? 0) > 0
+                            ? <div className="text-xs text-slate-400">+{responder.guests} guest{responder.guests === 1 ? '' : 's'}</div>
+                            : null
+                        }
+                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 text-[10px] font-semibold uppercase tracking-wide">Waitlist</span>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <div className="flex flex-col gap-1">
+                          {responder.phone && (
+                            <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900">
+                              <Phone className="w-3 h-3" />{responder.phone}
+                            </a>
+                          )}
+                          {responder.email && (
+                            <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-700 truncate max-w-[180px]">
+                              <Mail className="w-3 h-3" />{responder.email}
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        <div className="text-sm text-slate-600">{[responder.city, responder.state, responder.zip].filter(Boolean).join(', ')}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <Users className="w-4 h-4 text-slate-400" />
+                          <span className="text-slate-900 font-medium">{responder.guests ?? 0}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        {assignedEvent ? (
+                          <div className="text-xs text-slate-600">
+                            <div className="font-medium">{formatDate(assignedEvent.event_date)} {formatTime(assignedEvent.event_time)}</div>
+                            <div className="text-slate-400 truncate max-w-[140px]">{assignedEvent.venue_name}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {responder.notes
+                          ? <span className="text-xs text-slate-500 truncate max-w-[120px] block" title={responder.notes}>{responder.notes}</span>
+                          : <span className="text-xs text-slate-400 italic">—</span>
+                        }
+                      </td>
+                      {isMasterAdmin && (
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => openEdit(responder)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                            <button onClick={() => handleDelete(responder)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Registered Attendees Section header (only shown if waitlist exists) ── */}
+      {waitlistResponders.length > 0 && (
+        <div className="mx-4 mt-4 mb-2">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wide">
+            Registered Attendees
+          </span>
         </div>
       )}
 
