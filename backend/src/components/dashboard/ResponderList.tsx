@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { Responder, Event } from '@/types';
 import { decodeIPA, decodeIncome } from '@/lib/acxiomDecoders';
 import { 
@@ -24,7 +25,7 @@ interface ResponderListProps {
   events: Event[];
   selectedEventId: string | null;
   onSelectEvent: (eventId: string | null) => void;
-  onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void;
+  onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void | Promise<void>;
   isMasterAdmin?: boolean;
   onDeleteResponder?: (responderId: string) => void;
   campaignName?: string;
@@ -57,6 +58,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
   const [filter, setFilter] = useState<'all' | 'confirmed' | 'unconfirmed' | 'waitlist'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const eventMap = new Map(events.map(e => [e.id, e]));
 
@@ -162,23 +165,31 @@ const ResponderList: React.FC<ResponderListProps> = ({
     });
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingId || !draft) return;
-    onUpdateResponder(editingId, {
-      first_name: draft.first_name || undefined,
-      last_name: draft.last_name || undefined,
-      phone: draft.phone || undefined,
-      email: draft.email || undefined,
-      guests: draft.guests,
-      guest_name: draft.guest_name || null,
-      event_id: draft.event_id || null,
-      status: draft.status,
-      confirmed: draft.confirmed,
-      attended: draft.attended,
-      notes: draft.notes || undefined,
-    });
-    setEditingId(null);
-    setDraft(null);
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await onUpdateResponder(editingId, {
+        first_name: draft.first_name || undefined,
+        last_name: draft.last_name || undefined,
+        phone: draft.phone || undefined,
+        email: draft.email || undefined,
+        guests: draft.guests,
+        guest_name: draft.guest_name || null,
+        event_id: draft.event_id || null,
+        status: draft.status,
+        confirmed: draft.confirmed,
+        attended: draft.attended,
+        notes: draft.notes || undefined,
+      });
+      setEditingId(null);
+      setDraft(null);
+    } catch (err: any) {
+      setEditError(err?.message ?? 'Save failed. Please try again.');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleDelete = (responder: Responder) => {
@@ -431,14 +442,26 @@ const ResponderList: React.FC<ResponderListProps> = ({
         )}
       </div>
 
-      {/* ── Edit Responder Modal ── */}
-      {editingId && draft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { setEditingId(null); setDraft(null); }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 space-y-4" onClick={e => e.stopPropagation()}>
+      {/* ── Edit Responder Modal ──
+           Rendered via portal into document.body so `position:fixed` is always
+           relative to the viewport, regardless of any transform/overflow on parents. */}
+      {editingId && draft && ReactDOM.createPortal(
+        <div
+          className="fixed inset-0 z-[9999] bg-black/40"
+          onClick={() => { if (!savingEdit) { setEditingId(null); setDraft(null); setEditError(null); } }}
+        >
+          {/* Modal panel — fixed near top of viewport so it is always visible */}
+          <div
+            className="fixed left-1/2 -translate-x-1/2 top-16 w-full max-w-lg max-h-[calc(100vh-100px)] overflow-y-auto bg-white rounded-xl shadow-2xl p-5 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="font-semibold text-slate-800">Edit Responder</div>
-              <button onClick={() => { setEditingId(null); setDraft(null); }} className="p-1 text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+              <button
+                onClick={() => { if (!savingEdit) { setEditingId(null); setDraft(null); setEditError(null); } }}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              ><X className="w-5 h-5" /></button>
             </div>
 
             {/* Attendee Status — most prominent field */}
@@ -449,6 +472,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                   <button
                     key={s}
                     type="button"
+                    disabled={savingEdit}
                     onClick={() => setDraft({ ...draft, status: s })}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${
                       draft.status === s
@@ -456,7 +480,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                           : s === 'waitlist' ? 'bg-amber-500 text-white border-amber-500'
                           : 'bg-red-500 text-white border-red-500'
                         : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
+                    } disabled:opacity-50`}
                   >
                     {s === 'registered' ? '✓ Registered' : s === 'waitlist' ? '⏳ Waitlist' : '✕ Cancelled'}
                   </button>
@@ -468,19 +492,19 @@ const ResponderList: React.FC<ResponderListProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-slate-500 mb-1">First name</label>
-                <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.first_name} onChange={e => setDraft({ ...draft, first_name: e.target.value })} />
+                <input disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50" value={draft.first_name} onChange={e => setDraft({ ...draft, first_name: e.target.value })} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Last name</label>
-                <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.last_name} onChange={e => setDraft({ ...draft, last_name: e.target.value })} />
+                <input disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50" value={draft.last_name} onChange={e => setDraft({ ...draft, last_name: e.target.value })} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Phone</label>
-                <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} />
+                <input disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50" value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Email</label>
-                <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} />
+                <input disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50" value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} />
               </div>
             </div>
 
@@ -488,18 +512,18 @@ const ResponderList: React.FC<ResponderListProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Guest count (+1s)</label>
-                <input type="number" min={0} max={9} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.guests} onChange={e => setDraft({ ...draft, guests: Math.max(0, parseInt(e.target.value) || 0) })} />
+                <input type="number" min={0} max={9} disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50" value={draft.guests} onChange={e => setDraft({ ...draft, guests: Math.max(0, parseInt(e.target.value) || 0) })} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Guest name (if known)</label>
-                <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" placeholder="e.g. Jane Smith" value={draft.guest_name} onChange={e => setDraft({ ...draft, guest_name: e.target.value })} />
+                <input disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50" placeholder="e.g. Jane Smith" value={draft.guest_name} onChange={e => setDraft({ ...draft, guest_name: e.target.value })} />
               </div>
             </div>
 
             {/* Meeting assignment */}
             <div>
               <label className="block text-xs text-slate-500 mb-1">Assigned Meeting</label>
-              <select className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" value={draft.event_id} onChange={e => setDraft({ ...draft, event_id: e.target.value })}>
+              <select disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white disabled:opacity-50" value={draft.event_id} onChange={e => setDraft({ ...draft, event_id: e.target.value })}>
                 <option value="">— unassigned —</option>
                 {events.map(ev => <option key={ev.id} value={ev.id}>{formatEventShort(ev)}</option>)}
               </select>
@@ -508,28 +532,46 @@ const ResponderList: React.FC<ResponderListProps> = ({
             {/* Notes */}
             <div>
               <label className="block text-xs text-slate-500 mb-1">Notes</label>
-              <textarea className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 h-16 resize-none" value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
+              <textarea disabled={savingEdit} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 h-16 resize-none disabled:opacity-50" value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
             </div>
 
             {/* Confirmation + Attended */}
             <div className="flex items-center gap-5 pt-1">
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input type="checkbox" className="accent-green-600" checked={draft.confirmed} onChange={e => setDraft({ ...draft, confirmed: e.target.checked })} />
+                <input type="checkbox" className="accent-green-600" disabled={savingEdit} checked={draft.confirmed} onChange={e => setDraft({ ...draft, confirmed: e.target.checked })} />
                 <span className={draft.confirmed ? 'text-green-700 font-medium' : 'text-slate-600'}>Confirmed</span>
               </label>
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input type="checkbox" className="accent-indigo-600" checked={draft.attended} onChange={e => setDraft({ ...draft, attended: e.target.checked })} />
+                <input type="checkbox" className="accent-indigo-600" disabled={savingEdit} checked={draft.attended} onChange={e => setDraft({ ...draft, attended: e.target.checked })} />
                 <span className={draft.attended ? 'text-indigo-700 font-medium' : 'text-slate-600'}>Attended</span>
               </label>
             </div>
 
+            {/* Error message */}
+            {editError && (
+              <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                {editError}
+              </div>
+            )}
+
             {/* Footer */}
             <div className="flex justify-end gap-2 pt-1 border-t border-slate-100">
-              <button onClick={() => { setEditingId(null); setDraft(null); }} className="px-3 py-1.5 text-sm text-slate-600 border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
-              <button onClick={saveEdit} className="px-4 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded flex items-center gap-1.5"><Save className="w-4 h-4" />Save changes</button>
+              <button
+                disabled={savingEdit}
+                onClick={() => { setEditingId(null); setDraft(null); setEditError(null); }}
+                className="px-3 py-1.5 text-sm text-slate-600 border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-50"
+              >Cancel</button>
+              <button
+                onClick={saveEdit}
+                disabled={savingEdit}
+                className="px-4 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {savingEdit ? <><span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />Saving…</> : <><Save className="w-4 h-4" />Save changes</>}
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── WAITLIST SECTION ── */}

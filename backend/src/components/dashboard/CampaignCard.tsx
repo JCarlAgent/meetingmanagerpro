@@ -30,7 +30,7 @@ interface CampaignCardProps {
   campaign: Campaign;
   events: Event[];
   responders: Responder[];
-  onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void;
+  onUpdateResponder: (responderId: string, updates: Partial<Responder>) => void | Promise<void>;
   onUpdateCampaign: (campaignId: string, updates: Partial<Campaign>) => void;
   // optional callback to open add responder UI; if not provided the component will emit a global event
   onAddResponder?: (campaignId: string) => void;
@@ -656,8 +656,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   // Wrapped onUpdateResponder: triggers single-responder rematch when matching
   // fields (first_name, last_name, zip, address) are included in the update.
-  const handleRespUpdateWithRematch = (responderId: string, updates: Partial<Responder>) => {
-    onUpdateResponder(responderId, updates);
+  const handleRespUpdateWithRematch = async (responderId: string, updates: Partial<Responder>) => {
+    await onUpdateResponder(responderId, updates);
+    // Optimistically update localResponders so the list regroups immediately
+    // (localResponders takes precedence over the Dashboard responders prop)
+    setLocalResponders(prev => prev.map(r => r.id === responderId ? { ...r, ...updates } : r));
     const matchingFields: (keyof Responder)[] = ['first_name', 'last_name', 'zip', 'address'];
     if (matchingFields.some(f => f in updates)) {
       // Delay to allow parent DB write to complete before re-querying
