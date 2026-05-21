@@ -58,6 +58,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
 
   const eventMap = new Map(events.map(e => [e.id, e]));
 
+  // Normalize status: guard against null/undefined, extra whitespace, or mixed case from DB
+  const normStatus = (r: Responder) => (r.status || 'registered').trim().toLowerCase();
+
   // Derive which sections to show based on the filter selection
   const showWaitlist = filter === 'all' || filter === 'waitlist';
   const showRegistered = filter === 'all' || filter === 'confirmed' || filter === 'unconfirmed';
@@ -74,14 +77,14 @@ const ResponderList: React.FC<ResponderListProps> = ({
 
   const waitlistResponders = showWaitlist
     ? responders.filter(r =>
-        (r.status ?? 'registered') === 'waitlist' &&
+        normStatus(r) === 'waitlist' &&
         (!selectedEventId || r.event_id === selectedEventId)
       )
     : [];
 
   const filteredResponders = showRegistered
     ? responders.filter(r => {
-        if ((r.status ?? 'registered') === 'waitlist') return false;
+        if (normStatus(r) === 'waitlist') return false;
         if (selectedEventId && r.event_id !== selectedEventId) return false;
         if (filter === 'confirmed') return r.confirmed;
         if (filter === 'unconfirmed') return !r.confirmed;
@@ -89,8 +92,16 @@ const ResponderList: React.FC<ResponderListProps> = ({
       })
     : [];
 
-  const unassignedCount = responders.filter(r => !r.event_id && (r.status ?? 'registered') !== 'waitlist').length;
-  // Attendees = primary responders + their guests (registered only)
+  const unassignedCount = responders.filter(r => !r.event_id && normStatus(r) !== 'waitlist').length;
+
+  // Total signups = ALL responders for this event (waitlist + registered) + their guests.
+  // Business rule: waitlist ARE signups. Only sign-in sheets exclude waitlist.
+  const eventResponders = selectedEventId
+    ? responders.filter(r => r.event_id === selectedEventId)
+    : responders;
+  const totalSignupsCount = eventResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
+
+  // Registered attendees (seats/venue planning) — excludes waitlist
   const attendeesCount = filteredResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
 
   const formatDate = (dateStr: string) => {
@@ -170,7 +181,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
     const toPrint = (forEventId
       ? responders.filter(r => r.event_id === forEventId)
       : responders
-    ).filter(r => (r.status ?? 'registered') !== 'waitlist');
+    ).filter(r => normStatus(r) !== 'waitlist');
     const ev = forEventId ? eventMap.get(forEventId) : null;
 
     // Build header subtitle: Date · Time · Venue
@@ -398,9 +409,14 @@ const ResponderList: React.FC<ResponderListProps> = ({
           </span>
         )}
         <span className="text-sm text-slate-600">
-          <span className="font-semibold text-slate-900">{attendeesCount}</span> total attendees
-          <span className="text-xs text-slate-400 ml-1">(primary + guests)</span>
+          <span className="font-semibold text-slate-900">{totalSignupsCount}</span> total signups
+          <span className="text-xs text-slate-400 ml-1">(registered + waitlist + guests)</span>
         </span>
+        {attendeesCount !== totalSignupsCount && (
+          <span className="text-xs text-slate-400">
+            {attendeesCount} registered seats
+          </span>
+        )}
       </div>
 
       {/* Edit Modal */}
