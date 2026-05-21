@@ -333,10 +333,18 @@ const Dashboard: React.FC = () => {
   };
 
   const handleUpdateResponder = async (id: string, updates: Partial<Responder>) => {
-    try {
-      await supabase.from('responders').update(updates).eq('id', id);
-      setResponders(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
-    } catch (error) { console.error('Error:', error); }
+    // Use .select() so we can confirm the DB actually accepted the row.
+    // Supabase never throws — always check { error } explicitly.
+    const { data: updated, error } = await supabase
+      .from('responders')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    // Merge the real DB row (not just the draft payload) into local state.
+    const confirmed = (updated as Responder) ?? { id, ...updates };
+    setResponders(prev => prev.map(r => r.id === id ? { ...r, ...confirmed } : r));
   };
 
   const handleUpdateCampaign = async (id: string, updates: Partial<Campaign>) => {

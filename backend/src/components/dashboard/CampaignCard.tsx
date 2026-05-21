@@ -654,15 +654,24 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
-  // Wrapped onUpdateResponder: triggers single-responder rematch when matching
-  // fields (first_name, last_name, zip, address) are included in the update.
+  // Wrapped onUpdateResponder: triggers single-responder rematch only when
+  // matching fields (first_name, last_name, zip, address) actually changed value.
+  // Uses await so errors thrown by the parent handler propagate to the modal's catch.
   const handleRespUpdateWithRematch = async (responderId: string, updates: Partial<Responder>) => {
+    // Capture current values BEFORE the await so we can diff them.
+    const before = localResponders.find(r => r.id === responderId);
     await onUpdateResponder(responderId, updates);
-    // Optimistically update localResponders so the list regroups immediately
-    // (localResponders takes precedence over the Dashboard responders prop)
+    // Merge the updates (which now come from the real DB row) into local state.
     setLocalResponders(prev => prev.map(r => r.id === responderId ? { ...r, ...updates } : r));
+    // Only rematch if a matching-relevant field actually changed in value.
+    // Checking presence in the payload alone is wrong — saveEdit always sends
+    // first_name/last_name even when unchanged, which used to cause matchSingleResponder
+    // to fire on every save and reloadResponders() to overwrite the optimistic update.
     const matchingFields: (keyof Responder)[] = ['first_name', 'last_name', 'zip', 'address'];
-    if (matchingFields.some(f => f in updates)) {
+    const actuallyChanged = before && matchingFields.some(
+      f => f in updates && updates[f as keyof Responder] !== before[f as keyof Responder]
+    );
+    if (actuallyChanged) {
       // Delay to allow parent DB write to complete before re-querying
       setTimeout(() => matchSingleResponder(responderId), 700);
     }
