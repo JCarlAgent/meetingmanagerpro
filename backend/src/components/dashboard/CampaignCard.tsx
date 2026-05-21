@@ -24,7 +24,7 @@ import {
 import ResponderList from './ResponderList';
 import DeliveryTracking from './DeliveryTracking';
 import PostMeetingROIModal from './PostMeetingROIModal';
-import CampaignMapPreview from './map/CampaignMapPreview';
+import VenueStaticMap from './map/VenueStaticMap';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -36,6 +36,8 @@ interface CampaignCardProps {
   onAddResponder?: (campaignId: string) => void;
   // optional callback to re-fetch campaign/event data after a meeting edit
   onRefresh?: () => void;
+  // optional callback to open the full campaign map view
+  onOpenMap?: (campaignId: string) => void;
 }
 
 const CampaignCard: React.FC<CampaignCardProps> = ({ 
@@ -45,6 +47,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   onUpdateResponder,
   onUpdateCampaign,
   onRefresh,
+  onOpenMap,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFullResponders, setShowFullResponders] = useState(false);
@@ -884,9 +887,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     <div className="col-span-1 lg:col-span-1 bg-gray-50 rounded-lg p-2">
                       <div className="text-sm font-semibold mb-2">Map</div>
                       {events[0]?.venue_name ? (
-                        <div className="w-full h-[260px] md:h-[300px] overflow-hidden rounded">
-                          <CampaignMapPreview venueHeadline={`${events[0].venue_name} ${events[0].venue_city || ''}`} campaignType="medicare" onZipsExtracted={setMapZips} />
-                        </div>
+                        <VenueStaticMap
+                          venueAddress={[events[0].venue_name, events[0].venue_city, events[0].venue_state].filter(Boolean).join(', ')}
+                          height={260}
+                          onOpenFullMap={onOpenMap ? () => onOpenMap(campaign.id) : undefined}
+                        />
                       ) : (
                         <div className="w-full h-[220px] flex items-center justify-center bg-white border rounded">Map pending venue coordinates.</div>
                       )}

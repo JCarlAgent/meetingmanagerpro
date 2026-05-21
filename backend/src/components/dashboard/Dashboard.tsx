@@ -25,6 +25,7 @@ import DemographicsUploadView from './DemographicsUploadView';
 import MailingsReportView from './MailingsReportView';
 import ApprovalsArchiveView from './ApprovalsArchiveView';
 import HomeView from './HomeView';
+import CampaignMapView from './map/CampaignMapView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -600,8 +601,27 @@ const Dashboard: React.FC = () => {
         return <SettingsView />;
       case 'integrations':
         return <SocialMediaIntegrationsView />;
-      default:
+      default: {
+        // campaign-map:<jobId> — full interactive map view for a specific campaign
+        if (activeView.startsWith('campaign-map:')) {
+          const mapJobId = activeView.slice('campaign-map:'.length);
+          const mapCampaign = campaigns.find(c => c.id === mapJobId);
+          const mapEvents = getCampaignEvents(mapJobId);
+          const venueAddr = mapEvents[0]
+            ? [mapEvents[0].venue_name, mapEvents[0].venue_city, mapEvents[0].venue_state]
+                .filter(Boolean).join(', ')
+            : undefined;
+          return (
+            <CampaignMapView
+              jobId={mapJobId}
+              campaignName={(mapCampaign as any)?.name ?? (mapCampaign as any)?.campaign_name ?? undefined}
+              venueAddress={venueAddr}
+              onBack={() => setActiveView('campaigns')}
+            />
+          );
+        }
         return renderDashboard();
+      }
     }
   };
 
@@ -688,6 +708,7 @@ const Dashboard: React.FC = () => {
                 onUpdateResponder={handleUpdateResponder}
                 onUpdateCampaign={handleUpdateCampaign}
                 onRefresh={fetchData}
+                onOpenMap={(jobId) => setActiveView(`campaign-map:${jobId}`)}
               />
             ))}
           </div>
