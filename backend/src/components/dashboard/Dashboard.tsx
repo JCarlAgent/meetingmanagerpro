@@ -277,6 +277,7 @@ const Dashboard: React.FC = () => {
             venue_address: m.address1 || '',
             venue_city: m.city || '',
             venue_state: m.state || '',
+            venue_postal_code: m.postal_code || '',
             venue_lat: typeof m.venue_lat === 'number' ? m.venue_lat : null,
             venue_lng: typeof m.venue_lng === 'number' ? m.venue_lng : null,
             event_date: localDate,
@@ -611,7 +612,7 @@ const Dashboard: React.FC = () => {
           const mapEvents = getCampaignEvents(mapJobId);
           const firstEvent = mapEvents[0];
           const venueAddr = firstEvent
-            ? [firstEvent.venue_address, firstEvent.venue_city, firstEvent.venue_state]
+            ? [firstEvent.venue_address, firstEvent.venue_city, firstEvent.venue_state, firstEvent.venue_postal_code]
                 .filter(Boolean).join(', ')
             : undefined;
           return (

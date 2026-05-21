@@ -42,6 +42,9 @@ export interface Event {
   venue_address: string;
   venue_city: string;
   venue_state: string;
+  venue_postal_code?: string;
+  venue_lat?: number | null;
+  venue_lng?: number | null;
   event_date: string;
   event_time: string;
   event_type: string;

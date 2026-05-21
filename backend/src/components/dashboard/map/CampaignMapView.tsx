@@ -161,8 +161,8 @@ export default function CampaignMapView({
         </div>
       )}
 
-      {/* Map area */}
-      <div className="flex-1 relative min-h-0">
+      {/* Map area — explicit height so the map is never 0×0 inside a non-flex parent */}
+      <div className="relative" style={{ height: '70vh', minHeight: 400 }}>
         {geocoding && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10 gap-2">
             <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
@@ -184,6 +184,13 @@ export default function CampaignMapView({
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10 gap-3">
             <MapPin className="w-10 h-10 text-slate-300" />
             <p className="text-sm text-slate-500 font-medium">Venue location unavailable.</p>
+          </div>
+        )}
+
+        {!geocoding && coords && !MAPBOX_TOKEN && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10 gap-3">
+            <MapPin className="w-10 h-10 text-slate-300" />
+            <p className="text-sm text-slate-500 font-medium">Map token not configured.</p>
           </div>
         )}
 
