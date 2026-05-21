@@ -910,6 +910,16 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           }
                         }}
                       />
+                      {onOpenMap && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenMap(campaign.id)}
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          Map Mailed List &amp; Responders
+                        </button>
+                      )}
                       {/* Compact ZIP preview */}
                       <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2">
                         <div className="text-xs font-semibold text-slate-600 mb-1.5">Target ZIP Codes</div>

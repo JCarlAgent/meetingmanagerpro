@@ -20,7 +20,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { MapPin, Loader2, Map as MapIcon } from 'lucide-react';
+import { MapPin, Loader2 } from 'lucide-react';
 
 // Use the same env var as CampaignMapPreview — no hardcoded fallback token.
 const MAPBOX_TOKEN: string = (import.meta.env.VITE_MAPBOX_TOKEN as string) || '';
@@ -185,17 +185,6 @@ export default function VenueStaticMap({
         />
       )}
 
-      {/* "Map Mailed List and Responders" button — always visible over the map */}
-      {onOpenFullMap && (
-        <button
-          type="button"
-          onClick={onOpenFullMap}
-          className="absolute bottom-2 right-2 flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur-sm hover:bg-white text-slate-800 text-xs font-medium rounded-lg shadow border border-slate-200 transition-colors"
-        >
-          <MapIcon className="w-3.5 h-3.5 text-indigo-600" />
-          Map Mailed List &amp; Responders
-        </button>
-      )}
     </div>
   );
 }
