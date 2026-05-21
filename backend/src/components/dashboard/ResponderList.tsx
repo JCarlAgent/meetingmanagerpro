@@ -36,7 +36,9 @@ interface EditDraft {
   phone: string;
   email: string;
   guests: number;
+  guest_name: string;
   event_id: string;
+  status: string;
   confirmed: boolean;
   attended: boolean;
   notes: string;
@@ -84,7 +86,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
 
   const filteredResponders = showRegistered
     ? responders.filter(r => {
-        if (normStatus(r) === 'waitlist') return false;
+        const s = normStatus(r);
+        if (s === 'waitlist' || s === 'cancelled') return false;
         if (selectedEventId && r.event_id !== selectedEventId) return false;
         if (filter === 'confirmed') return r.confirmed;
         if (filter === 'unconfirmed') return !r.confirmed;
@@ -92,16 +95,20 @@ const ResponderList: React.FC<ResponderListProps> = ({
       })
     : [];
 
-  const unassignedCount = responders.filter(r => !r.event_id && normStatus(r) !== 'waitlist').length;
+  const unassignedCount = responders.filter(r => {
+    const s = normStatus(r);
+    return !r.event_id && s !== 'waitlist' && s !== 'cancelled';
+  }).length;
 
   // Total signups = ALL responders for this event (waitlist + registered) + their guests.
-  // Business rule: waitlist ARE signups. Only sign-in sheets exclude waitlist.
-  const eventResponders = selectedEventId
+  // Cancelled are excluded — they opted out and should not count toward campaign responses.
+  const eventResponders = (selectedEventId
     ? responders.filter(r => r.event_id === selectedEventId)
-    : responders;
+    : responders
+  ).filter(r => normStatus(r) !== 'cancelled');
   const totalSignupsCount = eventResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
 
-  // Registered attendees (seats/venue planning) — excludes waitlist
+  // Registered attendees (seats/venue planning) — excludes waitlist and cancelled
   const attendeesCount = filteredResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
 
   const formatDate = (dateStr: string) => {
@@ -146,7 +153,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
       phone: responder.phone ?? '',
       email: responder.email ?? '',
       guests: responder.guests ?? 0,
+      guest_name: (responder as any).guest_name ?? '',
       event_id: responder.event_id ?? '',
+      status: normStatus(responder),
       confirmed: responder.confirmed ?? false,
       attended: responder.attended ?? false,
       notes: responder.notes ?? '',
@@ -161,7 +170,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
       phone: draft.phone || undefined,
       email: draft.email || undefined,
       guests: draft.guests,
+      guest_name: draft.guest_name || null,
       event_id: draft.event_id || null,
+      status: draft.status,
       confirmed: draft.confirmed,
       attended: draft.attended,
       notes: draft.notes || undefined,
@@ -181,7 +192,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
     const toPrint = (forEventId
       ? responders.filter(r => r.event_id === forEventId)
       : responders
-    ).filter(r => normStatus(r) !== 'waitlist');
+    ).filter(r => normStatus(r) !== 'waitlist' && normStatus(r) !== 'cancelled');
     const ev = forEventId ? eventMap.get(forEventId) : null;
 
     // Build header subtitle: Date · Time · Venue
@@ -344,7 +355,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
     if (win) { win.document.write(html); win.document.close(); }
   };
 
-  const colCount = isMasterAdmin ? 8 : 7;
+  // Edit is always visible; delete is admin-only. Action column is always present.
+  const colCount = 8;
 
   return (
     <div className="bg-white text-slate-900">
@@ -419,14 +431,40 @@ const ResponderList: React.FC<ResponderListProps> = ({
         )}
       </div>
 
-      {/* Edit Modal */}
+      {/* ── Edit Responder Modal ── */}
       {editingId && draft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { setEditingId(null); setDraft(null); }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 space-y-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="font-semibold text-slate-800">Edit Responder</div>
               <button onClick={() => { setEditingId(null); setDraft(null); }} className="p-1 text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
             </div>
+
+            {/* Attendee Status — most prominent field */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Attendee Status</label>
+              <div className="flex gap-2">
+                {(['registered', 'waitlist', 'cancelled'] as const).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDraft({ ...draft, status: s })}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${
+                      draft.status === s
+                        ? s === 'registered' ? 'bg-green-500 text-white border-green-500'
+                          : s === 'waitlist' ? 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-red-500 text-white border-red-500'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {s === 'registered' ? '✓ Registered' : s === 'waitlist' ? '⏳ Waitlist' : '✕ Cancelled'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Name + Contact */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-slate-500 mb-1">First name</label>
@@ -444,35 +482,51 @@ const ResponderList: React.FC<ResponderListProps> = ({
                 <label className="block text-xs text-slate-500 mb-1">Email</label>
                 <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} />
               </div>
+            </div>
+
+            {/* Guest */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Guests (+1s)</label>
-                <input type="number" min={0} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.guests} onChange={e => setDraft({ ...draft, guests: Math.max(0, parseInt(e.target.value) || 0) })} />
+                <label className="block text-xs text-slate-500 mb-1">Guest count (+1s)</label>
+                <input type="number" min={0} max={9} className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" value={draft.guests} onChange={e => setDraft({ ...draft, guests: Math.max(0, parseInt(e.target.value) || 0) })} />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Meeting</label>
-                <select className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" value={draft.event_id} onChange={e => setDraft({ ...draft, event_id: e.target.value })}>
-                  <option value="">— unassigned —</option>
-                  {events.map(ev => <option key={ev.id} value={ev.id}>{formatEventShort(ev)}</option>)}
-                </select>
+                <label className="block text-xs text-slate-500 mb-1">Guest name (if known)</label>
+                <input className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" placeholder="e.g. Jane Smith" value={draft.guest_name} onChange={e => setDraft({ ...draft, guest_name: e.target.value })} />
               </div>
             </div>
+
+            {/* Meeting assignment */}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Assigned Meeting</label>
+              <select className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white" value={draft.event_id} onChange={e => setDraft({ ...draft, event_id: e.target.value })}>
+                <option value="">— unassigned —</option>
+                {events.map(ev => <option key={ev.id} value={ev.id}>{formatEventShort(ev)}</option>)}
+              </select>
+            </div>
+
+            {/* Notes */}
             <div>
               <label className="block text-xs text-slate-500 mb-1">Notes</label>
-              <textarea className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 h-20 resize-none" value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
+              <textarea className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 h-16 resize-none" value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
             </div>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={draft.confirmed} onChange={e => setDraft({ ...draft, confirmed: e.target.checked })} />
-                Confirmed
+
+            {/* Confirmation + Attended */}
+            <div className="flex items-center gap-5 pt-1">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input type="checkbox" className="accent-green-600" checked={draft.confirmed} onChange={e => setDraft({ ...draft, confirmed: e.target.checked })} />
+                <span className={draft.confirmed ? 'text-green-700 font-medium' : 'text-slate-600'}>Confirmed</span>
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={draft.attended} onChange={e => setDraft({ ...draft, attended: e.target.checked })} />
-                Attended
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input type="checkbox" className="accent-indigo-600" checked={draft.attended} onChange={e => setDraft({ ...draft, attended: e.target.checked })} />
+                <span className={draft.attended ? 'text-indigo-700 font-medium' : 'text-slate-600'}>Attended</span>
               </label>
             </div>
-            <div className="flex justify-end gap-2 pt-1">
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 pt-1 border-t border-slate-100">
               <button onClick={() => { setEditingId(null); setDraft(null); }} className="px-3 py-1.5 text-sm text-slate-600 border border-slate-300 rounded hover:bg-slate-50">Cancel</button>
-              <button onClick={saveEdit} className="px-3 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded flex items-center gap-1"><Save className="w-4 h-4" />Save</button>
+              <button onClick={saveEdit} className="px-4 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded flex items-center gap-1.5"><Save className="w-4 h-4" />Save changes</button>
             </div>
           </div>
         </div>
@@ -499,7 +553,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                   <th className="px-4 py-2">Guests</th>
                   <th className="px-4 py-2 hidden sm:table-cell">Meeting</th>
                   <th className="px-4 py-2">Notes</th>
-                  {isMasterAdmin && <th className="px-4 py-2">Admin</th>}
+                  <th className="px-4 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-amber-100">
@@ -563,14 +617,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
                           : <span className="text-xs text-slate-400 italic">—</span>
                         }
                       </td>
-                      {isMasterAdmin && (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => openEdit(responder)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Edit"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete(responder)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      )}
+                      {/* Edit always shown; Delete admin-only */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit(responder)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                          {isMasterAdmin && <button onClick={() => handleDelete(responder)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-4 h-4" /></button>}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -603,7 +656,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
               <th className="px-4 py-3">Guests</th>
               <th className="px-4 py-3 hidden sm:table-cell">Meeting</th>
               <th className="px-4 py-3">Notes</th>
-              {isMasterAdmin && <th className="px-4 py-3">Admin</th>}
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -692,17 +745,17 @@ const ResponderList: React.FC<ResponderListProps> = ({
                       : <span className="text-xs text-slate-400 italic">—</span>; })()}
                   </td>
 
-                  {/* Admin actions */}
-                  {isMasterAdmin && (
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEdit(responder)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                          title="Edit"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                  {/* Actions: Edit always shown; Delete admin-only */}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEdit(responder)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                        title="Edit"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      {isMasterAdmin && (
                         <button
                           onClick={() => handleDelete(responder)}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
@@ -710,9 +763,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      </div>
-                    </td>
-                  )}
+                      )}
+                    </div>
+                  </td>
                 </tr>
 
                   {/* Enrichment detail row — visible once mailed-list matching has run */}
