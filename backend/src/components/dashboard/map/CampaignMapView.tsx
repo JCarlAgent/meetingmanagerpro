@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox';
 import type { FillLayer, LineLayer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { ArrowLeft, MapPin, Loader2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Loader2, Navigation } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const MAPBOX_TOKEN: string = (import.meta.env.VITE_MAPBOX_TOKEN as string) || '';
@@ -57,6 +57,10 @@ export default function CampaignMapView({
   const [totalResponders, setTotalResponders] = useState<number | null>(null);
   const [mappedResponders, setMappedResponders] = useState<ResponderRow[]>([]);
   const respondersLoadedRef = useRef(false);
+
+  // Responder geocoding (server-side)
+  const [isGeocodingResponders, setIsGeocodingResponders] = useState(false);
+  const [geocodeResponderMsg, setGeocodeResponderMsg] = useState<string | null>(null);
 
   // Only geocode once per mount
   const geocodedRef = useRef(false);
@@ -245,6 +249,24 @@ export default function CampaignMapView({
             </span>
           )}
         </span>
+        {/* Prepare Responder Map button — visible when some responders are not yet mapped */}
+        {totalResponders !== null && totalResponders > 0 && mappedResponders.length < totalResponders && (
+          <span className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={prepareResponderMap}
+              disabled={isGeocodingResponders}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isGeocodingResponders
+                ? <><Loader2 className="w-3 h-3 animate-spin" />Mapping…</>
+                : <><Navigation className="w-3 h-3" />Prepare Responder Map</>}
+            </button>
+            {geocodeResponderMsg && (
+              <span className="text-slate-500 text-xs italic">{geocodeResponderMsg}</span>
+            )}
+          </span>
+        )}
         {/* Target ZIP list */}
         <span className="flex items-center gap-1.5 ml-auto">
           {zipsLoading && <Loader2 className="w-3 h-3 animate-spin text-slate-400" />}
