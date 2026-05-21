@@ -4,6 +4,7 @@ import { decodeIPA, decodeIncome } from '@/lib/acxiomDecoders';
 import { 
   CheckCircle2, 
   XCircle, 
+  Clock,
   Phone, 
   Mail,
   Edit3,
@@ -51,26 +52,42 @@ const ResponderList: React.FC<ResponderListProps> = ({
   onDeleteResponder,
   campaignName = 'Campaign',
 }) => {
-  const [filter, setFilter] = useState<'all' | 'confirmed' | 'unconfirmed' | 'unassigned'>('all');
+  const [filter, setFilter] = useState<'all' | 'confirmed' | 'unconfirmed' | 'waitlist'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
 
   const eventMap = new Map(events.map(e => [e.id, e]));
 
-  // Split waitlist out first, then apply normal filters to registered
-  const waitlistResponders = responders.filter(r =>
-    (r.status ?? 'registered') === 'waitlist' &&
-    (!selectedEventId || r.event_id === selectedEventId)
-  );
+  // Derive which sections to show based on the filter selection
+  const showWaitlist = filter === 'all' || filter === 'waitlist';
+  const showRegistered = filter === 'all' || filter === 'confirmed' || filter === 'unconfirmed';
 
-  const filteredResponders = responders.filter(r => {
-    if ((r.status ?? 'registered') === 'waitlist') return false; // shown separately
-    if (selectedEventId && r.event_id !== selectedEventId) return false;
-    if (filter === 'confirmed') return r.confirmed;
-    if (filter === 'unconfirmed') return !r.confirmed;
-    if (filter === 'unassigned') return !r.event_id;
-    return true;
-  });
+  // Strip "Status: ..." segments injected by older imports — status now has its own column
+  const displayNotes = (notes: string | null | undefined): string => {
+    if (!notes) return '';
+    return notes
+      .split(' | ')
+      .filter(part => !/^Status:/i.test(part.trim()))
+      .join(' | ')
+      .trim();
+  };
+
+  const waitlistResponders = showWaitlist
+    ? responders.filter(r =>
+        (r.status ?? 'registered') === 'waitlist' &&
+        (!selectedEventId || r.event_id === selectedEventId)
+      )
+    : [];
+
+  const filteredResponders = showRegistered
+    ? responders.filter(r => {
+        if ((r.status ?? 'registered') === 'waitlist') return false;
+        if (selectedEventId && r.event_id !== selectedEventId) return false;
+        if (filter === 'confirmed') return r.confirmed;
+        if (filter === 'unconfirmed') return !r.confirmed;
+        return true;
+      })
+    : [];
 
   const unassignedCount = responders.filter(r => !r.event_id && (r.status ?? 'registered') !== 'waitlist').length;
   // Attendees = primary responders + their guests (registered only)
@@ -347,7 +364,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
             <option value="all">All Status</option>
             <option value="confirmed">Confirmed</option>
             <option value="unconfirmed">Unconfirmed</option>
-            <option value="unassigned">⚠ Unassigned meeting {unassignedCount > 0 ? `(${unassignedCount})` : ''}</option>
+            <option value="waitlist">Waitlist</option>
           </select>
           {selectedEventId && (
             <button
@@ -363,7 +380,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
       </div>
 
       {/* Unassigned banner */}
-      {unassignedCount > 0 && filter !== 'unassigned' && (
+      {unassignedCount > 0 && filter !== 'waitlist' && (
         <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span><strong>{unassignedCount}</strong> responder{unassignedCount !== 1 ? 's' : ''} have no meeting assigned. Use the filter above to view them.</span>
@@ -445,20 +462,21 @@ const ResponderList: React.FC<ResponderListProps> = ({
         </div>
       )}
 
-      {/* ── Waitlist Section ── */}
+      {/* ── WAITLIST SECTION ── */}
       {waitlistResponders.length > 0 && (
-        <div className="mx-4 mt-4 mb-2">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-100 border border-amber-300 text-amber-800 text-xs font-bold uppercase tracking-wide">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Waitlist — {waitlistResponders.length} {waitlistResponders.length === 1 ? 'person' : 'people'}
-            </span>
-            <span className="text-xs text-slate-400 italic">Not on sign-in sheet</span>
+        <div className="mx-4 mt-4 mb-1">
+          {/* Section header */}
+          <div className="flex items-center gap-3 px-3 py-2 bg-amber-500 rounded-t-lg">
+            <Clock className="w-4 h-4 text-white shrink-0" />
+            <span className="text-white text-sm font-bold uppercase tracking-widest">Waitlist</span>
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-white/20 text-white text-xs font-semibold">{waitlistResponders.length}</span>
+            <span className="ml-auto text-amber-100 text-xs italic">Not included on sign-in sheet</span>
           </div>
-          <div className="overflow-x-auto rounded border border-amber-200">
+          <div className="overflow-x-auto rounded-b-lg border border-amber-300 border-t-0">
             <table className="w-full">
               <thead>
                 <tr className="text-left text-xs text-amber-700 uppercase bg-amber-50 border-b border-amber-200">
+                  <th className="px-4 py-2">Waitlist</th>
                   <th className="px-4 py-2">Name</th>
                   <th className="px-4 py-2 hidden md:table-cell">Contact</th>
                   <th className="px-4 py-2 hidden lg:table-cell">Location</th>
@@ -471,8 +489,15 @@ const ResponderList: React.FC<ResponderListProps> = ({
               <tbody className="divide-y divide-amber-100">
                 {waitlistResponders.map(responder => {
                   const assignedEvent = responder.event_id ? eventMap.get(responder.event_id) : null;
+                  const wNotes = displayNotes(responder.notes);
                   return (
-                    <tr key={responder.id} className="bg-amber-50/40 hover:bg-amber-50 transition-colors">
+                    <tr key={responder.id} className="bg-amber-50/50 hover:bg-amber-100/50 transition-colors">
+                      {/* Waitlist status icon */}
+                      <td className="px-4 py-3">
+                        <div className="p-1.5 rounded-lg bg-amber-400/20 text-amber-600 inline-flex" title="Waitlist">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900">{responder.first_name} {responder.last_name}</div>
                         {responder.guest_name
@@ -481,7 +506,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                             ? <div className="text-xs text-slate-400">+{responder.guests} guest{responder.guests === 1 ? '' : 's'}</div>
                             : null
                         }
-                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 text-[10px] font-semibold uppercase tracking-wide">Waitlist</span>
+                        <div className="text-xs text-slate-500 md:hidden">{responder.phone}</div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <div className="flex flex-col gap-1">
@@ -517,8 +542,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {responder.notes
-                          ? <span className="text-xs text-slate-500 truncate max-w-[120px] block" title={responder.notes}>{responder.notes}</span>
+                        {wNotes
+                          ? <span className="text-xs text-slate-500 truncate max-w-[120px] block" title={wNotes}>{wNotes}</span>
                           : <span className="text-xs text-slate-400 italic">—</span>
                         }
                       </td>
@@ -539,20 +564,22 @@ const ResponderList: React.FC<ResponderListProps> = ({
         </div>
       )}
 
-      {/* ── Registered Attendees Section header (only shown if waitlist exists) ── */}
-      {waitlistResponders.length > 0 && (
-        <div className="mx-4 mt-4 mb-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wide">
-            Registered Attendees
-          </span>
+      {/* ── REGISTERED SECTION header ── */}
+      {showRegistered && (
+        <div className="mx-4 mt-4 mb-1">
+          <div className="flex items-center gap-3 px-3 py-2 bg-slate-700 rounded-t-lg">
+            <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+            <span className="text-white text-sm font-bold uppercase tracking-widest">Registered</span>
+            <span className="ml-1 px-2 py-0.5 rounded-full bg-white/20 text-white text-xs font-semibold">{filteredResponders.length}</span>
+          </div>
         </div>
       )}
 
       {/* Responder Table */}
-      <div className="overflow-x-auto">
+      {showRegistered && <div className="overflow-x-auto mx-4 rounded-b-lg border border-slate-200 border-t-0">
         <table className="w-full">
           <thead>
-            <tr className="text-left text-xs text-slate-500 uppercase border-b border-slate-200">
+            <tr className="text-left text-xs text-slate-500 uppercase border-b border-slate-200 bg-slate-50">
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3 hidden md:table-cell">Contact</th>
@@ -644,11 +671,9 @@ const ResponderList: React.FC<ResponderListProps> = ({
 
                   {/* Notes */}
                   <td className="px-4 py-3">
-                    {responder.notes ? (
-                      <span className="text-xs text-slate-500 truncate max-w-[120px] block" title={responder.notes}>{responder.notes}</span>
-                    ) : (
-                      <span className="text-xs text-slate-400 italic">—</span>
-                    )}
+                    {(() => { const n = displayNotes(responder.notes); return n
+                      ? <span className="text-xs text-slate-500 truncate max-w-[120px] block" title={n}>{n}</span>
+                      : <span className="text-xs text-slate-400 italic">—</span>; })()}
                   </td>
 
                   {/* Admin actions */}
@@ -706,13 +731,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
           </tbody>
         </table>
 
-        {filteredResponders.length === 0 && (
+        {showRegistered && filteredResponders.length === 0 && (
           <div className="text-center py-12">
             <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500">No responders found</p>
+            <p className="text-slate-500">No registered responders found</p>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 };
