@@ -77,6 +77,8 @@ export interface Responder {
   ipa?: string;
   matched_to_mail_list?: boolean | null;
   match_confidence?: 'exact' | 'fuzzy' | 'none' | null;
+  lat?: number | null;
+  lng?: number | null;
   created_at: string;
   updated_at: string;
 }

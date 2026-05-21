@@ -1,15 +1,14 @@
 /**
  * CampaignMapView — Interactive Mapbox map for a single campaign.
  *
- * Current: Venue pin + 20-min drive-time polygon + target ZIP list in legend.
- * Next: Responder markers.
+ * Current: Venue pin + 20-min drive-time polygon + target ZIP list + responder markers (where coords exist).
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox';
 import type { FillLayer, LineLayer } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { ArrowLeft, MapPin, Users, Loader2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const MAPBOX_TOKEN: string = (import.meta.env.VITE_MAPBOX_TOKEN as string) || '';
@@ -28,6 +27,7 @@ interface CampaignMapViewProps {
 }
 
 interface Coords { lat: number; lng: number }
+interface ResponderRow { id: string; first_name: string; last_name: string; zip: string | null; lat: number | null; lng: number | null; }
 
 export default function CampaignMapView({
   jobId,
@@ -52,9 +52,10 @@ export default function CampaignMapView({
   const [zipsLoading, setZipsLoading] = useState(false);
   const zipsLoadedRef = useRef(false);
 
-  // Responder counts by ZIP
+  // Responder data: ZIP counts + geocoded markers
   const [responderCounts, setResponderCounts] = useState<Record<string, number>>({});
   const [totalResponders, setTotalResponders] = useState<number | null>(null);
+  const [mappedResponders, setMappedResponders] = useState<ResponderRow[]>([]);
   const respondersLoadedRef = useRef(false);
 
   // Only geocode once per mount
@@ -118,7 +119,7 @@ export default function CampaignMapView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load responder ZIP counts for this campaign
+  // Load responder data: ZIP counts + pre-geocoded rows
   useEffect(() => {
     if (respondersLoadedRef.current) return;
     respondersLoadedRef.current = true;
@@ -126,19 +127,23 @@ export default function CampaignMapView({
     (async () => {
       const { data, error } = await supabase
         .from('responders')
-        .select('zip')
+        .select('id, first_name, last_name, zip, lat, lng')
         .eq('campaign_id', jobId);
 
       if (error || !data) return;
 
       const counts: Record<string, number> = {};
+      const withCoords: ResponderRow[] = [];
       for (const row of data) {
         const z = (row.zip ?? '').trim();
-        if (!z) continue;
-        counts[z] = (counts[z] ?? 0) + 1;
+        if (z) counts[z] = (counts[z] ?? 0) + 1;
+        if (typeof row.lat === 'number' && typeof row.lng === 'number') {
+          withCoords.push(row as ResponderRow);
+        }
       }
       setResponderCounts(counts);
       setTotalResponders(data.length);
+      setMappedResponders(withCoords);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
@@ -218,14 +223,25 @@ export default function CampaignMapView({
           20-min drive area
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
-          <Users className="w-3 h-3 text-emerald-500" />
+          <span className="inline-block w-3 h-3 rounded-full bg-emerald-500 border border-emerald-700" />
           {totalResponders === null ? (
             <span className="opacity-40">Responders <span className="italic">— loading</span></span>
           ) : (
             <span>
               Responders:{' '}
               <span className="font-semibold text-emerald-600">{totalResponders}</span>
-              <span className="opacity-40 italic ml-1">— map coming soon</span>
+              {totalResponders > 0 && (
+                <span className="ml-1 text-slate-400">
+                  {'· Mapped: '}
+                  <span className={mappedResponders.length > 0 ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>
+                    {mappedResponders.length}
+                  </span>
+                  {' / '}{totalResponders}
+                  {mappedResponders.length === 0 && (
+                    <span className="italic ml-1">— coordinates not available yet</span>
+                  )}
+                </span>
+              )}
             </span>
           )}
         </span>
@@ -320,6 +336,16 @@ export default function CampaignMapView({
                 />
               </Source>
             )}
+
+            {/* Responder markers — only where coordinates are stored */}
+            {mappedResponders.map(r => (
+              <Marker key={r.id} longitude={r.lng!} latitude={r.lat!} anchor="center">
+                <div
+                  className="w-4 h-4 rounded-full bg-emerald-500 border-2 border-white shadow"
+                  title={`${r.first_name} ${r.last_name}${r.zip ? ' · ' + r.zip : ''}`}
+                />
+              </Marker>
+            ))}
 
             {/* Venue marker — on top */}
             <Marker longitude={coords.lng} latitude={coords.lat} anchor="bottom">
