@@ -123,34 +123,66 @@ export default function CampaignMapView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load responder data: ZIP counts + pre-geocoded rows
+  // Load (or reload) responder data: ZIP counts + geocoded markers
+  const loadResponders = async () => {
+    const { data, error } = await supabase
+      .from('responders')
+      .select('id, first_name, last_name, zip, lat, lng')
+      .eq('campaign_id', jobId);
+
+    if (error || !data) return;
+
+    const counts: Record<string, number> = {};
+    const withCoords: ResponderRow[] = [];
+    for (const row of data) {
+      const z = (row.zip ?? '').trim();
+      if (z) counts[z] = (counts[z] ?? 0) + 1;
+      if (typeof row.lat === 'number' && typeof row.lng === 'number') {
+        withCoords.push(row as ResponderRow);
+      }
+    }
+    setResponderCounts(counts);
+    setTotalResponders(data.length);
+    setMappedResponders(withCoords);
+  };
+
   useEffect(() => {
     if (respondersLoadedRef.current) return;
     respondersLoadedRef.current = true;
-
-    (async () => {
-      const { data, error } = await supabase
-        .from('responders')
-        .select('id, first_name, last_name, zip, lat, lng')
-        .eq('campaign_id', jobId);
-
-      if (error || !data) return;
-
-      const counts: Record<string, number> = {};
-      const withCoords: ResponderRow[] = [];
-      for (const row of data) {
-        const z = (row.zip ?? '').trim();
-        if (z) counts[z] = (counts[z] ?? 0) + 1;
-        if (typeof row.lat === 'number' && typeof row.lng === 'number') {
-          withCoords.push(row as ResponderRow);
-        }
-      }
-      setResponderCounts(counts);
-      setTotalResponders(data.length);
-      setMappedResponders(withCoords);
-    })();
+    loadResponders();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
+
+  // Trigger server-side geocoding for unmapped responders
+  const prepareResponderMap = async () => {
+    setIsGeocodingResponders(true);
+    setGeocodeResponderMsg(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) { setGeocodeResponderMsg('Not logged in.'); return; }
+
+      const resp = await fetch('/api/responders/geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ campaignId: jobId }),
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setGeocodeResponderMsg(result?.error ?? 'Geocoding failed.');
+        return;
+      }
+      const { geocoded = 0, skipped = 0, failed = 0, total = 0 } = result;
+      setGeocodeResponderMsg(
+        `Done — ${geocoded} of ${total} mapped${skipped ? `, ${skipped} skipped (no address)` : ''}${failed ? `, ${failed} failed` : ''}.`
+      );
+      await loadResponders();
+    } catch (err: unknown) {
+      setGeocodeResponderMsg((err instanceof Error ? err.message : null) ?? 'Unexpected error.');
+    } finally {
+      setIsGeocodingResponders(false);
+    }
+  };
 
   // Load isochrone + ZIP list once venue coords are known
   useEffect(() => {
