@@ -886,15 +886,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     {/* Map */}
                     <div className="col-span-1 lg:col-span-1 bg-gray-50 rounded-lg p-2">
                       <div className="text-sm font-semibold mb-2">Map</div>
-                      {events[0]?.venue_name ? (
-                        <VenueStaticMap
-                          venueAddress={[events[0].venue_name, events[0].venue_city, events[0].venue_state].filter(Boolean).join(', ')}
-                          height={260}
-                          onOpenFullMap={onOpenMap ? () => onOpenMap(campaign.id) : undefined}
-                        />
-                      ) : (
-                        <div className="w-full h-[220px] flex items-center justify-center bg-white border rounded">Map pending venue coordinates.</div>
-                      )}
+                      <VenueStaticMap
+                        venueLat={(events[0] as any)?.venue_lat ?? null}
+                        venueLng={(events[0] as any)?.venue_lng ?? null}
+                        venueAddress={
+                          events[0]
+                            ? [events[0].venue_name, events[0].venue_address, events[0].venue_city, events[0].venue_state]
+                                .filter(Boolean).join(', ')
+                            : undefined
+                        }
+                        height={260}
+                        onOpenFullMap={onOpenMap ? () => onOpenMap(campaign.id) : undefined}
+                      />
                       {/* Compact ZIP preview */}
                       <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2">
                         <div className="text-xs font-semibold text-slate-600 mb-1.5">Target ZIP Codes</div>
