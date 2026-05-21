@@ -52,6 +52,11 @@ export default function CampaignMapView({
   const [zipsLoading, setZipsLoading] = useState(false);
   const zipsLoadedRef = useRef(false);
 
+  // Responder counts by ZIP
+  const [responderCounts, setResponderCounts] = useState<Record<string, number>>({});
+  const [totalResponders, setTotalResponders] = useState<number | null>(null);
+  const respondersLoadedRef = useRef(false);
+
   // Only geocode once per mount
   const geocodedRef = useRef(false);
 
@@ -112,6 +117,31 @@ export default function CampaignMapView({
     return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load responder ZIP counts for this campaign
+  useEffect(() => {
+    if (respondersLoadedRef.current) return;
+    respondersLoadedRef.current = true;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('responders')
+        .select('zip')
+        .eq('campaign_id', jobId);
+
+      if (error || !data) return;
+
+      const counts: Record<string, number> = {};
+      for (const row of data) {
+        const z = (row.zip ?? '').trim();
+        if (!z) continue;
+        counts[z] = (counts[z] ?? 0) + 1;
+      }
+      setResponderCounts(counts);
+      setTotalResponders(data.length);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
 
   // Load isochrone + ZIP list once venue coords are known
   useEffect(() => {
@@ -187,10 +217,17 @@ export default function CampaignMapView({
           <span className="inline-block w-3 h-3 rounded bg-blue-200 border border-blue-400" />
           20-min drive area
         </span>
-        <span className="flex items-center gap-1.5 shrink-0 opacity-40">
+        <span className="flex items-center gap-1.5 shrink-0">
           <Users className="w-3 h-3 text-emerald-500" />
-          Responders
-          <span className="italic">— coming soon</span>
+          {totalResponders === null ? (
+            <span className="opacity-40">Responders <span className="italic">— loading</span></span>
+          ) : (
+            <span>
+              Responders:{' '}
+              <span className="font-semibold text-emerald-600">{totalResponders}</span>
+              <span className="opacity-40 italic ml-1">— map coming soon</span>
+            </span>
+          )}
         </span>
         {/* Target ZIP list */}
         <span className="flex items-center gap-1.5 ml-auto">
@@ -198,9 +235,19 @@ export default function CampaignMapView({
           {!zipsLoading && (
             <span className="text-slate-500">
               <span className="font-semibold text-slate-700">Target ZIPs:</span>{' '}
-              {targetZips.length === 0
-                ? <span className="italic text-slate-400">None found</span>
-                : targetZips.join(', ')}
+              {targetZips.length === 0 ? (
+                <span className="italic text-slate-400">None found</span>
+              ) : (
+                targetZips.map((z, i) => (
+                  <span key={z}>
+                    {i > 0 && ', '}
+                    {z}
+                    {totalResponders !== null && (
+                      <span className="text-emerald-600 font-medium"> ({responderCounts[z] ?? 0})</span>
+                    )}
+                  </span>
+                ))
+              )}
             </span>
           )}
         </span>
