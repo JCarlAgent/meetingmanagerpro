@@ -609,15 +609,19 @@ const Dashboard: React.FC = () => {
           const mapJobId = activeView.slice('campaign-map:'.length);
           const mapCampaign = campaigns.find(c => c.id === mapJobId);
           const mapEvents = getCampaignEvents(mapJobId);
-          const venueAddr = mapEvents[0]
-            ? [mapEvents[0].venue_name, mapEvents[0].venue_city, mapEvents[0].venue_state]
+          const firstEvent = mapEvents[0];
+          const venueAddr = firstEvent
+            ? [firstEvent.venue_address, firstEvent.venue_city, firstEvent.venue_state]
                 .filter(Boolean).join(', ')
             : undefined;
           return (
             <CampaignMapView
               jobId={mapJobId}
               campaignName={(mapCampaign as any)?.name ?? (mapCampaign as any)?.campaign_name ?? undefined}
+              venueName={firstEvent?.venue_name || undefined}
               venueAddress={venueAddr}
+              venueLat={firstEvent?.venue_lat ?? null}
+              venueLng={firstEvent?.venue_lng ?? null}
               onBack={() => setActiveView('campaigns')}
             />
           );
@@ -626,7 +630,6 @@ const Dashboard: React.FC = () => {
       }
     }
   };
-
 
   const renderDashboard = () => (
     <>

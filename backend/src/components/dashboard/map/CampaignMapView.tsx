@@ -1,42 +1,120 @@
 /**
- * CampaignMapView — Scaffold
+ * CampaignMapView — Interactive Mapbox map for a single campaign.
  *
- * Full interactive map view for a campaign, opened from the "Map Mailed List
- * and Responders" button in CampaignCard. Rendered as a separate top-level view
- * inside Dashboard (case 'campaign-map') instead of loading a heavy Mapbox
- * component inside each campaign card.
- *
- * ─── TODO: implement these data layers ───────────────────────────────────────
- * 1. VENUE PIN — geocode the campaign venue address (reuse VenueStaticMap logic
- *    or call Mapbox geocoding once; show a distinct marker).
- * 2. MAILED LIST RECORDS — load from `campaign_mailed_list_records` (filter by
- *    campaign_id / job_id). Geocode zip codes (batch) or use stored lat/lng.
- *    Render as a heat-map or cluster layer.
- * 3. RESPONDERS — load from `responders` (filter by campaign_id). Show as
- *    individual accent-coloured markers. Clicking one shows the responder card.
- * 4. ISOCHRONE RING — optionally render the drive-time polygon (reuse the
- *    Valhalla isochrone logic from CampaignMapPreview.tsx).
- *
- * ─── Interactive Mapbox component ────────────────────────────────────────────
- * CampaignMapPreview is imported here (not in CampaignCard) so the heavy
- * react-map-gl bundle only loads when this view is opened.
+ * Step 1: Venue pin only.
+ * Future steps will add mailed-list heat-map and responder markers.
  */
 
-import React from 'react';
-import { ArrowLeft, MapPin, Users, Mail } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import Map, { Marker } from 'react-map-gl/mapbox';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { ArrowLeft, MapPin, Mail, Users, Loader2 } from 'lucide-react';
+
+const MAPBOX_TOKEN: string = (import.meta.env.VITE_MAPBOX_TOKEN as string) || '';
+
+// Shared session-cache prefix with VenueStaticMap — reuse geocoded coords from card
+const GEOCODE_CACHE_KEY_PREFIX = 'vsm_geocode_';
 
 interface CampaignMapViewProps {
-  /** ID of the campaign (job) to map */
   jobId: string;
-  /** Human-readable campaign name for the header */
   campaignName?: string;
-  /** Venue address string — used to pin the venue */
+  /** Display name of the venue (e.g. "Olive Garden") */
+  venueName?: string;
+  /** Full formatted address string for display and geocoding fallback */
   venueAddress?: string;
-  /** Called when user clicks the back button */
+  /** Pre-resolved latitude — skips geocoding when provided with venueLng */
+  venueLat?: number | null;
+  /** Pre-resolved longitude — skips geocoding when provided with venueLat */
+  venueLng?: number | null;
   onBack: () => void;
 }
 
-export default function CampaignMapView({ jobId, campaignName, venueAddress, onBack }: CampaignMapViewProps) {
+interface Coords { lat: number; lng: number }
+
+export default function CampaignMapView({
+  jobId,
+  campaignName,
+  venueName,
+  venueAddress,
+  venueLat,
+  venueLng,
+  onBack,
+}: CampaignMapViewProps) {
+  const hasCoords = typeof venueLat === 'number' && typeof venueLng === 'number';
+
+  const [coords, setCoords] = useState<Coords | null>(
+    hasCoords ? { lat: venueLat as number, lng: venueLng as number } : null
+  );
+  const [geocoding, setGeocoding] = useState(!hasCoords);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+
+  // Only geocode once per mount
+  const geocodedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasCoords || geocodedRef.current) return;
+
+    const address = venueAddress?.trim() ?? '';
+    if (!address || address.length < 3) {
+      setGeocoding(false);
+      setGeocodeError('Venue location unavailable.');
+      return;
+    }
+    if (!MAPBOX_TOKEN) {
+      setGeocoding(false);
+      setGeocodeError('Map token not configured.');
+      return;
+    }
+
+    // Check session cache (shared with VenueStaticMap)
+    const cacheKey = GEOCODE_CACHE_KEY_PREFIX + address.toLowerCase();
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const { lng, lat } = JSON.parse(cached) as { lng: number; lat: number };
+        setCoords({ lat, lng });
+        setGeocoding(false);
+        geocodedRef.current = true;
+        return;
+      }
+    } catch {
+      // sessionStorage unavailable — proceed
+    }
+
+    geocodedRef.current = true;
+    setGeocoding(true);
+    setGeocodeError(null);
+
+    const controller = new AbortController();
+
+    fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json` +
+        `?access_token=${MAPBOX_TOKEN}&autocomplete=false&limit=1&country=us`,
+      { signal: controller.signal }
+    )
+      .then(r => r.json())
+      .then(data => {
+        const feature = data?.features?.[0];
+        if (!feature) { setGeocodeError('Venue location unavailable.'); return; }
+        const [lng, lat] = feature.center as [number, number];
+        if (lat < 15 || lat > 72 || lng < -180 || lng > -50) {
+          setGeocodeError('Venue geocoded outside expected area.');
+          return;
+        }
+        try { sessionStorage.setItem(cacheKey, JSON.stringify({ lng, lat })); } catch { /* ignore */ }
+        setCoords({ lat, lng });
+      })
+      .catch(err => {
+        if ((err as Error).name !== 'AbortError') setGeocodeError('Venue location unavailable.');
+      })
+      .finally(() => setGeocoding(false));
+
+    return () => controller.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const displayAddress = [venueName, venueAddress].filter(Boolean).join(' · ');
+
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
@@ -63,39 +141,77 @@ export default function CampaignMapView({ jobId, campaignName, venueAddress, onB
           <span className="inline-block w-3 h-3 rounded-full bg-indigo-600" />
           Venue
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 opacity-40">
           <Mail className="w-3 h-3 text-blue-500" />
           Mailed List
-          <span className="text-slate-400 italic">— TODO</span>
+          <span className="italic">— coming soon</span>
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 opacity-40">
           <Users className="w-3 h-3 text-emerald-500" />
           Responders
-          <span className="text-slate-400 italic">— TODO</span>
+          <span className="italic">— coming soon</span>
         </span>
       </div>
 
-      {/* Map area — replace with <CampaignMapPreview> (or Map component) when ready */}
-      <div className="flex-1 relative bg-slate-100 flex flex-col items-center justify-center gap-3">
-        <MapPin className="w-10 h-10 text-slate-300" />
-        <p className="text-sm text-slate-500 font-medium">Interactive map coming soon</p>
-        {venueAddress && (
-          <p className="text-xs text-slate-400 max-w-xs text-center">{venueAddress}</p>
+      {/* Venue info strip */}
+      {displayAddress && (
+        <div className="px-4 py-2 bg-white border-b border-slate-100 text-xs text-slate-600 flex items-center gap-1.5 shrink-0">
+          <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+          <span className="truncate">{displayAddress}</span>
+        </div>
+      )}
+
+      {/* Map area */}
+      <div className="flex-1 relative min-h-0">
+        {geocoding && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10 gap-2">
+            <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
+            <p className="text-sm text-slate-500">Locating venue…</p>
+          </div>
         )}
 
-        {/* ── TODO: render Mapbox interactive map ───────────────────────────
-            1. import CampaignMapPreview from './CampaignMapPreview'  (or new Map component)
-            2. Load mailed list records via:
-               supabase.from('campaign_mailed_list_records').select('*').eq('campaign_id', jobId)
-            3. Load responders via:
-               supabase.from('responders').select('*').eq('campaign_id', jobId)
-            4. Geocode unique zip codes (batch) or use address lat/lng if stored.
-            5. Render three layers:
-               - Venue pin (indigo)
-               - Mailed list heatmap / cluster (blue)
-               - Responder individual markers (emerald)
-            6. (Optional) Isochrone polygon around venue (reuse Valhalla logic).
-        ──────────────────────────────────────────────────────────────────── */}
+        {!geocoding && geocodeError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10 gap-3">
+            <MapPin className="w-10 h-10 text-slate-300" />
+            <p className="text-sm text-slate-500 font-medium">{geocodeError}</p>
+            {venueAddress && (
+              <p className="text-xs text-slate-400 max-w-xs text-center">{venueAddress}</p>
+            )}
+          </div>
+        )}
+
+        {!geocoding && !geocodeError && !coords && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10 gap-3">
+            <MapPin className="w-10 h-10 text-slate-300" />
+            <p className="text-sm text-slate-500 font-medium">Venue location unavailable.</p>
+          </div>
+        )}
+
+        {!geocoding && coords && MAPBOX_TOKEN && (
+          <Map
+            mapboxAccessToken={MAPBOX_TOKEN}
+            initialViewState={{
+              longitude: coords.lng,
+              latitude: coords.lat,
+              zoom: 13,
+            }}
+            style={{ width: '100%', height: '100%' }}
+            mapStyle="mapbox://styles/mapbox/streets-v12"
+          >
+            <Marker longitude={coords.lng} latitude={coords.lat} anchor="bottom">
+              <div className="flex flex-col items-center" title={venueName ?? venueAddress ?? 'Venue'}>
+                <div className="w-8 h-8 rounded-full bg-indigo-600 border-2 border-white shadow-lg flex items-center justify-center">
+                  <MapPin className="w-4 h-4 text-white" />
+                </div>
+                {venueName && (
+                  <div className="mt-1 px-2 py-0.5 bg-white border border-slate-200 rounded shadow text-[10px] font-semibold text-slate-800 whitespace-nowrap max-w-[160px] truncate">
+                    {venueName}
+                  </div>
+                )}
+              </div>
+            </Marker>
+          </Map>
+        )}
       </div>
 
       {/* Footer */}
