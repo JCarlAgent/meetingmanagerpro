@@ -920,28 +920,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           Map Mailed List &amp; Responders
                         </button>
                       )}
-                      {/* Compact ZIP preview */}
-                      <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2">
-                        <div className="text-xs font-semibold text-slate-600 mb-1.5">Target ZIP Codes</div>
-                        {mapZips.length === 0 ? (
-                          <div className="text-xs text-slate-400 italic">Target ZIPs pending</div>
-                        ) : (
-                          <>
-                            <div className="flex flex-wrap gap-1">
-                              {(showAllZips ? mapZips : mapZips.slice(0, 10)).map((z, i) => (
-                                <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">{z}</span>
-                              ))}
-                            </div>
-                            {mapZips.length > 10 && (
-                              <button
-                                type="button"
-                                onClick={() => setShowAllZips(v => !v)}
-                                className="mt-1.5 text-[10px] text-indigo-500 hover:text-indigo-700 underline"
-                              >{showAllZips ? 'Show less' : `Show all ${mapZips.length} ZIPs`}</button>
-                            )}
-                          </>
-                        )}
-                      </div>
+
                     </div>
                   </div>
 

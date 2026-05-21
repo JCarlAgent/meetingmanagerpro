@@ -446,6 +446,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                       onUpdateCampaign={(id: string, updates: any) => {
                         setActiveCampaigns(prev => prev.map(ac => ac.id === id ? { ...ac, ...updates } : ac));
                       }}
+                      onOpenMap={onNavigate ? (jobId) => onNavigate(`campaign-map:${jobId}`) : undefined}
                     />
                   </div>
                 ))}
