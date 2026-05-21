@@ -897,6 +897,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                         }
                         height={260}
                         onOpenFullMap={onOpenMap ? () => onOpenMap(campaign.id) : undefined}
+                        meetingId={events[0]?.id}
+                        onCoordinatesResolved={async (meetingId, lat, lng) => {
+                          if (typeof lat !== 'number' || typeof lng !== 'number') return;
+                          try {
+                            await supabase
+                              .from('job_meetings')
+                              .update({ venue_lat: lat, venue_lng: lng })
+                              .eq('id', meetingId);
+                          } catch (err) {
+                            console.warn('[VenueStaticMap] failed to persist coordinates', err);
+                          }
+                        }}
                       />
                       {/* Compact ZIP preview */}
                       <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2">

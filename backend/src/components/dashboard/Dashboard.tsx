@@ -277,6 +277,8 @@ const Dashboard: React.FC = () => {
             venue_address: m.address1 || '',
             venue_city: m.city || '',
             venue_state: m.state || '',
+            venue_lat: typeof m.venue_lat === 'number' ? m.venue_lat : null,
+            venue_lng: typeof m.venue_lng === 'number' ? m.venue_lng : null,
             event_date: localDate,
             event_time: localTime,
             event_type: '',

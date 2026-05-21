@@ -45,6 +45,15 @@ interface VenueStaticMapProps {
   width?: number;
   height?: number;
   onOpenFullMap?: () => void;
+  /**
+   * ID of the job_meetings row this map represents.
+   * When provided together with onCoordinatesResolved, the resolved lat/lng will be
+   * reported back exactly once per mount (only when geocoding was required — not when
+   * coordinates were already supplied via venueLat/venueLng).
+   */
+  meetingId?: string;
+  /** Called at most once per mount with the geocoded coordinates. */
+  onCoordinatesResolved?: (meetingId: string, lat: number, lng: number) => void;
 }
 
 export default function VenueStaticMap({
@@ -54,7 +63,11 @@ export default function VenueStaticMap({
   width = 600,
   height = 240,
   onOpenFullMap,
+  meetingId,
+  onCoordinatesResolved,
 }: VenueStaticMapProps) {
+  // Track whether we already fired the callback this mount to avoid duplicate writes.
+  const resolvedRef = React.useRef(false);
   const hasCoords = typeof venueLat === 'number' && typeof venueLng === 'number';
 
   // When coordinates are already known, compute the URL synchronously — no effect needed.
@@ -131,6 +144,11 @@ export default function VenueStaticMap({
         }
         setGeocodedUrl(buildStaticUrl(lng, lat, width, height));
         setLoading(false);
+        // Notify parent so it can persist coordinates to the DB (once per mount).
+        if (meetingId && onCoordinatesResolved && !resolvedRef.current) {
+          resolvedRef.current = true;
+          onCoordinatesResolved(meetingId, lat, lng);
+        }
       })
       .catch(err => {
         if (err?.name === 'AbortError') return;
