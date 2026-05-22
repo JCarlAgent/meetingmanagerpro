@@ -119,8 +119,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
   const mailedCount = campaign.stats?.mailed_count ?? (campaign as any).mailed_count ?? campaign.stats?.mailed ?? 0;
   const deliveredCount = campaign.stats?.delivered_count ?? (campaign as any).delivered_quantity ?? campaign.stats?.delivered ?? 0;
-  // Attendees = sum of (1 primary + guests) across all responders
-  const attendeesCount = displayResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0) || (campaign.stats?.responses_total ?? 0);
+  // Attendees = sum of (1 primary + guests) across NON-cancelled responders (registered + waitlist).
+  // Matches the same formula used in ResponderList totalSignupsCount.
+  const nonCancelledResponders = displayResponders.filter(
+    r => (r.status || 'registered').trim().toLowerCase() !== 'cancelled'
+  );
+  const attendeesCount = nonCancelledResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0) || (campaign.stats?.responses_total ?? 0);
   const responseRate = deliveredCount > 0 ? ((attendeesCount / deliveredCount) * 100) : 0;
 
   // Mailhouse Paid is stored at checklist index 4 in jobs.notes; first_delivery_at is NOT used as paid signal
