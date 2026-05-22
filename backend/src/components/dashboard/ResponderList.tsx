@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Responder, Event } from '@/types';
 import { decodeIPA, decodeIncome } from '@/lib/acxiomDecoders';
+import { formatPhoneDisplay } from '@/lib/utils';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -222,7 +223,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
       const guestCount = r.guests ?? 0;
       const respRow = `<tr>
         <td>${(r.last_name ?? '').toUpperCase()}, ${r.first_name ?? ''}</td>
-        <td>${r.phone ?? ''}</td>
+        <td>${formatPhoneDisplay(r.phone)}</td>
         <td>${r.email ?? ''}</td>
         <td class="sig-cell"></td>
         <td></td>
@@ -618,13 +619,13 @@ const ResponderList: React.FC<ResponderListProps> = ({
                             ? <div className="text-xs text-slate-400">+{responder.guests} guest{responder.guests === 1 ? '' : 's'}</div>
                             : null
                         }
-                        <div className="text-xs text-slate-500 md:hidden">{responder.phone}</div>
+                        <div className="text-xs text-slate-500 md:hidden">{formatPhoneDisplay(responder.phone)}</div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <div className="flex flex-col gap-1">
                           {responder.phone && (
                             <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900">
-                              <Phone className="w-3 h-3" />{responder.phone}
+                              <Phone className="w-3 h-3" />{formatPhoneDisplay(responder.phone)}
                             </a>
                           )}
                           {responder.email && (
@@ -734,7 +735,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                         ? <div className="text-xs text-slate-400">+{responder.guests} guest{responder.guests === 1 ? '' : 's'}</div>
                         : null
                     }
-                    <div className="text-xs text-slate-500 md:hidden">{responder.phone}</div>
+                    <div className="text-xs text-slate-500 md:hidden">{formatPhoneDisplay(responder.phone)}</div>
                   </td>
 
                   {/* Contact */}
@@ -742,7 +743,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                     <div className="flex flex-col gap-1">
                       {responder.phone && (
                         <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 transition-colors">
-                          <Phone className="w-3 h-3" />{responder.phone}
+                          <Phone className="w-3 h-3" />{formatPhoneDisplay(responder.phone)}
                         </a>
                       )}
                       {responder.email && (

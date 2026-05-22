@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { formatPhoneDisplay } from '@/lib/utils';
 import { Campaign, Event, Responder } from '@/types';
 import { 
   ChevronDown,
@@ -850,7 +851,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           {displayResponders.slice(0, 10).map((r) => (
                             <div key={r.id} className="grid grid-cols-12 gap-2 py-2 items-center text-sm">
                               <div className="col-span-6 truncate">{`${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() || '—'}</div>
-                              <div className="col-span-4 truncate text-xs text-slate-600">{r.phone || r.email || '—'}</div>
+                              <div className="col-span-4 truncate text-xs text-slate-600">{r.phone ? formatPhoneDisplay(r.phone) : r.email || '—'}</div>
                               <div className="col-span-2 text-right text-xs text-slate-600">{r.guests ?? 0}</div>
                             </div>
                           ))}

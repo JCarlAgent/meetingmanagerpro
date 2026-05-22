@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Responder, Campaign, Event } from '@/types';
+import { formatPhoneDisplay } from '@/lib/utils';
 import { 
   Users, 
   Search, 
@@ -185,7 +186,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                     <tr key={r.id} className="border-b border-gray-300">
                       <td className="py-6 align-top">
                         <div className="font-bold text-lg">{r.first_name} {r.last_name}</div>
-                        <div className="text-sm text-gray-600 font-mono mt-1">{r.phone || 'No phone'}</div>
+                        <div className="text-sm text-gray-600 font-mono mt-1">{formatPhoneDisplay(r.phone) || 'No phone'}</div>
                       </td>
                       <td className="py-6 align-top">
                         {r.income && <div><span className="font-semibold">Income:</span> {r.income}</div>}
@@ -323,7 +324,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                         {responder.phone && (
                           <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-800 hover:text-slate-900">
                             <Phone className="w-3 h-3" />
-                            {responder.phone}
+                            {formatPhoneDisplay(responder.phone)}
                           </a>
                         )}
                         {responder.email && (

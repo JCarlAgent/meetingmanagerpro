@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Event, Responder, Campaign } from '@/types';
+import { formatPhoneDisplay } from '@/lib/utils';
 import { 
   MapPin, 
   Phone, 
@@ -225,7 +226,7 @@ const EventDetailView: React.FC<EventDetailViewProps> = ({
                     <div className="flex flex-col gap-1">
                       <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-300 hover:text-white">
                         <Phone className="w-3 h-3" />
-                        {responder.phone}
+                        {formatPhoneDisplay(responder.phone)}
                       </a>
                       {responder.email && (
                         <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-slate-400 hover:text-white truncate max-w-[150px]">
