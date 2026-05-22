@@ -1,3 +1,4 @@
+-- NOTE: see supabase_responders_dedup.sql for duplicate-detection queries
 -- ============================================================
 -- Fix: ensure proper RLS policies on the `responders` table.
 --
