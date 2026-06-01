@@ -42,6 +42,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
 
   const [activeCampaigns, setActiveCampaigns] = useState(mockActiveCampaigns);
   const [completedCampaigns, setCompletedCampaigns] = useState(mockCompletedCampaigns);
+  const [expandedCompletedCampaignIds, setExpandedCompletedCampaignIds] = useState<Set<string>>(new Set());
 
   const toMeetingTimestamp = (event: any): number | null => {
     if (!event) return null;
@@ -185,6 +186,58 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
       }
     }
   };
+
+  const toggleCompletedCampaign = (campaignId: string) => {
+    setExpandedCompletedCampaignIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(campaignId)) next.delete(campaignId);
+      else next.add(campaignId);
+      return next;
+    });
+  };
+
+  const getFinalMeetingMeta = (campaignId: string) => {
+    const safeEvents = Array.isArray(events) ? events : [];
+    const campaignEvents = safeEvents.filter((e: any) => e && e.campaign_id === campaignId);
+    if (!campaignEvents.length) return { finalEvent: null as any, finalTs: null as number | null };
+
+    const withTs = campaignEvents
+      .map((e: any) => ({ event: e, ts: toMeetingTimestamp(e) }))
+      .filter((x: any) => x.ts !== null);
+
+    if (!withTs.length) return { finalEvent: campaignEvents[0], finalTs: null as number | null };
+
+    withTs.sort((a: any, b: any) => (b.ts as number) - (a.ts as number));
+    return { finalEvent: withTs[0].event, finalTs: withTs[0].ts as number };
+  };
+
+  const formatFinalMeetingDate = (finalEvent: any, finalTs: number | null) => {
+    if (typeof finalTs === 'number') {
+      return new Date(finalTs).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+
+    if (finalEvent?.event_date && finalEvent?.event_time) return `${finalEvent.event_date} ${finalEvent.event_time}`;
+    if (finalEvent?.event_date) return String(finalEvent.event_date);
+    return 'No meeting date';
+  };
+
+  const formatFinalMeetingVenue = (finalEvent: any, campaign: any) => {
+    const venue = finalEvent?.venue_name || finalEvent?.location_name || campaign?.venueName || '';
+    const city = finalEvent?.venue_city || finalEvent?.city || campaign?.city || '';
+    const state = finalEvent?.venue_state || finalEvent?.state || campaign?.state || '';
+    const location = [city, state].filter(Boolean).join(', ');
+    if (venue && location) return `${venue} - ${location}`;
+    if (venue) return venue;
+    if (location) return location;
+    return 'No venue';
+  };
+
   const [selectedRep, setSelectedRep] = useState<any>(null);
   const { user } = useAuth();
 
@@ -363,9 +416,12 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
   // --- FILTERED COMPLETED CAMPAIGNS ---
   const filteredCompleted = completedCampaigns.filter(c => {
     const q = searchQuery.toLowerCase();
+    if (!q) return true;
     return (c.city || '').toLowerCase().includes(q)
         || (c.state || '').toLowerCase().includes(q)
         || (c.repName || '').toLowerCase().includes(q)
+      || (c.title || '').toLowerCase().includes(q)
+      || (c.project_id || '').toLowerCase().includes(q)
         || (isFmo && (c.company || '').toLowerCase().includes(q));
   });
 
@@ -518,44 +574,55 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
               ) : (
                 <div className="space-y-4">
                   {filteredCompleted.map(camp => (
-                    <div key={camp.id} className="flex flex-col xl:flex-row bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                      
-                      {/* Info Block with Rep Info */}
-                      <div className="p-5 lg:p-6 flex-shrink-0 min-w-[340px] xl:w-[380px] border-b xl:border-b-0 xl:border-r border-slate-100 flex flex-col justify-center bg-slate-50 xl:bg-white relative">
-                        <h4 className="font-bold text-lg text-slate-900 leading-tight">{camp.title}</h4>
-                        <p className="text-sm font-medium text-slate-500 mt-1">{camp.date}</p>
-                        
-                        <div className="mt-4 pt-4 border-t border-slate-200/60">
-                          {isFmo && <p className="text-xs font-bold text-slate-400 mb-1">{camp.company}</p>}
-                          <button onClick={() => setSelectedRep(camp)} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 transition-colors text-left group">
-                            <User className="w-4 h-4 text-indigo-400 group-hover:text-indigo-600" /> {camp.repName} (View profile)
-                          </button>
-                          <div className="text-xs text-slate-600 mt-2 space-y-1.5">
-                            <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400"/> {camp.repPhone} <span className="text-slate-300">|</span> {camp.repEmail}</p>
-                            <p className="flex items-center gap-1.5"><Navigation className="w-3.5 h-3.5 text-slate-400"/> {camp.venueName} — {camp.city}, {camp.state}</p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Horizontal Stats Block */}
-                      <div className="flex-1 grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-slate-100">
-                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Mailed</span>
-                          <span className="text-2xl font-bold text-slate-800">{camp.stats.mailed}</span>
-                        </div>
-                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Responses</span>
-                          <span className="text-2xl font-bold text-blue-600">{camp.stats.responses}</span>
-                        </div>
-                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Attendees</span>
-                          <span className="text-2xl font-bold text-purple-600">{camp.stats.attendees}</span>
-                        </div>
-                        <div className="p-4 md:p-6 flex flex-col items-center xl:items-start justify-center">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Appointments</span>
-                          <span className="text-2xl font-bold text-amber-600">{camp.stats.appointments}</span>
-                        </div>
-                      </div>
+                    <div key={camp.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      {(() => {
+                        const { finalEvent, finalTs } = getFinalMeetingMeta(camp.id);
+                        const isExpanded = expandedCompletedCampaignIds.has(camp.id);
+                        const finalMeetingText = formatFinalMeetingDate(finalEvent, finalTs);
+                        const venueText = formatFinalMeetingVenue(finalEvent, camp);
+
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleCompletedCampaign(camp.id)}
+                              className="w-full px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-slate-900 truncate">{camp.title || camp.project_id || 'Campaign'}</div>
+                                  <div className="mt-1 text-xs text-slate-600">Final meeting: {finalMeetingText}</div>
+                                  <div className="mt-1 text-xs text-slate-500 truncate">{venueText}</div>
+                                  {isFmo && camp.company ? <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{camp.company}</div> : null}
+                                </div>
+
+                                <div className="flex items-center gap-4 text-xs text-slate-600 shrink-0">
+                                  <div>Mailed: <span className="font-semibold text-slate-800">{camp.stats?.mailed_count ?? camp.stats?.mailed ?? '—'}</span></div>
+                                  <div>Responses: <span className="font-semibold text-slate-800">{camp.stats?.responses_total ?? camp.stats?.responses ?? '—'}</span></div>
+                                  <div>Attendees: <span className="font-semibold text-slate-800">{camp.stats?.attendees ?? '—'}</span></div>
+                                  <div>{isExpanded ? 'Hide details' : 'Show details'}</div>
+                                </div>
+                              </div>
+                            </button>
+
+                            {isExpanded ? (
+                              <div className="border-t border-slate-200 p-4 bg-slate-50/40">
+                                <CampaignCard
+                                  campaign={camp as any}
+                                  events={(Array.isArray(events) ? events.filter(e => e.campaign_id === camp.id) : []) as any}
+                                  responders={[] as any}
+                                  onUpdateResponder={async (_id: string, _updates: any) => { /* noop for now */ }}
+                                  onUpdateCampaign={(id: string, updates: any) => {
+                                    setCompletedCampaigns(prev => prev.map(cc => cc.id === id ? { ...cc, ...updates } : cc));
+                                    setActiveCampaigns(prev => prev.map(ac => ac.id === id ? { ...ac, ...updates } : ac));
+                                  }}
+                                  onOpenMap={onNavigate ? (jobId) => onNavigate(`campaign-map:${jobId}`) : undefined}
+                                />
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
