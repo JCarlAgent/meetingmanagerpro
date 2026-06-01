@@ -7,6 +7,8 @@ import {
   Download,
   CheckCircle2,
   XCircle,
+  ChevronDown,
+  ChevronRight,
   Phone,
   Mail,
   MessageSquare,
@@ -38,6 +40,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [printMode, setPrintMode] = useState<'none' | 'notes' | 'signin'>('none');
+  const [expandedResponderId, setExpandedResponderId] = useState<string | null>(null);
 
   const filteredResponders = responders.filter(r => {
     if (statusFilter === 'confirmed' && !r.confirmed) return false;
@@ -115,6 +118,18 @@ const RespondersView: React.FC<RespondersViewProps> = ({
     a.download = 'responders_export.csv';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const toggleDetails = (responderId: string) => {
+    setExpandedResponderId(prev => (prev === responderId ? null : responderId));
+  };
+
+  const hasMatchedDemographics = (responder: Responder) => {
+    return responder.matched_to_mail_list === true;
+  };
+
+  const valueOrDash = (value: string | null | undefined) => {
+    return value && String(value).trim() ? String(value) : '—';
   };
 
   return (
@@ -293,110 +308,190 @@ const RespondersView: React.FC<RespondersViewProps> = ({
             <tbody className="divide-y divide-white/5">
               {filteredResponders.map((responder) => {
                 const eventInfo = getEventInfo(responder.event_id);
+                const isExpanded = expandedResponderId === responder.id;
+                const isMatched = hasMatchedDemographics(responder);
+                const vehicle1 = [responder.veh1_make_desc, responder.veh1_model_desc].filter(Boolean).join(' ');
+                const vehicle2 = [responder.veh2_make_desc, responder.veh2_model_desc].filter(Boolean).join(' ');
+                const locationLine = [responder.city, responder.state, responder.zip].filter(Boolean).join(', ');
                 return (
-                  <tr 
-                    key={responder.id} 
-                    className={`hover:bg-white/5 transition-colors ${!responder.confirmed ? 'bg-amber-500/5' : ''}`}
-                  >
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => onUpdateResponder(responder.id, { confirmed: !responder.confirmed })}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          responder.confirmed 
-                            ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' 
-                            : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                        }`}
-                      >
-                        {responder.confirmed ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="bg-green-600 text-white px-2 py-0.5 rounded text-xs font-bold">
-                        #{getCampaignProjectId(responder.campaign_id)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{responder.first_name} {responder.last_name}</div>
-                      <div className="text-xs text-slate-600">{responder.city}, {responder.state}</div>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <div className="flex flex-col gap-1">
-                        {responder.phone && (
-                          <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-800 hover:text-slate-900">
-                            <Phone className="w-3 h-3" />
-                            {formatPhoneDisplay(responder.phone)}
-                          </a>
-                        )}
-                        {responder.email && (
-                          <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-slate-800 hover:text-slate-900 truncate max-w-[150px]">
-                            <Mail className="w-3 h-3" />
-                            {responder.email}
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {eventInfo ? (
-                        <div className="text-sm">
-                          <div className="text-slate-900">{eventInfo.venue}</div>
-                          <div className="text-xs text-slate-600">{eventInfo.date}</div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-600 text-sm">Unassigned</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-slate-900 font-medium">{responder.guests}</span>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <div className="flex items-center gap-2">
-                        {getSourceIcon(responder.response_source)}
-                        <span className="text-xs text-slate-600 capitalize">
-                          {responder.response_source.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {editingNoteId === responder.id ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={noteText}
-                            onChange={(e) => setNoteText(e.target.value)}
-                            className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 w-28"
-                            autoFocus
-                          />
-                          <button onClick={() => handleSaveNote(responder.id)} className="p-1 text-green-400 hover:text-green-300">
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setEditingNoteId(null)} className="p-1 text-slate-400 hover:text-white">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 cursor-pointer group" onClick={() => handleStartEditNote(responder)}>
-                          {responder.notes ? (
-                            <span className="text-sm text-slate-800 truncate max-w-[100px]" title={responder.notes}>
-                              {responder.notes}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-slate-600 italic">Add note...</span>
-                          )}
-                          <Edit3 className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-colors">
-                          <MessageSquare className="w-4 h-4" />
+                  <React.Fragment key={responder.id}>
+                    <tr
+                      className={`hover:bg-white/5 transition-colors ${!responder.confirmed ? 'bg-amber-500/5' : ''}`}
+                    >
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => onUpdateResponder(responder.id, { confirmed: !responder.confirmed })}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            responder.confirmed
+                              ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                              : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                          }`}
+                        >
+                          {responder.confirmed ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                         </button>
-                        <a href={`tel:${responder.phone}`} className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-colors">
-                          <Phone className="w-4 h-4" />
-                        </a>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="bg-green-600 text-white px-2 py-0.5 rounded text-xs font-bold">
+                          #{getCampaignProjectId(responder.campaign_id)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">{responder.first_name} {responder.last_name}</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleDetails(responder.id)}
+                            className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                            Details
+                          </button>
+                          <span className="text-xs text-slate-600">{[responder.city, responder.state].filter(Boolean).join(', ')}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <div className="flex flex-col gap-1">
+                          {responder.phone && (
+                            <a href={`tel:${responder.phone}`} className="flex items-center gap-1 text-sm text-slate-800 hover:text-slate-900">
+                              <Phone className="w-3 h-3" />
+                              {formatPhoneDisplay(responder.phone)}
+                            </a>
+                          )}
+                          {responder.email && (
+                            <a href={`mailto:${responder.email}`} className="flex items-center gap-1 text-xs text-slate-800 hover:text-slate-900 truncate max-w-[150px]">
+                              <Mail className="w-3 h-3" />
+                              {responder.email}
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {eventInfo ? (
+                          <div className="text-sm">
+                            <div className="text-slate-900">{eventInfo.venue}</div>
+                            <div className="text-xs text-slate-600">{eventInfo.date}</div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-600 text-sm">Unassigned</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-slate-900 font-medium">{responder.guests}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <div className="flex items-center gap-2">
+                          {getSourceIcon(responder.response_source)}
+                          <span className="text-xs text-slate-600 capitalize">
+                            {responder.response_source.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {editingNoteId === responder.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={noteText}
+                              onChange={(e) => setNoteText(e.target.value)}
+                              className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 w-28"
+                              autoFocus
+                            />
+                            <button onClick={() => handleSaveNote(responder.id)} className="p-1 text-green-400 hover:text-green-300">
+                              <Save className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setEditingNoteId(null)} className="p-1 text-slate-400 hover:text-white">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 cursor-pointer group" onClick={() => handleStartEditNote(responder)}>
+                            {responder.notes ? (
+                              <span className="text-sm text-slate-800 truncate max-w-[100px]" title={responder.notes}>
+                                {responder.notes}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-slate-600 italic">Add note...</span>
+                            )}
+                            <Edit3 className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100" />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-colors">
+                            <MessageSquare className="w-4 h-4" />
+                          </button>
+                          <a href={`tel:${responder.phone}`} className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-colors">
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr className="bg-slate-50/70">
+                        <td colSpan={9} className="px-4 py-3">
+                          <div className="rounded-lg border border-slate-200 bg-white p-3">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-600">Demographics</div>
+
+                            {!isMatched && (
+                              <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+                                No matched mailing-list demographics found.
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              <div className="rounded border border-slate-200 p-2">
+                                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Wealth</div>
+                                <div className="space-y-0.5 text-xs text-slate-700">
+                                  <div><span className="font-medium text-slate-500">IPA:</span> {valueOrDash(responder.ipa)}</div>
+                                  <div><span className="font-medium text-slate-500">Raw Claritas IPA:</span> {valueOrDash(responder.claritas_ipa_raw)}</div>
+                                  <div><span className="font-medium text-slate-500">Estimated income:</span> {valueOrDash(responder.income)}</div>
+                                  <div><span className="font-medium text-slate-500">Income code/range:</span> {[responder.est_income_code, responder.est_income_range].filter(Boolean).join(' / ') || '—'}</div>
+                                </div>
+                              </div>
+
+                              <div className="rounded border border-slate-200 p-2">
+                                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Household</div>
+                                <div className="space-y-0.5 text-xs text-slate-700">
+                                  <div><span className="font-medium text-slate-500">Age:</span> {valueOrDash(responder.age)}</div>
+                                  <div><span className="font-medium text-slate-500">Gender:</span> {valueOrDash(responder.gender_code)}</div>
+                                  <div><span className="font-medium text-slate-500">Homeowner:</span> {valueOrDash(responder.homeowner_flag1)}</div>
+                                  <div><span className="font-medium text-slate-500">Marital status:</span> {valueOrDash(responder.marital_status)}</div>
+                                  <div><span className="font-medium text-slate-500">Length of residence:</span> {valueOrDash(responder.length_residence)}</div>
+                                </div>
+                              </div>
+
+                              <div className="rounded border border-slate-200 p-2">
+                                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Vehicles</div>
+                                <div className="space-y-0.5 text-xs text-slate-700">
+                                  <div><span className="font-medium text-slate-500">Vehicle 1:</span> {valueOrDash(vehicle1 || null)}</div>
+                                  <div><span className="font-medium text-slate-500">Vehicle 2:</span> {valueOrDash(vehicle2 || null)}</div>
+                                </div>
+                              </div>
+
+                              <div className="rounded border border-slate-200 p-2">
+                                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Location</div>
+                                <div className="space-y-0.5 text-xs text-slate-700">
+                                  <div><span className="font-medium text-slate-500">Address:</span> {valueOrDash(responder.address)}</div>
+                                  <div><span className="font-medium text-slate-500">City, state, ZIP:</span> {valueOrDash(locationLine || null)}</div>
+                                </div>
+                              </div>
+
+                              <div className="rounded border border-slate-200 p-2 md:col-span-2 xl:col-span-1">
+                                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Match</div>
+                                <div className="space-y-0.5 text-xs text-slate-700">
+                                  <div><span className="font-medium text-slate-500">Matched to mailed list:</span> {responder.matched_to_mail_list === true ? 'Yes' : responder.matched_to_mail_list === false ? 'No' : '—'}</div>
+                                  <div><span className="font-medium text-slate-500">Match confidence:</span> {valueOrDash(responder.match_confidence)}</div>
+                                  <div><span className="font-medium text-slate-500">Mail record ID:</span> {valueOrDash(responder.mail_record_id)}</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

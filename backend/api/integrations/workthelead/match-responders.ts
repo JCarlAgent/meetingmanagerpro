@@ -88,6 +88,14 @@ type MailRecord = {
   age_band: string | null;
   est_income_code: string | null;
   est_income_range: string | null;
+  gender_code: string | null;
+  homeowner_flag1: string | null;
+  marital_status: string | null;
+  length_residence: string | null;
+  veh1_make_desc: string | null;
+  veh1_model_desc: string | null;
+  veh2_make_desc: string | null;
+  veh2_model_desc: string | null;
 };
 
 function buildIndices(mailRecords: MailRecord[], enableHartLog = false) {
@@ -327,7 +335,7 @@ export default async function handler(req: any, res: any) {
       // load all records and filter client-side via normLast().
       const { data: allMailRecords, error: allMailErr } = await fetchAllMailRecords(
         supabaseAdmin, jobId,
-        'id, first_name, last_name, individual_name, address, city, state, zip, claritas_ipa, age_band, est_income_code, est_income_range',
+        'id, first_name, last_name, individual_name, address, city, state, zip, claritas_ipa, age_band, est_income_code, est_income_range, gender_code, homeowner_flag1, marital_status, length_residence, veh1_make_desc, veh1_model_desc, veh2_make_desc, veh2_model_desc',
       );
       if (allMailErr) throw allMailErr;
 
@@ -485,7 +493,7 @@ export default async function handler(req: any, res: any) {
     // Fetch all mailed list records for this campaign (paginated — Supabase caps at 1000/page)
     const { data: mailRecords, error: mailErr } = await fetchAllMailRecords(
       supabaseAdmin, jobId,
-      'id, first_name, last_name, address, zip, claritas_ipa, age_band, est_income_code, est_income_range',
+      'id, first_name, last_name, address, zip, claritas_ipa, age_band, est_income_code, est_income_range, gender_code, homeowner_flag1, marital_status, length_residence, veh1_make_desc, veh1_model_desc, veh2_make_desc, veh2_model_desc',
     );
 
     if (mailErr) throw mailErr;
@@ -513,6 +521,17 @@ export default async function handler(req: any, res: any) {
         age:                  mr?.age_band ?? null,
         income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
         ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
+        est_income_code:      mr?.est_income_code ?? null,
+        est_income_range:     mr?.est_income_range ?? null,
+        gender_code:          mr?.gender_code ?? null,
+        homeowner_flag1:      mr?.homeowner_flag1 ?? null,
+        marital_status:       mr?.marital_status ?? null,
+        length_residence:     mr?.length_residence ?? null,
+        veh1_make_desc:       mr?.veh1_make_desc ?? null,
+        veh1_model_desc:      mr?.veh1_model_desc ?? null,
+        veh2_make_desc:       mr?.veh2_make_desc ?? null,
+        veh2_model_desc:      mr?.veh2_model_desc ?? null,
+        claritas_ipa_raw:     mr?.claritas_ipa ?? null,
       };
       const { error: updErr } = await supabaseAdmin.from('responders').update(update).eq('id', responderId);
       if (updErr) return res.status(500).json({ ok: false, error: updErr.message });
@@ -545,6 +564,17 @@ export default async function handler(req: any, res: any) {
       age: string | null;
       income: string | null;
       ipa: string | null;
+      est_income_code: string | null;
+      est_income_range: string | null;
+      gender_code: string | null;
+      homeowner_flag1: string | null;
+      marital_status: string | null;
+      length_residence: string | null;
+      veh1_make_desc: string | null;
+      veh1_model_desc: string | null;
+      veh2_make_desc: string | null;
+      veh2_model_desc: string | null;
+      claritas_ipa_raw: string | null;
     };
 
     type NameResult = {
@@ -647,6 +677,17 @@ export default async function handler(req: any, res: any) {
         age:                  mr?.age_band ?? null,
         income:               decodeIncome(mr?.est_income_code) ?? mr?.est_income_range ?? null,
         ipa:                  decodeIPA(mr?.claritas_ipa) ?? null,
+        est_income_code:      mr?.est_income_code ?? null,
+        est_income_range:     mr?.est_income_range ?? null,
+        gender_code:          mr?.gender_code ?? null,
+        homeowner_flag1:      mr?.homeowner_flag1 ?? null,
+        marital_status:       mr?.marital_status ?? null,
+        length_residence:     mr?.length_residence ?? null,
+        veh1_make_desc:       mr?.veh1_make_desc ?? null,
+        veh1_model_desc:      mr?.veh1_model_desc ?? null,
+        veh2_make_desc:       mr?.veh2_make_desc ?? null,
+        veh2_model_desc:      mr?.veh2_model_desc ?? null,
+        claritas_ipa_raw:     mr?.claritas_ipa ?? null,
       });
 
       nameResults.push({

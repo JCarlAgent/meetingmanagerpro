@@ -75,6 +75,18 @@ export interface Responder {
   income?: string;
   age?: string;
   ipa?: string;
+  est_income_code?: string;
+  est_income_range?: string;
+  gender_code?: string;
+  homeowner_flag1?: string;
+  marital_status?: string;
+  length_residence?: string;
+  veh1_make_desc?: string;
+  veh1_model_desc?: string;
+  veh2_make_desc?: string;
+  veh2_model_desc?: string;
+  claritas_ipa_raw?: string;
+  mail_record_id?: string | null;
   status?: string | null;
   matched_to_mail_list?: boolean | null;
   match_confidence?: 'exact' | 'fuzzy' | 'none' | null;
