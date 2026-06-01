@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Responder, Campaign, Event } from '@/types';
 import { formatPhoneDisplay } from '@/lib/utils';
 import { 
@@ -21,6 +21,33 @@ import {
   Printer
 } from 'lucide-react';
 
+type SortKey = 'name' | 'status' | 'age' | 'income' | 'ipa' | 'city' | 'zip' | 'created_at' | 'match_confidence';
+type QuickFilter = 'all' | 'high-ipa' | 'high-income' | 'age-55-plus' | 'missing-demographics' | 'waitlist' | 'confirmed' | 'unconfirmed';
+
+const QUICK_FILTERS: Array<{ id: QuickFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'high-ipa', label: 'High IPA' },
+  { id: 'high-income', label: 'High Income' },
+  { id: 'age-55-plus', label: 'Age 55+' },
+  { id: 'missing-demographics', label: 'Missing Demographics' },
+  { id: 'waitlist', label: 'Waitlist' },
+  { id: 'confirmed', label: 'Confirmed' },
+  { id: 'unconfirmed', label: 'Unconfirmed' },
+];
+
+const parseAgeValue = (value: string | null | undefined) => {
+  const text = String(value ?? '').toLowerCase().trim();
+  if (!text) return null;
+  const match = text.match(/\d{2,3}/);
+  if (match) return Number(match[0]);
+  if (text.includes('55')) return 55;
+  if (text.includes('60')) return 60;
+  if (text.includes('65')) return 65;
+  if (text.includes('70')) return 70;
+  if (text.includes('75')) return 75;
+  return null;
+};
+
 interface RespondersViewProps {
   responders: Responder[];
   campaigns: Campaign[];
@@ -37,26 +64,243 @@ const RespondersView: React.FC<RespondersViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'unconfirmed'>('all');
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [printMode, setPrintMode] = useState<'none' | 'notes' | 'signin'>('none');
   const [expandedResponderId, setExpandedResponderId] = useState<string | null>(null);
 
-  const filteredResponders = responders.filter(r => {
-    if (statusFilter === 'confirmed' && !r.confirmed) return false;
-    if (statusFilter === 'unconfirmed' && r.confirmed) return false;
-    if (campaignFilter !== 'all' && r.campaign_id !== campaignFilter) return false;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        r.first_name.toLowerCase().includes(query) ||
-        r.last_name.toLowerCase().includes(query) ||
-        r.email?.toLowerCase().includes(query) ||
-        r.phone?.toLowerCase().includes(query)
-      );
+  const normalize = (value: unknown) => String(value ?? '').toLowerCase().trim();
+
+  const displayName = (r: Responder) => `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim();
+
+  const getAgeNumber = (r: Responder) => {
+    const candidates = [r.age, r.notes, r.marital_status, r.length_residence];
+    for (const candidate of candidates) {
+      const match = String(candidate ?? '').match(/\d{2,3}/);
+      if (match) return Number(match[0]);
     }
-    return true;
-  });
+    return null;
+  };
+
+  const incomeRankFromCode = (code: string | null | undefined) => {
+    const normalized = normalize(code);
+    if (!normalized) return null;
+    const rankMap: Record<string, number> = {
+      d: 13,
+      c: 12,
+      b: 11,
+      a: 10,
+      '9': 9,
+      '8': 8,
+      '7': 7,
+      '6': 6,
+      '5': 5,
+      '4': 4,
+      '3': 3,
+      '2': 2,
+      '1': 1,
+    };
+    return rankMap[normalized] ?? null;
+  };
+
+  const incomeRank = (r: Responder) => {
+    const codeRank = incomeRankFromCode(r.est_income_code);
+    if (codeRank !== null) return codeRank;
+
+    const incomeValue = normalize(r.income || r.est_income_range);
+    if (!incomeValue) return null;
+    if (incomeValue.includes('3m')) return 13;
+    if (incomeValue.includes('2m')) return 12;
+    if (incomeValue.includes('1m')) return 11;
+    if (incomeValue.includes('150k')) return 10;
+    if (incomeValue.includes('125k')) return 9;
+    if (incomeValue.includes('100k')) return 8;
+    if (incomeValue.includes('90k')) return 7;
+    if (incomeValue.includes('80k')) return 6;
+    if (incomeValue.includes('70k')) return 5;
+    if (incomeValue.includes('60k')) return 4;
+    if (incomeValue.includes('50k')) return 3;
+    if (incomeValue.includes('40k')) return 2;
+    if (incomeValue.includes('under')) return 1;
+    return null;
+  };
+
+  const ipaRank = (r: Responder) => {
+    const code = normalize(r.claritas_ipa_raw || r.ipa);
+    if (!code) return null;
+    const rankMap: Record<string, number> = {
+      b: 11,
+      '1': 10,
+      '2': 9,
+      '3': 8,
+      '4': 7,
+      '5': 6,
+      '6': 5,
+      '7': 4,
+      '8': 3,
+      '9': 2,
+      a: 1,
+    };
+    if (rankMap[code] !== undefined) return rankMap[code];
+
+    const value = normalize(r.ipa);
+    if (value.includes('$3m+')) return 11;
+    if (value.includes('$2m')) return 10;
+    if (value.includes('$1m')) return 9;
+    if (value.includes('$750k')) return 8;
+    if (value.includes('$500k')) return 7;
+    if (value.includes('$250k')) return 6;
+    if (value.includes('$100k')) return 5;
+    if (value.includes('$75k')) return 4;
+    if (value.includes('$50k')) return 3;
+    if (value.includes('$25k')) return 2;
+    if (value.includes('less than')) return 1;
+    return null;
+  };
+
+  const matchConfidenceRank = (value: string | null | undefined) => {
+    const normalized = normalize(value);
+    if (!normalized) return null;
+    if (normalized === 'exact') return 3;
+    if (normalized === 'fuzzy') return 2;
+    if (normalized === 'none') return 1;
+    return null;
+  };
+
+  const createdAtRank = (r: Responder) => {
+    const stamp = Date.parse(r.created_at || '');
+    return Number.isNaN(stamp) ? null : stamp;
+  };
+
+  const searchText = (r: Responder) => [
+    r.first_name,
+    r.last_name,
+    r.phone,
+    r.email,
+    r.address,
+    r.city,
+    r.state,
+    r.zip,
+    r.notes,
+    r.income,
+    r.ipa,
+    r.age,
+    r.gender_code,
+    r.homeowner_flag1,
+    r.marital_status,
+    r.length_residence,
+    r.veh1_make_desc,
+    r.veh1_model_desc,
+    r.veh2_make_desc,
+    r.veh2_model_desc,
+    r.est_income_code,
+    r.est_income_range,
+    r.claritas_ipa_raw,
+    r.match_confidence,
+  ].map(v => normalize(v)).join(' ');
+
+  const age55Plus = (r: Responder) => {
+    const age = getAgeNumber(r);
+    if (age !== null) return age >= 55;
+    const ageText = normalize(r.age);
+    if (!ageText) return false;
+    return /\b55\b|55\+|55\s*-\s*64|55\s*-\s*74|56|57|58|59|60|61|62|63|64|65|66|67|68|69|70|71|72|73|74/.test(ageText);
+  };
+
+  const hasMissingDemographics = (r: Responder) => {
+    return [
+      r.income,
+      r.ipa,
+      r.age,
+      r.gender_code,
+      r.homeowner_flag1,
+      r.marital_status,
+      r.length_residence,
+      r.veh1_make_desc,
+      r.veh1_model_desc,
+      r.veh2_make_desc,
+      r.veh2_model_desc,
+    ].some(value => !normalize(value));
+  };
+
+  const isHighIncome = (r: Responder) => {
+    const rank = incomeRank(r);
+    return rank !== null ? rank >= 8 : false;
+  };
+
+  const isHighIpa = (r: Responder) => {
+    const rank = ipaRank(r);
+    return rank !== null ? rank >= 8 : false;
+  };
+
+  const matchesQuickFilter = (r: Responder) => {
+    switch (quickFilter) {
+      case 'high-ipa': return isHighIpa(r);
+      case 'high-income': return isHighIncome(r);
+      case 'age-55-plus': return age55Plus(r);
+      case 'missing-demographics': return hasMissingDemographics(r);
+      case 'waitlist': return normalize(r.status || 'registered') === 'waitlist';
+      case 'confirmed': return r.confirmed;
+      case 'unconfirmed': return !r.confirmed;
+      default: return true;
+    }
+  };
+
+  const filteredResponders = useMemo(() => {
+    return responders.filter(r => {
+      if (statusFilter === 'confirmed' && !r.confirmed) return false;
+      if (statusFilter === 'unconfirmed' && r.confirmed) return false;
+      if (campaignFilter !== 'all' && r.campaign_id !== campaignFilter) return false;
+      if (!matchesQuickFilter(r)) return false;
+      if (searchQuery) return searchText(r).includes(normalize(searchQuery));
+      return true;
+    });
+  }, [responders, statusFilter, campaignFilter, quickFilter, searchQuery]);
+
+  const sortedResponders = useMemo(() => {
+    const list = [...filteredResponders];
+    const dir = sortDirection === 'asc' ? 1 : -1;
+
+    const sortValue = (r: Responder) => {
+      switch (sortKey) {
+        case 'name': return displayName(r).toLowerCase();
+        case 'status': return normalize(r.status || (r.confirmed ? 'confirmed' : 'registered'));
+        case 'age': return getAgeNumber(r);
+        case 'income': return incomeRank(r);
+        case 'ipa': return ipaRank(r);
+        case 'city': return normalize(r.city);
+        case 'zip': return normalize(r.zip);
+        case 'created_at': return createdAtRank(r);
+        case 'match_confidence': return matchConfidenceRank(r.match_confidence);
+        default: return null;
+      }
+    };
+
+    list.sort((a, b) => {
+      const av = sortValue(a);
+      const bv = sortValue(b);
+      const aMissing = av === null || av === undefined || av === '' || Number.isNaN(av as number);
+      const bMissing = bv === null || bv === undefined || bv === '' || Number.isNaN(bv as number);
+
+      if (aMissing && bMissing) {
+        return displayName(a).localeCompare(displayName(b));
+      }
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+
+      let comparison = 0;
+      if (typeof av === 'number' && typeof bv === 'number') comparison = av - bv;
+      else comparison = String(av).localeCompare(String(bv));
+
+      if (comparison === 0) comparison = displayName(a).localeCompare(displayName(b));
+      return comparison * dir;
+    });
+
+    return list;
+  }, [filteredResponders, sortKey, sortDirection]);
 
   const getCampaignProjectId = (campaignId: string) => {
     const campaign = campaigns.find(c => c.id === campaignId);
@@ -95,7 +339,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
 
   const exportToCSV = () => {
     const headers = ['Campaign', 'First Name', 'Last Name', 'Email', 'Phone', 'City', 'State', 'ZIP', 'Guests', 'Source', 'Confirmed', 'Notes'];
-    const rows = filteredResponders.map(r => [
+    const rows = sortedResponders.map(r => [
       getCampaignProjectId(r.campaign_id),
       r.first_name,
       r.last_name,
@@ -131,6 +375,22 @@ const RespondersView: React.FC<RespondersViewProps> = ({
   const valueOrDash = (value: string | null | undefined) => {
     return value && String(value).trim() ? String(value) : '—';
   };
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(key === 'created_at' ? 'desc' : 'asc');
+  };
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return null;
+    return sortDirection === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  const sortButtonClass = 'inline-flex items-center gap-1 text-left font-semibold text-slate-700 uppercase tracking-wide text-xs hover:text-slate-900';
 
   return (
     <div className={`space-y-6 ${printMode !== 'none' ? 'print:!p-0 print:!space-y-0 print:!w-full print:!h-full' : ''}`}>
@@ -259,11 +519,28 @@ const RespondersView: React.FC<RespondersViewProps> = ({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, email, phone..."
+            placeholder="Search responders, demographics, notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/50"
           />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {QUICK_FILTERS.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setQuickFilter(filter.id)}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors border ${
+                quickFilter === filter.id
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
 
         <select
@@ -294,25 +571,69 @@ const RespondersView: React.FC<RespondersViewProps> = ({
           <table className="w-full text-slate-800">
             <thead>
               <tr className="text-left text-xs text-slate-700 uppercase border-b border-slate-200">
-                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('status')}>
+                    Status{sortIndicator('status')}
+                  </button>
+                </th>
                 <th className="px-4 py-3">Campaign</th>
-                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('name')}>
+                    Name{sortIndicator('name')}
+                  </button>
+                </th>
                 <th className="px-4 py-3 hidden md:table-cell">Contact</th>
-                <th className="px-4 py-3 hidden lg:table-cell">Event</th>
-                <th className="px-4 py-3">Guests</th>
+                <th className="px-4 py-3 hidden lg:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('city')}>
+                    City{sortIndicator('city')}
+                  </button>
+                </th>
+                <th className="px-4 py-3 hidden md:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('zip')}>
+                    ZIP{sortIndicator('zip')}
+                  </button>
+                </th>
+                <th className="px-4 py-3 hidden lg:table-cell">Guests</th>
+                <th className="px-4 py-3 hidden xl:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('age')}>
+                    Age{sortIndicator('age')}
+                  </button>
+                </th>
+                <th className="px-4 py-3 hidden xl:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('income')}>
+                    Income{sortIndicator('income')}
+                  </button>
+                </th>
+                <th className="px-4 py-3 hidden xl:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('ipa')}>
+                    IPA{sortIndicator('ipa')}
+                  </button>
+                </th>
+                <th className="px-4 py-3 hidden xl:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('match_confidence')}>
+                    Match{sortIndicator('match_confidence')}
+                  </button>
+                </th>
+                <th className="px-4 py-3 hidden xl:table-cell">
+                  <button type="button" className={sortButtonClass} onClick={() => handleSort('created_at')}>
+                    Created{sortIndicator('created_at')}
+                  </button>
+                </th>
                 <th className="px-4 py-3 hidden sm:table-cell">Source</th>
                 <th className="px-4 py-3">Notes</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {filteredResponders.map((responder) => {
+              {sortedResponders.map((responder) => {
                 const eventInfo = getEventInfo(responder.event_id);
                 const isExpanded = expandedResponderId === responder.id;
                 const isMatched = hasMatchedDemographics(responder);
                 const vehicle1 = [responder.veh1_make_desc, responder.veh1_model_desc].filter(Boolean).join(' ');
                 const vehicle2 = [responder.veh2_make_desc, responder.veh2_model_desc].filter(Boolean).join(' ');
                 const locationLine = [responder.city, responder.state, responder.zip].filter(Boolean).join(', ');
+                const ageValue = parseAgeValue(responder.age);
+                const matchValue = normalize(responder.match_confidence) || '—';
                 return (
                   <React.Fragment key={responder.id}>
                     <tr
@@ -366,17 +687,28 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        {eventInfo ? (
-                          <div className="text-sm">
-                            <div className="text-slate-900">{eventInfo.venue}</div>
-                            <div className="text-xs text-slate-600">{eventInfo.date}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-600 text-sm">Unassigned</span>
-                        )}
+                        <div className="text-sm text-slate-600">{responder.city || '—'}</div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="text-slate-900 font-medium">{responder.zip || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
                         <span className="text-slate-900 font-medium">{responder.guests}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-slate-900 font-medium">{ageValue ?? '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-slate-900 font-medium">{responder.income || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-slate-900 font-medium">{responder.ipa || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-slate-900 font-medium">{matchValue}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-slate-900 font-medium">{responder.created_at ? new Date(responder.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="flex items-center gap-2">
@@ -430,7 +762,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
 
                     {isExpanded && (
                       <tr className="bg-slate-50/70">
-                        <td colSpan={9} className="px-4 py-3">
+                        <td colSpan={14} className="px-4 py-3">
                           <div className="rounded-lg border border-slate-200 bg-white p-3">
                             <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-600">Demographics</div>
 
@@ -498,7 +830,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
           </table>
         </div>
 
-        {filteredResponders.length === 0 && (
+        {sortedResponders.length === 0 && (
           <div className="text-center py-12">
             <Users className="w-12 h-12 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-600">No responders found</p>
