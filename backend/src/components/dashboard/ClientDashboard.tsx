@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
@@ -41,60 +41,116 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
   const [searchQuery, setSearchQuery] = useState('');
 
   const [activeCampaigns, setActiveCampaigns] = useState(mockActiveCampaigns);
+  const [completedCampaigns, setCompletedCampaigns] = useState(mockCompletedCampaigns);
+
+  const toMeetingTimestamp = (event: any): number | null => {
+    if (!event) return null;
+
+    const startsAt = event.starts_at ?? event.startsAt;
+    if (startsAt) {
+      const ts = Date.parse(String(startsAt));
+      if (!Number.isNaN(ts)) return ts;
+    }
+
+    const date = event.event_date ?? event.date;
+    if (!date) return null;
+    const rawTime = String(event.event_time ?? event.time ?? '00:00').trim();
+    const hhmm = rawTime.slice(0, 5);
+    const ts = Date.parse(`${date}T${hhmm}:00`);
+    if (!Number.isNaN(ts)) return ts;
+
+    const dateOnly = Date.parse(String(date));
+    return Number.isNaN(dateOnly) ? null : dateOnly;
+  };
+
+  const buildCampaignBuckets = (sourceCampaigns: any[], sourceEvents: any[]) => {
+    const safeEvents = Array.isArray(sourceEvents) ? sourceEvents : [];
+    const now = Date.now();
+
+    const mapped = sourceCampaigns.map((c: any) => {
+      const campaignEvents = safeEvents.filter((e: any) => e && e.campaign_id === c.id);
+      const firstEvent = campaignEvents[0] || null;
+
+      const meetingTimestamps = campaignEvents
+        .map((e: any) => toMeetingTimestamp(e))
+        .filter((ts: number | null): ts is number => ts !== null);
+
+      const hasFutureMeeting = meetingTimestamps.some((ts) => ts >= now);
+      const allMeetingsPast = meetingTimestamps.length > 0 && meetingTimestamps.every((ts) => ts < now);
+      const finalMeetingTs = meetingTimestamps.length > 0 ? Math.max(...meetingTimestamps) : null;
+
+      const mail_quantity = c.mail_quantity ?? (c.mailQuantity ?? 0);
+      const delivered_quantity = c.delivered_quantity ?? c.delivered_count ?? (c.stats?.delivered_count ?? c.stats?.delivered ?? null) ?? null;
+      const delivered_date = c.first_delivery_at ?? c.firstDeliveryAt ?? c.stats?.first_delivery_at ?? null;
+      const responder_count = c.responder_count ?? c.responses_total ?? c.stats?.responses_total ?? 0;
+      const mailed_count = c.mailed_count ?? c.stats?.mailed_count ?? 0;
+
+      return {
+        id: c.id,
+        title: c.project_id || c.title || '',
+        date: firstEvent && firstEvent.event_date ? `${firstEvent.event_date}` : '',
+        venueName: firstEvent?.venue_name || '',
+        city: firstEvent?.venue_city || firstEvent?.city || '',
+        state: firstEvent?.venue_state || firstEvent?.state || '',
+        repName: c.repName || c.rep_name || '',
+        repPhone: c.repPhone || c.rep_phone || '',
+        repEmail: c.repEmail || c.rep_email || '',
+        company: c.company || c.org_name || '',
+        org_name: c.org_name || '',
+        rep_name: c.rep_name || '',
+        template_type: c.template_type || c.templateType || c.template || '',
+        confirmation_method: c.confirmation_method || c.confirmationMethod || c.confirmation || null,
+        mail_quantity,
+        mailed_count,
+        delivered_quantity,
+        delivered_date,
+        responder_count,
+        project_id: c.project_id || '',
+        status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
+        daysLeft: c.daysLeft || '',
+        stats: c.stats
+          ? {
+              mailed_count: c.stats.mailed_count ?? mailed_count,
+              delivered_count: c.stats.delivered_count ?? delivered_quantity ?? 0,
+              responses_total: c.stats.responses_total ?? responder_count,
+              first_delivery_at: c.stats.first_delivery_at ?? delivered_date ?? null,
+              mailed: c.stats.mailed ?? mail_quantity ?? 0,
+              responses: c.stats.responses ?? responder_count ?? 0,
+              attendees: c.stats.attendees ?? 0,
+              appointments: c.stats.appointments ?? 0,
+            }
+          : { mailed_count, mailed: mail_quantity || 0, delivered_count: delivered_quantity || 0, responses_total: responder_count, responses: responder_count || 0, attendees: 0, appointments: 0 },
+        _hasFutureMeeting: hasFutureMeeting,
+        _allMeetingsPast: allMeetingsPast,
+        _finalMeetingTs: finalMeetingTs,
+      };
+    });
+
+    const nextActive = mapped.filter((c: any) => c._hasFutureMeeting || !c._allMeetingsPast);
+    const nextCompleted = mapped
+      .filter((c: any) => c._allMeetingsPast)
+      .sort((a: any, b: any) => {
+        const at = typeof a._finalMeetingTs === 'number' ? a._finalMeetingTs : 0;
+        const bt = typeof b._finalMeetingTs === 'number' ? b._finalMeetingTs : 0;
+        return bt - at;
+      });
+
+    return {
+      active: nextActive.map(({ _hasFutureMeeting, _allMeetingsPast, _finalMeetingTs, ...rest }: any) => rest),
+      completed: nextCompleted.map(({ _hasFutureMeeting, _allMeetingsPast, _finalMeetingTs, ...rest }: any) => rest),
+    };
+  };
 
   // If parent provides campaigns/events, use them as the source of truth for active campaigns
   useEffect(() => {
     try {
       if (Array.isArray(campaigns) && campaigns.length > 0) {
-        const safeEvents = Array.isArray(events) ? events : [];
-        const mapped = campaigns.map((c: any) => {
-          const event = safeEvents.find((e: any) => e && e.campaign_id === c.id) || null;
-          // job-level values (may come from canonical `jobs` or enriched stats)
-          const mail_quantity = c.mail_quantity ?? (c.mailQuantity ?? 0);
-          const delivered_quantity = c.delivered_quantity ?? c.delivered_count ?? (c.stats?.delivered_count ?? c.stats?.delivered ?? null) ?? null;
-          const delivered_date = c.first_delivery_at ?? c.firstDeliveryAt ?? c.stats?.first_delivery_at ?? null;
-          const responder_count = c.responder_count ?? c.responses_total ?? c.stats?.responses_total ?? 0;
-          const mailed_count = c.mailed_count ?? c.stats?.mailed_count ?? 0;
-
-          return {
-            id: c.id,
-            title: c.project_id || c.title || '',
-            date: event && event.event_date ? `${event.event_date}` : '',
-            venueName: event?.venue_name || '',
-            city: event?.venue_city || event?.city || '',
-            state: event?.venue_state || event?.state || '',
-            // lightweight contact/advisor fields if available
-            repName: c.repName || c.rep_name || '',
-            repPhone: c.repPhone || c.rep_phone || '',
-            repEmail: c.repEmail || c.rep_email || '',
-            company: c.company || c.org_name || '',
-            org_name: c.org_name || '',
-            rep_name: c.rep_name || '',
-            template_type: c.template_type || c.templateType || c.template || '',
-            confirmation_method: c.confirmation_method || c.confirmationMethod || c.confirmation || null,
-            mail_quantity,
-            mailed_count,
-            delivered_quantity,
-            delivered_date,
-            responder_count,
-            project_id: c.project_id || '',
-            status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
-            daysLeft: c.daysLeft || '',
-            stats: c.stats
-              ? {
-                  mailed_count: c.stats.mailed_count ?? mailed_count,
-                  delivered_count: c.stats.delivered_count ?? delivered_quantity ?? 0,
-                  responses_total: c.stats.responses_total ?? responder_count,
-                  first_delivery_at: c.stats.first_delivery_at ?? delivered_date ?? null,
-                  mailed: c.stats.mailed ?? mail_quantity ?? 0,
-                  responses: c.stats.responses ?? responder_count ?? 0,
-                  attendees: c.stats.attendees ?? 0,
-                  appointments: c.stats.appointments ?? 0,
-                }
-              : { mailed_count, mailed: mail_quantity || 0, delivered_count: delivered_quantity || 0, responses_total: responder_count, responses: responder_count || 0, attendees: 0, appointments: 0 }
-          };
-        });
-        setActiveCampaigns(mapped);
+        const bucketed = buildCampaignBuckets(campaigns, events);
+        setActiveCampaigns(bucketed.active);
+        setCompletedCampaigns(bucketed.completed);
+      } else {
+        setActiveCampaigns([]);
+        setCompletedCampaigns([]);
       }
     } catch (err) {
       console.error('Error mapping campaigns/events in ClientDashboard:', err);
@@ -123,26 +179,9 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
       console.error('Failed to persist checklist status', err);
       // Revert UI on failure by reloading campaigns prop mapping
       if (Array.isArray(campaigns) && campaigns.length > 0) {
-        const safeEvents = Array.isArray(events) ? events : [];
-        const mapped = campaigns.map((c: any) => {
-          const event = safeEvents.find((e: any) => e && e.campaign_id === c.id) || null;
-          return {
-            id: c.id,
-            title: c.project_id || c.title || '',
-            date: event && event.event_date ? `${event.event_date}` : '',
-            venueName: event?.venue_name || '',
-            city: event?.venue_city || event?.city || '',
-            state: event?.venue_state || event?.state || '',
-            repName: '',
-            repPhone: '',
-            repEmail: '',
-            company: '',
-            status: Array.isArray(c.status) ? c.status : [true, false, false, false, false],
-            daysLeft: c.daysLeft || '',
-            stats: c.stats || { mailed: 0, responses: 0, attendees: 0, appointments: 0 }
-          };
-        });
-        setActiveCampaigns(mapped);
+        const bucketed = buildCampaignBuckets(campaigns, events);
+        setActiveCampaigns(bucketed.active);
+        setCompletedCampaigns(bucketed.completed);
       }
     }
   };
@@ -293,7 +332,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
 
           <div className="space-y-4">
             {/* Show all completed campaigns for this rep (filtered mock data) */}
-            {mockCompletedCampaigns
+            {completedCampaigns
               .filter(c => c.repName === selectedRep.repName)
               .map(camp => (
               <div key={camp.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
@@ -322,12 +361,12 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
   }
 
   // --- FILTERED COMPLETED CAMPAIGNS ---
-  const filteredCompleted = mockCompletedCampaigns.filter(c => {
+  const filteredCompleted = completedCampaigns.filter(c => {
     const q = searchQuery.toLowerCase();
-    return c.city.toLowerCase().includes(q) 
-        || c.state.toLowerCase().includes(q) 
-        || c.repName.toLowerCase().includes(q)
-        || (isFmo && c.company?.toLowerCase().includes(q));
+    return (c.city || '').toLowerCase().includes(q)
+        || (c.state || '').toLowerCase().includes(q)
+        || (c.repName || '').toLowerCase().includes(q)
+        || (isFmo && (c.company || '').toLowerCase().includes(q));
   });
 
   return (
