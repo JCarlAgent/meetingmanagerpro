@@ -152,8 +152,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   }, [campaign.id]);
 
   useEffect(() => {
-    if (!isExpanded) return;
-
     const eventIds = (Array.isArray(events) ? events : [])
       .map((e: any) => String(e?.id || ''))
       .filter(Boolean);
@@ -244,7 +242,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isExpanded, campaign.id, events]);
+  }, [campaign.id, events]);
 
   // Prefer live-loaded responders; fall back to prop (legacy campaigns view) then stats count
   const displayResponders = localResponders.length > 0 ? localResponders : responders;
@@ -1348,13 +1346,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                       <div className="text-sm font-semibold mb-2">Meetings</div>
                       <div className="grid grid-cols-1 gap-2">
                         {events.slice(0,4).map((ev: any) => {
+                          const eventId = String(ev?.id || '');
                           const parts = formatDateParts(ev.event_date);
                           const isPast = isPastEvent(ev);
                           const evAttendees = displayResponders
-                            .filter(r => r.event_id === ev.id)
+                            .filter(r => String(r.event_id || '') === eventId)
                             .reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
-                          const resultRow = meetingResultsByEventId.get(ev.id);
-                          const salesRows = meetingSalesByEventId.get(ev.id) || [];
+                          const resultRow = meetingResultsByEventId.get(eventId);
+                          const salesRows = meetingSalesByEventId.get(eventId) || [];
                           return (
                             <div key={ev.id} className={`rounded-md p-2 ${isPast ? 'bg-gray-50 text-gray-500' : 'bg-white shadow-sm'}`}>
                               <div className="flex items-center gap-3">
@@ -1388,10 +1387,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => saveMeetingResult(ev)}
-                                      disabled={savingMeetingResultEventId === ev.id}
+                                      disabled={savingMeetingResultEventId === eventId}
                                       className="text-[11px] px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
                                     >
-                                      {savingMeetingResultEventId === ev.id ? 'Saving…' : 'Save results'}
+                                      {savingMeetingResultEventId === eventId ? 'Saving…' : 'Save results'}
                                     </button>
                                   </div>
 
@@ -1399,42 +1398,42 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     <input
                                       inputMode="numeric"
                                       value={formatNumberInput(resultRow?.attendees_actual)}
-                                      onChange={(e) => patchMeetingResult(ev.id, { attendees_actual: parseInteger(e.target.value) })}
+                                      onChange={(e) => patchMeetingResult(eventId, { attendees_actual: parseInteger(e.target.value) })}
                                       placeholder="Attendees"
                                       className="text-xs border rounded px-2 py-1.5"
                                     />
                                     <input
                                       inputMode="numeric"
                                       value={formatNumberInput(resultRow?.no_shows)}
-                                      onChange={(e) => patchMeetingResult(ev.id, { no_shows: parseInteger(e.target.value) })}
+                                      onChange={(e) => patchMeetingResult(eventId, { no_shows: parseInteger(e.target.value) })}
                                       placeholder="No-shows"
                                       className="text-xs border rounded px-2 py-1.5"
                                     />
                                     <input
                                       inputMode="numeric"
                                       value={formatNumberInput(resultRow?.walk_ins)}
-                                      onChange={(e) => patchMeetingResult(ev.id, { walk_ins: parseInteger(e.target.value) })}
+                                      onChange={(e) => patchMeetingResult(eventId, { walk_ins: parseInteger(e.target.value) })}
                                       placeholder="Walk-ins"
                                       className="text-xs border rounded px-2 py-1.5"
                                     />
                                     <input
                                       inputMode="numeric"
                                       value={formatNumberInput(resultRow?.appointments_booked)}
-                                      onChange={(e) => patchMeetingResult(ev.id, { appointments_booked: parseInteger(e.target.value) })}
+                                      onChange={(e) => patchMeetingResult(eventId, { appointments_booked: parseInteger(e.target.value) })}
                                       placeholder="Appointments booked"
                                       className="text-xs border rounded px-2 py-1.5"
                                     />
                                     <input
                                       inputMode="numeric"
                                       value={formatNumberInput(resultRow?.appointments_attended)}
-                                      onChange={(e) => patchMeetingResult(ev.id, { appointments_attended: parseInteger(e.target.value) })}
+                                      onChange={(e) => patchMeetingResult(eventId, { appointments_attended: parseInteger(e.target.value) })}
                                       placeholder="Appointments attended"
                                       className="text-xs border rounded px-2 py-1.5"
                                     />
                                     <input
                                       inputMode="numeric"
                                       value={formatNumberInput(resultRow?.products_sold_count)}
-                                      onChange={(e) => patchMeetingResult(ev.id, { products_sold_count: parseInteger(e.target.value) })}
+                                      onChange={(e) => patchMeetingResult(eventId, { products_sold_count: parseInteger(e.target.value) })}
                                       placeholder="Products sold count"
                                       className="text-xs border rounded px-2 py-1.5"
                                     />
@@ -1443,7 +1442,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                   <textarea
                                     rows={2}
                                     value={resultRow?.notes || ''}
-                                    onChange={(e) => patchMeetingResult(ev.id, { notes: e.target.value || null })}
+                                    onChange={(e) => patchMeetingResult(eventId, { notes: e.target.value || null })}
                                     placeholder="Results notes"
                                     className="mt-2 w-full text-xs border rounded px-2 py-1.5"
                                   />
@@ -1454,7 +1453,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                       <div className="flex items-center gap-2">
                                         <button
                                           type="button"
-                                          onClick={() => addMeetingSale(ev.id)}
+                                          onClick={() => addMeetingSale(eventId)}
                                           className="text-[11px] px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1"
                                         >
                                           <Plus className="w-3 h-3" /> Add sale
@@ -1462,10 +1461,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                         <button
                                           type="button"
                                           onClick={() => saveMeetingSales(ev)}
-                                          disabled={savingMeetingSalesEventId === ev.id}
+                                          disabled={savingMeetingSalesEventId === eventId}
                                           className="text-[11px] px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
                                         >
-                                          {savingMeetingSalesEventId === ev.id ? 'Saving…' : 'Save sales'}
+                                          {savingMeetingSalesEventId === eventId ? 'Saving…' : 'Save sales'}
                                         </button>
                                       </div>
                                     </div>
@@ -1479,40 +1478,40 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
                                               <input
                                                 value={sale.product_type || ''}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { product_type: e.target.value || null })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { product_type: e.target.value || null })}
                                                 placeholder="Product type"
                                                 className="text-xs border rounded px-2 py-1.5"
                                               />
                                               <input
                                                 value={sale.carrier_or_company || ''}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { carrier_or_company: e.target.value || null })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { carrier_or_company: e.target.value || null })}
                                                 placeholder="Carrier/company"
                                                 className="text-xs border rounded px-2 py-1.5"
                                               />
                                               <input
                                                 value={sale.status || ''}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { status: e.target.value || null })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { status: e.target.value || null })}
                                                 placeholder="Status"
                                                 className="text-xs border rounded px-2 py-1.5"
                                               />
                                               <input
                                                 inputMode="decimal"
                                                 value={formatNumberInput(sale.premium_or_asset_amount)}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { premium_or_asset_amount: parseDecimal(e.target.value) })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { premium_or_asset_amount: parseDecimal(e.target.value) })}
                                                 placeholder="Premium/asset"
                                                 className="text-xs border rounded px-2 py-1.5"
                                               />
                                               <input
                                                 inputMode="decimal"
                                                 value={formatNumberInput(sale.gross_revenue)}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { gross_revenue: parseDecimal(e.target.value) })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { gross_revenue: parseDecimal(e.target.value) })}
                                                 placeholder="Gross revenue"
                                                 className="text-xs border rounded px-2 py-1.5"
                                               />
                                               <input
                                                 inputMode="decimal"
                                                 value={formatNumberInput(sale.commission_amount)}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { commission_amount: parseDecimal(e.target.value) })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { commission_amount: parseDecimal(e.target.value) })}
                                                 placeholder="Commission"
                                                 className="text-xs border rounded px-2 py-1.5"
                                               />
@@ -1521,13 +1520,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                               <textarea
                                                 rows={2}
                                                 value={sale.notes || ''}
-                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { notes: e.target.value || null })}
+                                                onChange={(e) => patchMeetingSale(eventId, sale.id, { notes: e.target.value || null })}
                                                 placeholder="Sale notes"
                                                 className="flex-1 text-xs border rounded px-2 py-1.5"
                                               />
                                               <button
                                                 type="button"
-                                                onClick={() => removeMeetingSale(ev.id, sale.id)}
+                                                onClick={() => removeMeetingSale(eventId, sale.id)}
                                                 className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 inline-flex items-center gap-1"
                                               >
                                                 <Trash2 className="w-3 h-3" /> Remove
