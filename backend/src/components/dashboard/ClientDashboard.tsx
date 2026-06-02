@@ -44,6 +44,40 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
   const [completedCampaigns, setCompletedCampaigns] = useState(mockCompletedCampaigns);
   const [expandedCompletedCampaignIds, setExpandedCompletedCampaignIds] = useState<Set<string>>(new Set());
   const [responderCountByCampaignId, setResponderCountByCampaignId] = useState<Map<string, number>>(new globalThis.Map());
+  const [meetingNumbers, setMeetingNumbers] = useState({
+    totalMailed: 0,
+    totalMeetings: 0,
+    totalResponders: 0,
+    actualAttendees: null as number | null,
+    noShows: null as number | null,
+    walkIns: null as number | null,
+    appointmentsBooked: null as number | null,
+    appointmentsAttended: null as number | null,
+    productsSold: null as number | null,
+    grossRevenue: null as number | null,
+    commission: null as number | null,
+  });
+
+  const formatMetric = (value: number | null, opts?: { currency?: boolean; decimals?: number }) => {
+    if (value === null) return 'not entered';
+    if (opts?.currency) {
+      return value.toLocaleString(undefined, {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: opts?.decimals ?? 0,
+        maximumFractionDigits: opts?.decimals ?? 0,
+      });
+    }
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: opts?.decimals ?? 0,
+      maximumFractionDigits: opts?.decimals ?? 0,
+    });
+  };
+
+  const formatRate = (numerator: number | null, denominator: number | null) => {
+    if (numerator === null || denominator === null || denominator <= 0) return 'not entered';
+    return `${((numerator / denominator) * 100).toFixed(2)}%`;
+  };
 
   const toMeetingTimestamp = (event: any): number | null => {
     if (!event) return null;
@@ -195,6 +229,92 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
       cancelled = true;
     };
   }, [campaigns]);
+
+  useEffect(() => {
+    const safeCampaigns = Array.isArray(campaigns) ? campaigns : [];
+    const campaignIds = safeCampaigns.map((c: any) => String(c?.id || '')).filter(Boolean);
+    const campaignIdSet = new Set(campaignIds);
+
+    const totalMailed = safeCampaigns.reduce((sum: number, c: any) => {
+      const mailed = c?.stats?.mailed_count ?? c?.mailed_count ?? c?.mail_quantity ?? 0;
+      return sum + (Number.isFinite(Number(mailed)) ? Number(mailed) : 0);
+    }, 0);
+
+    const totalMeetings = (Array.isArray(events) ? events : []).filter((e: any) => campaignIdSet.has(String(e?.campaign_id || ''))).length;
+
+    if (!campaignIds.length) {
+      setMeetingNumbers({
+        totalMailed,
+        totalMeetings,
+        totalResponders: 0,
+        actualAttendees: null,
+        noShows: null,
+        walkIns: null,
+        appointmentsBooked: null,
+        appointmentsAttended: null,
+        productsSold: null,
+        grossRevenue: null,
+        commission: null,
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    const sumNullable = (values: Array<number | null | undefined>) => {
+      let hasValue = false;
+      let total = 0;
+      for (const v of values) {
+        if (v === null || v === undefined) continue;
+        const n = Number(v);
+        if (!Number.isFinite(n)) continue;
+        hasValue = true;
+        total += n;
+      }
+      return hasValue ? total : null;
+    };
+
+    Promise.all([
+      supabase.from('responders').select('campaign_id').in('campaign_id', campaignIds),
+      supabase
+        .from('meeting_results')
+        .select('job_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count')
+        .in('job_id', campaignIds),
+      supabase.from('meeting_sales').select('job_id, gross_revenue, commission_amount').in('job_id', campaignIds),
+    ]).then(([respondersResp, resultsResp, salesResp]) => {
+      if (cancelled) return;
+
+      if (respondersResp.error || resultsResp.error || salesResp.error) {
+        console.warn('Failed to load meeting numbers rollup', {
+          respondersError: respondersResp.error,
+          resultsError: resultsResp.error,
+          salesError: salesResp.error,
+        });
+      }
+
+      const respondersData = respondersResp.data ?? [];
+      const resultsData = resultsResp.data ?? [];
+      const salesData = salesResp.data ?? [];
+
+      setMeetingNumbers({
+        totalMailed,
+        totalMeetings,
+        totalResponders: respondersData.length,
+        actualAttendees: sumNullable((resultsData as any[]).map((r) => r.attendees_actual)),
+        noShows: sumNullable((resultsData as any[]).map((r) => r.no_shows)),
+        walkIns: sumNullable((resultsData as any[]).map((r) => r.walk_ins)),
+        appointmentsBooked: sumNullable((resultsData as any[]).map((r) => r.appointments_booked)),
+        appointmentsAttended: sumNullable((resultsData as any[]).map((r) => r.appointments_attended)),
+        productsSold: sumNullable((resultsData as any[]).map((r) => r.products_sold_count)),
+        grossRevenue: sumNullable((salesData as any[]).map((s) => s.gross_revenue)),
+        commission: sumNullable((salesData as any[]).map((s) => s.commission_amount)),
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [campaigns, events]);
 
   const toggleCampaignStatus = async (campId: string, statusIndex: number) => {
     // Derived indexes (read-only): 1=List Purchased, 4=Mail Sent
@@ -697,53 +817,88 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                  <Mail className="w-6 h-6 text-slate-400 mb-3 block" />
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Mailed</div>
-                 <div className="text-3xl font-black text-slate-900">0</div>
+                 <div className="text-3xl font-black text-slate-900">{meetingNumbers.totalMailed.toLocaleString()}</div>
                </div>
                <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
                  <Building2 className="w-6 h-6 text-indigo-400 mb-3 block" />
                  <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-1">Total Meetings</div>
-                 <div className="text-3xl font-black text-indigo-900">0</div>
+                 <div className="text-3xl font-black text-indigo-900">{meetingNumbers.totalMeetings.toLocaleString()}</div>
                </div>
                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
                  <UsersRound className="w-6 h-6 text-blue-400 mb-3 block" />
                  <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Responders</div>
                  <div className="flex items-baseline gap-2">
-                   <div className="text-3xl font-black text-blue-900">0</div>
+                   <div className="text-3xl font-black text-blue-900">{meetingNumbers.totalResponders.toLocaleString()}</div>
                  </div>
                </div>
                <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
                  <Users className="w-6 h-6 text-purple-400 mb-3 block" />
-                 <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Total Attendees</div>
-                 <div className="text-3xl font-black text-purple-900">0</div>
+                 <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Actual Attendees</div>
+                 <div className="text-3xl font-black text-purple-900">{formatMetric(meetingNumbers.actualAttendees)}</div>
                </div>
                <div className="bg-amber-50 p-6 rounded-xl border border-amber-100 col-span-2 lg:col-span-1">
                  <CalendarCheck className="w-6 h-6 text-amber-400 mb-3 block" />
-                 <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Total Appointments</div>
-                 <div className="text-3xl font-black text-amber-900">0</div>
+                 <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Appointments Booked</div>
+                 <div className="text-3xl font-black text-amber-900">{formatMetric(meetingNumbers.appointmentsBooked)}</div>
                </div>
              </div>
 
-             {/* ROI Calculator Row */}
-             <div className="bg-slate-900 text-white rounded-xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl mb-8">
-               <div className="flex-1 flex items-center gap-4">
-                 <div className="bg-indigo-500/20 p-3 rounded-lg text-indigo-400 border border-indigo-500/30">
-                   <DollarSign className="w-6 h-6" />
-                 </div>
-                 <div>
-                   <h4 className="text-lg font-bold">Return on Investment</h4>
-                   <p className="text-slate-400 text-sm mt-1">Calculate revenue generated across all completed meetings to track your multiplier.</p>
-                 </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+               <div className="bg-white p-4 rounded-xl border border-slate-200">
+                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">No Shows</div>
+                 <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.noShows)}</div>
                </div>
-               <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                 <div className="relative w-full sm:w-64">
-                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">$</span>
-                   <input type="number" placeholder="Enter products sold..." className="w-full pl-8 pr-4 py-3 bg-slate-800 border gap-2 border-slate-700 rounded-lg text-white font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-slate-500" />
+               <div className="bg-white p-4 rounded-xl border border-slate-200">
+                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Walk-ins</div>
+                 <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.walkIns)}</div>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-200">
+                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Appointments Attended</div>
+                 <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.appointmentsAttended)}</div>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-200">
+                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Products Sold</div>
+                 <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.productsSold)}</div>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-200">
+                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Gross Revenue</div>
+                 <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.grossRevenue, { currency: true, decimals: 0 })}</div>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-200">
+                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Commission</div>
+                 <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.commission, { currency: true, decimals: 0 })}</div>
+               </div>
+             </div>
+
+             <div className="bg-slate-900 text-white rounded-xl p-6 shadow-xl mb-8">
+               <div className="flex items-center gap-3 mb-4">
+                 <div className="bg-indigo-500/20 p-2 rounded-lg text-indigo-300 border border-indigo-500/30">
+                   <DollarSign className="w-5 h-5" />
                  </div>
-                 <button className="bg-indigo-500 hover:bg-indigo-400 text-white px-8 py-3 rounded-lg font-bold whitespace-nowrap transition-colors shadow-lg shadow-indigo-500/25">Calculate</button>
+                 <h4 className="text-lg font-bold">Performance Rates</h4>
+               </div>
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                 <div className="bg-slate-800/80 rounded-lg p-3">
+                   <div className="text-[11px] uppercase tracking-wider text-slate-400">Response Rate</div>
+                   <div className="mt-1 text-2xl font-black">{formatRate(meetingNumbers.totalResponders, meetingNumbers.totalMailed)}</div>
+                 </div>
+                 <div className="bg-slate-800/80 rounded-lg p-3">
+                   <div className="text-[11px] uppercase tracking-wider text-slate-400">Show Rate</div>
+                   <div className="mt-1 text-2xl font-black">{formatRate(meetingNumbers.actualAttendees, meetingNumbers.totalResponders)}</div>
+                 </div>
+                 <div className="bg-slate-800/80 rounded-lg p-3">
+                   <div className="text-[11px] uppercase tracking-wider text-slate-400">Appointment Rate</div>
+                   <div className="mt-1 text-2xl font-black">{formatRate(meetingNumbers.appointmentsBooked, meetingNumbers.actualAttendees)}</div>
+                 </div>
+                 <div className="bg-slate-800/80 rounded-lg p-3">
+                   <div className="text-[11px] uppercase tracking-wider text-slate-400">Kept Appointment Rate</div>
+                   <div className="mt-1 text-2xl font-black">{formatRate(meetingNumbers.appointmentsAttended, meetingNumbers.appointmentsBooked)}</div>
+                 </div>
                </div>
              </div>
              
              {/* THE SALES BOARD LEADERBOARD */}
+             {isFmo && (
              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="p-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -812,6 +967,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                   </table>
                 </div>
              </div>
+             )}
 
           </div>
         )}
