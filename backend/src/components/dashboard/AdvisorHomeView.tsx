@@ -14,6 +14,8 @@ import {
   User,
   Building2,
   AlertTriangle,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 type Org = {
@@ -69,6 +71,36 @@ type MeetingExpense = {
   gas: number | null;
   other: number | null;
   notes: string | null;
+};
+
+type MeetingResultRow = {
+  id: string;
+  job_id: string;
+  meeting_id: string;
+  attendees_actual: number | null;
+  no_shows: number | null;
+  walk_ins: number | null;
+  appointments_booked: number | null;
+  appointments_attended: number | null;
+  products_sold_count: number | null;
+  notes: string | null;
+  reported_by: string | null;
+  reported_at: string | null;
+};
+
+type MeetingSaleRow = {
+  id: string;
+  job_id: string;
+  meeting_id: string;
+  meeting_result_id: string | null;
+  product_type: string | null;
+  carrier_or_company: string | null;
+  premium_or_asset_amount: number | null;
+  gross_revenue: number | null;
+  commission_amount: number | null;
+  status: string | null;
+  notes: string | null;
+  created_at?: string;
 };
 
 type JobStatsRow = {
@@ -145,6 +177,14 @@ function parseMoney(v: string): number | null {
   return num;
 }
 
+function parseInteger(v: string): number | null {
+  const cleaned = v.trim();
+  if (!cleaned) return null;
+  const num = Number.parseInt(cleaned.replace(/[^0-9-]/g, ''), 10);
+  if (!Number.isFinite(num)) return null;
+  return num;
+}
+
 function formatMoney(v: number | null | undefined): string {
   if (v === null || v === undefined) return '';
   if (!Number.isFinite(v)) return '';
@@ -177,6 +217,9 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId, onNavi
 
   const [meetings, setMeetings] = useState<MeetingWithJob[]>([]);
   const [expensesByMeeting, setExpensesByMeeting] = useState<Map<string, MeetingExpense>>(new Map());
+  const [meetingResultsByMeeting, setMeetingResultsByMeeting] = useState<Map<string, MeetingResultRow>>(new Map());
+  const [meetingSalesByMeeting, setMeetingSalesByMeeting] = useState<Map<string, MeetingSaleRow[]>>(new Map());
+  const [deletedMeetingSalesByMeeting, setDeletedMeetingSalesByMeeting] = useState<Map<string, string[]>>(new Map());
 
   const [isLoading, setIsLoading] = useState(true);
   const [banner, setBanner] = useState<Banner | null>(null);
@@ -184,6 +227,8 @@ const AdvisorHomeView: React.FC<AdvisorHomeViewProps> = ({ orgId, userId, onNavi
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [savingExpenseMeetingId, setSavingExpenseMeetingId] = useState<string | null>(null);
+  const [savingMeetingResultId, setSavingMeetingResultId] = useState<string | null>(null);
+  const [savingMeetingSalesMeetingId, setSavingMeetingSalesMeetingId] = useState<string | null>(null);
   const [isSendingToFmo, setIsSendingToFmo] = useState(false);
   const [isSendingPasswordReset, setIsSendingPasswordReset] = useState(false);
 
@@ -342,6 +387,9 @@ function formatAddress(r: ResponseRow): string {
       const pastMeetingIds = nextMeetings.filter((m) => !isUpcoming(m.starts_at)).map((m) => m.id);
       if (!pastMeetingIds.length) {
         setExpensesByMeeting(new Map());
+        setMeetingResultsByMeeting(new Map());
+        setMeetingSalesByMeeting(new Map());
+        setDeletedMeetingSalesByMeeting(new Map());
         return;
       }
 
@@ -375,11 +423,92 @@ function formatAddress(r: ResponseRow): string {
       } catch {
         // ignore
       }
+
+      try {
+        const [{ data: resultRows, error: resultErr }, { data: salesRows, error: salesErr }] = await Promise.all([
+          supabase
+            .from('meeting_results')
+            .select(
+              'id, job_id, meeting_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count, notes, reported_by, reported_at'
+            )
+            .in('meeting_id', pastMeetingIds)
+            .limit(5000),
+          supabase
+            .from('meeting_sales')
+            .select(
+              'id, job_id, meeting_id, meeting_result_id, product_type, carrier_or_company, premium_or_asset_amount, gross_revenue, commission_amount, status, notes, created_at'
+            )
+            .in('meeting_id', pastMeetingIds)
+            .order('created_at', { ascending: true })
+            .limit(5000),
+        ]);
+
+        if (!resultErr) {
+          const nextResults = new Map<string, MeetingResultRow>();
+          for (const row of (resultRows ?? []) as any[]) {
+            const meetingId = String(row.meeting_id || '');
+            if (!meetingId) continue;
+            nextResults.set(meetingId, {
+              id: String(row.id),
+              job_id: String(row.job_id),
+              meeting_id: meetingId,
+              attendees_actual: row.attendees_actual === null ? null : Number(row.attendees_actual),
+              no_shows: row.no_shows === null ? null : Number(row.no_shows),
+              walk_ins: row.walk_ins === null ? null : Number(row.walk_ins),
+              appointments_booked: row.appointments_booked === null ? null : Number(row.appointments_booked),
+              appointments_attended: row.appointments_attended === null ? null : Number(row.appointments_attended),
+              products_sold_count: row.products_sold_count === null ? null : Number(row.products_sold_count),
+              notes: row.notes ?? null,
+              reported_by: row.reported_by ?? null,
+              reported_at: row.reported_at ?? null,
+            });
+          }
+          setMeetingResultsByMeeting(nextResults);
+        } else {
+          setMeetingResultsByMeeting(new Map());
+        }
+
+        if (!salesErr) {
+          const nextSales = new Map<string, MeetingSaleRow[]>();
+          for (const row of (salesRows ?? []) as any[]) {
+            const meetingId = String(row.meeting_id || '');
+            if (!meetingId) continue;
+            const list = nextSales.get(meetingId) || [];
+            list.push({
+              id: String(row.id),
+              job_id: String(row.job_id),
+              meeting_id: meetingId,
+              meeting_result_id: row.meeting_result_id ?? null,
+              product_type: row.product_type ?? null,
+              carrier_or_company: row.carrier_or_company ?? null,
+              premium_or_asset_amount: row.premium_or_asset_amount === null ? null : Number(row.premium_or_asset_amount),
+              gross_revenue: row.gross_revenue === null ? null : Number(row.gross_revenue),
+              commission_amount: row.commission_amount === null ? null : Number(row.commission_amount),
+              status: row.status ?? null,
+              notes: row.notes ?? null,
+              created_at: row.created_at ?? undefined,
+            });
+            nextSales.set(meetingId, list);
+          }
+          setMeetingSalesByMeeting(nextSales);
+          setDeletedMeetingSalesByMeeting(new Map());
+        } else {
+          setMeetingSalesByMeeting(new Map());
+          setDeletedMeetingSalesByMeeting(new Map());
+        }
+      } catch {
+        setMeetingResultsByMeeting(new Map());
+        setMeetingSalesByMeeting(new Map());
+        setDeletedMeetingSalesByMeeting(new Map());
+      }
     } catch (err: unknown) {
       setBanner({ type: 'error', text: toErrorMessage(err) });
       setOrg(null);
       setMeetings([]);
       setExpensesByMeeting(new Map());
+      setMeetingResultsByMeeting(new Map());
+      setMeetingSalesByMeeting(new Map());
+      setDeletedMeetingSalesByMeeting(new Map());
     } finally {
       setIsLoading(false);
     }
@@ -631,6 +760,259 @@ function formatAddress(r: ResponseRow): string {
       setBanner({ type: 'error', text: toErrorMessage(err) });
     } finally {
       setSavingExpenseMeetingId(null);
+    }
+  };
+
+  const isTempSaleId = (id: string) => id.startsWith('tmp-');
+
+  const patchMeetingResult = (meeting: MeetingWithJob, patch: Partial<MeetingResultRow>) => {
+    setMeetingResultsByMeeting((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(meeting.id) || {
+        id: '',
+        job_id: meeting.job_id,
+        meeting_id: meeting.id,
+        attendees_actual: null,
+        no_shows: null,
+        walk_ins: null,
+        appointments_booked: null,
+        appointments_attended: null,
+        products_sold_count: null,
+        notes: null,
+        reported_by: null,
+        reported_at: null,
+      };
+      next.set(meeting.id, { ...existing, ...patch, meeting_id: meeting.id, job_id: meeting.job_id });
+      return next;
+    });
+  };
+
+  const patchMeetingSale = (meeting: MeetingWithJob, saleId: string, patch: Partial<MeetingSaleRow>) => {
+    setMeetingSalesByMeeting((prev) => {
+      const next = new Map(prev);
+      const list = [...(next.get(meeting.id) || [])];
+      const idx = list.findIndex((row) => row.id === saleId);
+      if (idx === -1) return prev;
+      list[idx] = { ...list[idx], ...patch, meeting_id: meeting.id, job_id: meeting.job_id };
+      next.set(meeting.id, list);
+      return next;
+    });
+  };
+
+  const addMeetingSale = (meeting: MeetingWithJob) => {
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setMeetingSalesByMeeting((prev) => {
+      const next = new Map(prev);
+      const list = [...(next.get(meeting.id) || [])];
+      list.push({
+        id: tempId,
+        job_id: meeting.job_id,
+        meeting_id: meeting.id,
+        meeting_result_id: meetingResultsByMeeting.get(meeting.id)?.id || null,
+        product_type: null,
+        carrier_or_company: null,
+        premium_or_asset_amount: null,
+        gross_revenue: null,
+        commission_amount: null,
+        status: null,
+        notes: null,
+      });
+      next.set(meeting.id, list);
+      return next;
+    });
+  };
+
+  const removeMeetingSale = (meetingId: string, saleId: string) => {
+    setMeetingSalesByMeeting((prev) => {
+      const next = new Map(prev);
+      const current = next.get(meetingId) || [];
+      next.set(meetingId, current.filter((row) => row.id !== saleId));
+      return next;
+    });
+
+    if (!isTempSaleId(saleId)) {
+      setDeletedMeetingSalesByMeeting((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(meetingId) || [];
+        next.set(meetingId, [...existing, saleId]);
+        return next;
+      });
+    }
+  };
+
+  const saveMeetingResult = async (meeting: MeetingWithJob) => {
+    setBanner(null);
+    try {
+      setSavingMeetingResultId(meeting.id);
+      const row = meetingResultsByMeeting.get(meeting.id) || {
+        id: '',
+        job_id: meeting.job_id,
+        meeting_id: meeting.id,
+        attendees_actual: null,
+        no_shows: null,
+        walk_ins: null,
+        appointments_booked: null,
+        appointments_attended: null,
+        products_sold_count: null,
+        notes: null,
+        reported_by: null,
+        reported_at: null,
+      };
+
+      const payload = {
+        job_id: meeting.job_id,
+        meeting_id: meeting.id,
+        attendees_actual: row.attendees_actual,
+        no_shows: row.no_shows,
+        walk_ins: row.walk_ins,
+        appointments_booked: row.appointments_booked,
+        appointments_attended: row.appointments_attended,
+        products_sold_count: row.products_sold_count,
+        notes: row.notes,
+        reported_by: userId,
+        reported_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('meeting_results')
+        .upsert(payload as any, { onConflict: 'job_id,meeting_id' })
+        .select(
+          'id, job_id, meeting_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count, notes, reported_by, reported_at'
+        )
+        .single();
+      if (error) throw error;
+
+      const saved = data as any;
+      setMeetingResultsByMeeting((prev) => {
+        const next = new Map(prev);
+        next.set(meeting.id, {
+          id: String(saved.id),
+          job_id: String(saved.job_id),
+          meeting_id: String(saved.meeting_id),
+          attendees_actual: saved.attendees_actual === null ? null : Number(saved.attendees_actual),
+          no_shows: saved.no_shows === null ? null : Number(saved.no_shows),
+          walk_ins: saved.walk_ins === null ? null : Number(saved.walk_ins),
+          appointments_booked: saved.appointments_booked === null ? null : Number(saved.appointments_booked),
+          appointments_attended: saved.appointments_attended === null ? null : Number(saved.appointments_attended),
+          products_sold_count: saved.products_sold_count === null ? null : Number(saved.products_sold_count),
+          notes: saved.notes ?? null,
+          reported_by: saved.reported_by ?? null,
+          reported_at: saved.reported_at ?? null,
+        });
+        return next;
+      });
+
+      setBanner({ type: 'success', text: 'Saved meeting results.' });
+    } catch (err: unknown) {
+      setBanner({ type: 'error', text: toErrorMessage(err) });
+    } finally {
+      setSavingMeetingResultId(null);
+    }
+  };
+
+  const saveMeetingSales = async (meeting: MeetingWithJob) => {
+    setBanner(null);
+    try {
+      setSavingMeetingSalesMeetingId(meeting.id);
+      const meetingResultId = meetingResultsByMeeting.get(meeting.id)?.id || null;
+      const rows = meetingSalesByMeeting.get(meeting.id) || [];
+      const deletedIds = deletedMeetingSalesByMeeting.get(meeting.id) || [];
+
+      if (deletedIds.length) {
+        const { error: delErr } = await supabase.from('meeting_sales').delete().in('id', deletedIds);
+        if (delErr) throw delErr;
+      }
+
+      const updateRows = rows.filter((r) => !isTempSaleId(r.id));
+      for (const row of updateRows) {
+        const { error: updErr } = await supabase
+          .from('meeting_sales')
+          .update({
+            meeting_result_id: meetingResultId,
+            product_type: row.product_type,
+            carrier_or_company: row.carrier_or_company,
+            premium_or_asset_amount: row.premium_or_asset_amount,
+            gross_revenue: row.gross_revenue,
+            commission_amount: row.commission_amount,
+            status: row.status,
+            notes: row.notes,
+          } as any)
+          .eq('id', row.id);
+        if (updErr) throw updErr;
+      }
+
+      const insertRows = rows
+        .filter((r) => isTempSaleId(r.id))
+        .filter((r) => {
+          return Boolean(
+            (r.product_type && r.product_type.trim()) ||
+              (r.carrier_or_company && r.carrier_or_company.trim()) ||
+              r.premium_or_asset_amount !== null ||
+              r.gross_revenue !== null ||
+              r.commission_amount !== null ||
+              (r.status && r.status.trim()) ||
+              (r.notes && r.notes.trim())
+          );
+        })
+        .map((r) => ({
+          job_id: meeting.job_id,
+          meeting_id: meeting.id,
+          meeting_result_id: meetingResultId,
+          product_type: r.product_type,
+          carrier_or_company: r.carrier_or_company,
+          premium_or_asset_amount: r.premium_or_asset_amount,
+          gross_revenue: r.gross_revenue,
+          commission_amount: r.commission_amount,
+          status: r.status,
+          notes: r.notes,
+        }));
+
+      if (insertRows.length) {
+        const { error: insErr } = await supabase.from('meeting_sales').insert(insertRows as any);
+        if (insErr) throw insErr;
+      }
+
+      const { data: refreshed, error: refreshErr } = await supabase
+        .from('meeting_sales')
+        .select(
+          'id, job_id, meeting_id, meeting_result_id, product_type, carrier_or_company, premium_or_asset_amount, gross_revenue, commission_amount, status, notes, created_at'
+        )
+        .eq('meeting_id', meeting.id)
+        .order('created_at', { ascending: true });
+      if (refreshErr) throw refreshErr;
+
+      const nextRows: MeetingSaleRow[] = ((refreshed ?? []) as any[]).map((row) => ({
+        id: String(row.id),
+        job_id: String(row.job_id),
+        meeting_id: String(row.meeting_id),
+        meeting_result_id: row.meeting_result_id ?? null,
+        product_type: row.product_type ?? null,
+        carrier_or_company: row.carrier_or_company ?? null,
+        premium_or_asset_amount: row.premium_or_asset_amount === null ? null : Number(row.premium_or_asset_amount),
+        gross_revenue: row.gross_revenue === null ? null : Number(row.gross_revenue),
+        commission_amount: row.commission_amount === null ? null : Number(row.commission_amount),
+        status: row.status ?? null,
+        notes: row.notes ?? null,
+        created_at: row.created_at ?? undefined,
+      }));
+
+      setMeetingSalesByMeeting((prev) => {
+        const next = new Map(prev);
+        next.set(meeting.id, nextRows);
+        return next;
+      });
+
+      setDeletedMeetingSalesByMeeting((prev) => {
+        const next = new Map(prev);
+        next.delete(meeting.id);
+        return next;
+      });
+
+      setBanner({ type: 'success', text: 'Saved meeting sales.' });
+    } catch (err: unknown) {
+      setBanner({ type: 'error', text: toErrorMessage(err) });
+    } finally {
+      setSavingMeetingSalesMeetingId(null);
     }
   };
 
@@ -1124,6 +1506,8 @@ function formatAddress(r: ResponseRow): string {
             <div className="divide-y divide-slate-200">
               {pastMeetings.map((m) => {
                 const exp = expensesByMeeting.get(m.id);
+                const resultRow = meetingResultsByMeeting.get(m.id);
+                const salesRows = meetingSalesByMeeting.get(m.id) || [];
                 return (
                   <details key={m.id} className="group">
                     <summary className="cursor-pointer list-none px-5 py-4 hover:bg-slate-50 flex items-start justify-between gap-4">
@@ -1141,6 +1525,215 @@ function formatAddress(r: ResponseRow): string {
                     </summary>
 
                     <div className="px-5 pb-5">
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">Meeting Results</div>
+                            <div className="text-xs text-slate-600">One row per meeting</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => saveMeetingResult(m)}
+                            disabled={savingMeetingResultId === m.id}
+                            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-60"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            {savingMeetingResultId === m.id ? 'Saving…' : 'Save results'}
+                          </button>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          <label className="text-sm">
+                            <div className="text-xs font-semibold text-slate-600 mb-1">Attendees (actual)</div>
+                            <input
+                              inputMode="numeric"
+                              value={formatMoney(resultRow?.attendees_actual)}
+                              onChange={(e) => patchMeetingResult(m, { attendees_actual: parseInteger(e.target.value) })}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder="0"
+                            />
+                          </label>
+                          <label className="text-sm">
+                            <div className="text-xs font-semibold text-slate-600 mb-1">No-shows</div>
+                            <input
+                              inputMode="numeric"
+                              value={formatMoney(resultRow?.no_shows)}
+                              onChange={(e) => patchMeetingResult(m, { no_shows: parseInteger(e.target.value) })}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder="0"
+                            />
+                          </label>
+                          <label className="text-sm">
+                            <div className="text-xs font-semibold text-slate-600 mb-1">Walk-ins</div>
+                            <input
+                              inputMode="numeric"
+                              value={formatMoney(resultRow?.walk_ins)}
+                              onChange={(e) => patchMeetingResult(m, { walk_ins: parseInteger(e.target.value) })}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder="0"
+                            />
+                          </label>
+                          <label className="text-sm">
+                            <div className="text-xs font-semibold text-slate-600 mb-1">Appointments booked</div>
+                            <input
+                              inputMode="numeric"
+                              value={formatMoney(resultRow?.appointments_booked)}
+                              onChange={(e) => patchMeetingResult(m, { appointments_booked: parseInteger(e.target.value) })}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder="0"
+                            />
+                          </label>
+                          <label className="text-sm">
+                            <div className="text-xs font-semibold text-slate-600 mb-1">Appointments attended</div>
+                            <input
+                              inputMode="numeric"
+                              value={formatMoney(resultRow?.appointments_attended)}
+                              onChange={(e) => patchMeetingResult(m, { appointments_attended: parseInteger(e.target.value) })}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder="0"
+                            />
+                          </label>
+                          <label className="text-sm">
+                            <div className="text-xs font-semibold text-slate-600 mb-1">Products sold (count)</div>
+                            <input
+                              inputMode="numeric"
+                              value={formatMoney(resultRow?.products_sold_count)}
+                              onChange={(e) => patchMeetingResult(m, { products_sold_count: parseInteger(e.target.value) })}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                              placeholder="0"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="block mt-3 text-sm">
+                          <div className="text-xs font-semibold text-slate-600 mb-1">Results notes</div>
+                          <textarea
+                            rows={2}
+                            value={resultRow?.notes || ''}
+                            onChange={(e) => patchMeetingResult(m, { notes: e.target.value || null })}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                            placeholder="Optional summary notes"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">Meeting Sales</div>
+                            <div className="text-xs text-slate-600">Multiple rows per meeting</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => addMeetingSale(m)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 text-xs font-semibold"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Add sale
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveMeetingSales(m)}
+                              disabled={savingMeetingSalesMeetingId === m.id}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 text-xs font-semibold disabled:opacity-60"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              {savingMeetingSalesMeetingId === m.id ? 'Saving…' : 'Save sales'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {salesRows.length === 0 ? (
+                          <div className="mt-3 text-sm text-slate-500">No sales rows yet. Click Add sale.</div>
+                        ) : (
+                          <div className="mt-3 space-y-3">
+                            {salesRows.map((sale) => (
+                              <div key={sale.id} className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  <label className="text-sm">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Product type</div>
+                                    <input
+                                      value={sale.product_type || ''}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { product_type: e.target.value || null })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="Annuity, Life, AUM, etc."
+                                    />
+                                  </label>
+                                  <label className="text-sm">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Carrier / company</div>
+                                    <input
+                                      value={sale.carrier_or_company || ''}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { carrier_or_company: e.target.value || null })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="Carrier or firm"
+                                    />
+                                  </label>
+                                  <label className="text-sm">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Status</div>
+                                    <input
+                                      value={sale.status || ''}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { status: e.target.value || null })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="submitted, issued, pending"
+                                    />
+                                  </label>
+                                  <label className="text-sm">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Premium / asset amount</div>
+                                    <input
+                                      inputMode="decimal"
+                                      value={formatMoney(sale.premium_or_asset_amount)}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { premium_or_asset_amount: parseMoney(e.target.value) })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="0.00"
+                                    />
+                                  </label>
+                                  <label className="text-sm">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Gross revenue</div>
+                                    <input
+                                      inputMode="decimal"
+                                      value={formatMoney(sale.gross_revenue)}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { gross_revenue: parseMoney(e.target.value) })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="0.00"
+                                    />
+                                  </label>
+                                  <label className="text-sm">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Commission amount</div>
+                                    <input
+                                      inputMode="decimal"
+                                      value={formatMoney(sale.commission_amount)}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { commission_amount: parseMoney(e.target.value) })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="0.00"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="mt-3 flex items-start justify-between gap-3">
+                                  <label className="text-sm flex-1">
+                                    <div className="text-xs font-semibold text-slate-600 mb-1">Sale notes</div>
+                                    <textarea
+                                      rows={2}
+                                      value={sale.notes || ''}
+                                      onChange={(e) => patchMeetingSale(m, sale.id, { notes: e.target.value || null })}
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                      placeholder="Optional notes"
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeMeetingSale(m.id, sale.id)}
+                                    className="mt-6 inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 px-2 py-1.5 text-xs font-semibold"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <label className="text-sm">
                           <div className="text-xs font-semibold text-slate-600 mb-1">Dinner</div>
