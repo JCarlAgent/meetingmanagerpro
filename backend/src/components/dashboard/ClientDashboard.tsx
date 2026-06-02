@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
-  ChevronDown, ChevronRight, Building2, Map, BarChart3, Mail, CheckCircle2, 
+  ChevronDown, ChevronRight, Building2, Map as MapIcon, BarChart3, Mail, CheckCircle2, 
   XCircle, CalendarClock, DollarSign, CalendarCheck, Users, UsersRound, 
   Search, Phone, Navigation, User, ArrowLeft, Trophy, MapPin 
 } from 'lucide-react';
@@ -43,6 +43,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
   const [activeCampaigns, setActiveCampaigns] = useState(mockActiveCampaigns);
   const [completedCampaigns, setCompletedCampaigns] = useState(mockCompletedCampaigns);
   const [expandedCompletedCampaignIds, setExpandedCompletedCampaignIds] = useState<Set<string>>(new Set());
+  const [responderCountByCampaignId, setResponderCountByCampaignId] = useState<Map<string, number>>(new globalThis.Map());
 
   const toMeetingTimestamp = (event: any): number | null => {
     if (!event) return null;
@@ -157,6 +158,43 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
       console.error('Error mapping campaigns/events in ClientDashboard:', err);
     }
   }, [campaigns, events]);
+
+  useEffect(() => {
+    const campaignIds = Array.isArray(campaigns)
+      ? campaigns.map((campaign: any) => campaign?.id).filter(Boolean)
+      : [];
+
+    if (!campaignIds.length) {
+      setResponderCountByCampaignId(new globalThis.Map());
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from('responders')
+      .select('campaign_id')
+      .in('campaign_id', campaignIds)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.warn('Failed to load responder counts for completed campaign summaries', error);
+          return;
+        }
+
+        const next = new globalThis.Map<string, number>();
+        for (const row of data ?? []) {
+          const campaignId = String((row as any).campaign_id || '');
+          if (!campaignId) continue;
+          next.set(campaignId, (next.get(campaignId) ?? 0) + 1);
+        }
+        setResponderCountByCampaignId(next);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [campaigns]);
 
   const toggleCampaignStatus = async (campId: string, statusIndex: number) => {
     // Derived indexes (read-only): 1=List Purchased, 4=Mail Sent
@@ -580,6 +618,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                         const isExpanded = expandedCompletedCampaignIds.has(camp.id);
                         const finalMeetingText = formatFinalMeetingDate(finalEvent, finalTs);
                         const venueText = formatFinalMeetingVenue(finalEvent, camp);
+                        const responseCount = responderCountByCampaignId.get(camp.id) ?? camp.responder_count ?? camp.stats?.responses_total ?? camp.stats?.responses ?? 0;
 
                         return (
                           <>
@@ -598,8 +637,8 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
 
                                 <div className="flex items-center gap-4 text-xs text-slate-600 shrink-0">
                                   <div>Mailed: <span className="font-semibold text-slate-800">{camp.stats?.mailed_count ?? camp.stats?.mailed ?? '—'}</span></div>
-                                  <div>Responses: <span className="font-semibold text-slate-800">{camp.stats?.responses_total ?? camp.stats?.responses ?? '—'}</span></div>
-                                  <div>Attendees: <span className="font-semibold text-slate-800">{camp.stats?.attendees ?? '—'}</span></div>
+                                  <div>Responses: <span className="font-semibold text-slate-800">{responseCount.toLocaleString()}</span></div>
+                                  <div>Attendees: <span className="font-semibold text-slate-800">not entered</span></div>
                                   <div>{isExpanded ? 'Hide details' : 'Show details'}</div>
                                 </div>
                               </div>
@@ -636,7 +675,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
 
       {/* 3. List Builder */}
       <div className="w-full bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <AccordionHeader id="listBuilder" icon={Map} title="Campaign Planner" />
+        <AccordionHeader id="listBuilder" icon={MapIcon} title="Campaign Planner" />
         {expanded.listBuilder && (
           <div className="p-0 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
              {/* Use full-width container internal to AiQuery */}
