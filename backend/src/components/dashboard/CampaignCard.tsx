@@ -17,7 +17,9 @@ import {
   Image,
   ListChecks,
   Printer,
+  Plus,
   Package,
+  Trash2,
   Truck,
   TrendingUp,
   XCircle
@@ -40,6 +42,36 @@ interface CampaignCardProps {
   // optional callback to open the full campaign map view
   onOpenMap?: (campaignId: string) => void;
 }
+
+type MeetingResultRow = {
+  id: string;
+  job_id: string;
+  meeting_id: string;
+  attendees_actual: number | null;
+  no_shows: number | null;
+  walk_ins: number | null;
+  appointments_booked: number | null;
+  appointments_attended: number | null;
+  products_sold_count: number | null;
+  notes: string | null;
+  reported_by: string | null;
+  reported_at: string | null;
+};
+
+type MeetingSaleRow = {
+  id: string;
+  job_id: string;
+  meeting_id: string;
+  meeting_result_id: string | null;
+  product_type: string | null;
+  carrier_or_company: string | null;
+  premium_or_asset_amount: number | null;
+  gross_revenue: number | null;
+  commission_amount: number | null;
+  status: string | null;
+  notes: string | null;
+  created_at?: string;
+};
 
 const CampaignCard: React.FC<CampaignCardProps> = ({ 
   campaign, 
@@ -87,6 +119,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [matcherVersion, setMatcherVersion] = useState<string | null>(null);
   const [isDebuggingMatch, setIsDebuggingMatch] = useState(false);
   const [debugMatchOutput, setDebugMatchOutput] = useState<string | null>(null);
+  const [meetingResultsByEventId, setMeetingResultsByEventId] = useState<Map<string, MeetingResultRow>>(new Map());
+  const [meetingSalesByEventId, setMeetingSalesByEventId] = useState<Map<string, MeetingSaleRow[]>>(new Map());
+  const [deletedMeetingSalesByEventId, setDeletedMeetingSalesByEventId] = useState<Map<string, string[]>>(new Map());
+  const [savingMeetingResultEventId, setSavingMeetingResultEventId] = useState<string | null>(null);
+  const [savingMeetingSalesEventId, setSavingMeetingSalesEventId] = useState<string | null>(null);
 
   // Fetch responders from Supabase for this campaign (used both on mount and after sync)
   const reloadResponders = () => {
@@ -113,6 +150,101 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
     return () => { cancelled = true; };
   }, [campaign.id]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const eventIds = (Array.isArray(events) ? events : [])
+      .map((e: any) => String(e?.id || ''))
+      .filter(Boolean);
+
+    if (!eventIds.length) {
+      setMeetingResultsByEventId(new Map());
+      setMeetingSalesByEventId(new Map());
+      setDeletedMeetingSalesByEventId(new Map());
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all([
+      supabase
+        .from('meeting_results')
+        .select(
+          'id, job_id, meeting_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count, notes, reported_by, reported_at'
+        )
+        .eq('job_id', campaign.id)
+        .in('meeting_id', eventIds),
+      supabase
+        .from('meeting_sales')
+        .select(
+          'id, job_id, meeting_id, meeting_result_id, product_type, carrier_or_company, premium_or_asset_amount, gross_revenue, commission_amount, status, notes, created_at'
+        )
+        .eq('job_id', campaign.id)
+        .in('meeting_id', eventIds)
+        .order('created_at', { ascending: true }),
+    ]).then(([resultsResp, salesResp]) => {
+      if (cancelled) return;
+
+      if (!resultsResp.error) {
+        const nextResults = new Map<string, MeetingResultRow>();
+        for (const row of (resultsResp.data ?? []) as any[]) {
+          const eventId = String(row.meeting_id || '');
+          if (!eventId) continue;
+          nextResults.set(eventId, {
+            id: String(row.id),
+            job_id: String(row.job_id),
+            meeting_id: eventId,
+            attendees_actual: row.attendees_actual === null ? null : Number(row.attendees_actual),
+            no_shows: row.no_shows === null ? null : Number(row.no_shows),
+            walk_ins: row.walk_ins === null ? null : Number(row.walk_ins),
+            appointments_booked: row.appointments_booked === null ? null : Number(row.appointments_booked),
+            appointments_attended: row.appointments_attended === null ? null : Number(row.appointments_attended),
+            products_sold_count: row.products_sold_count === null ? null : Number(row.products_sold_count),
+            notes: row.notes ?? null,
+            reported_by: row.reported_by ?? null,
+            reported_at: row.reported_at ?? null,
+          });
+        }
+        setMeetingResultsByEventId(nextResults);
+      } else {
+        setMeetingResultsByEventId(new Map());
+      }
+
+      if (!salesResp.error) {
+        const nextSales = new Map<string, MeetingSaleRow[]>();
+        for (const row of (salesResp.data ?? []) as any[]) {
+          const eventId = String(row.meeting_id || '');
+          if (!eventId) continue;
+          const list = nextSales.get(eventId) || [];
+          list.push({
+            id: String(row.id),
+            job_id: String(row.job_id),
+            meeting_id: eventId,
+            meeting_result_id: row.meeting_result_id ?? null,
+            product_type: row.product_type ?? null,
+            carrier_or_company: row.carrier_or_company ?? null,
+            premium_or_asset_amount: row.premium_or_asset_amount === null ? null : Number(row.premium_or_asset_amount),
+            gross_revenue: row.gross_revenue === null ? null : Number(row.gross_revenue),
+            commission_amount: row.commission_amount === null ? null : Number(row.commission_amount),
+            status: row.status ?? null,
+            notes: row.notes ?? null,
+            created_at: row.created_at ?? undefined,
+          });
+          nextSales.set(eventId, list);
+        }
+        setMeetingSalesByEventId(nextSales);
+        setDeletedMeetingSalesByEventId(new Map());
+      } else {
+        setMeetingSalesByEventId(new Map());
+        setDeletedMeetingSalesByEventId(new Map());
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isExpanded, campaign.id, events]);
 
   // Prefer live-loaded responders; fall back to prop (legacy campaigns view) then stats count
   const displayResponders = localResponders.length > 0 ? localResponders : responders;
@@ -765,6 +897,305 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     return `${hour12}:${minutes} ${ampm}`;
   };
 
+  const formatNumberInput = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return '';
+    return String(value);
+  };
+
+  const parseInteger = (value: string): number | null => {
+    const cleaned = value.trim();
+    if (!cleaned) return null;
+    const parsed = Number.parseInt(cleaned.replace(/[^0-9-]/g, ''), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const parseDecimal = (value: string): number | null => {
+    const cleaned = value.trim();
+    if (!cleaned) return null;
+    const parsed = Number(cleaned.replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const toEventTimestamp = (ev: any): number | null => {
+    const date = String(ev?.event_date || '').trim();
+    if (!date) return null;
+    const rawTime = String(ev?.event_time || '00:00').trim();
+    const hhmm = rawTime.slice(0, 5) || '00:00';
+    const ts = Date.parse(`${date}T${hhmm}:00`);
+    if (!Number.isNaN(ts)) return ts;
+    const dateOnly = Date.parse(`${date}T00:00:00`);
+    return Number.isNaN(dateOnly) ? null : dateOnly;
+  };
+
+  const isPastEvent = (ev: any): boolean => {
+    const ts = toEventTimestamp(ev);
+    return ts !== null && ts < Date.now();
+  };
+
+  const isTempSaleId = (id: string) => id.startsWith('tmp-');
+
+  const patchMeetingResult = (eventId: string, patch: Partial<MeetingResultRow>) => {
+    setMeetingResultsByEventId((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(eventId) || {
+        id: '',
+        job_id: campaign.id,
+        meeting_id: eventId,
+        attendees_actual: null,
+        no_shows: null,
+        walk_ins: null,
+        appointments_booked: null,
+        appointments_attended: null,
+        products_sold_count: null,
+        notes: null,
+        reported_by: null,
+        reported_at: null,
+      };
+      next.set(eventId, { ...existing, ...patch, job_id: campaign.id, meeting_id: eventId });
+      return next;
+    });
+  };
+
+  const patchMeetingSale = (eventId: string, saleId: string, patch: Partial<MeetingSaleRow>) => {
+    setMeetingSalesByEventId((prev) => {
+      const next = new Map(prev);
+      const list = [...(next.get(eventId) || [])];
+      const idx = list.findIndex((sale) => sale.id === saleId);
+      if (idx === -1) return prev;
+      list[idx] = { ...list[idx], ...patch, meeting_id: eventId, job_id: campaign.id };
+      next.set(eventId, list);
+      return next;
+    });
+  };
+
+  const addMeetingSale = (eventId: string) => {
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setMeetingSalesByEventId((prev) => {
+      const next = new Map(prev);
+      const list = [...(next.get(eventId) || [])];
+      list.push({
+        id: tempId,
+        job_id: campaign.id,
+        meeting_id: eventId,
+        meeting_result_id: meetingResultsByEventId.get(eventId)?.id || null,
+        product_type: null,
+        carrier_or_company: null,
+        premium_or_asset_amount: null,
+        gross_revenue: null,
+        commission_amount: null,
+        status: null,
+        notes: null,
+      });
+      next.set(eventId, list);
+      return next;
+    });
+  };
+
+  const removeMeetingSale = (eventId: string, saleId: string) => {
+    setMeetingSalesByEventId((prev) => {
+      const next = new Map(prev);
+      const list = next.get(eventId) || [];
+      next.set(eventId, list.filter((sale) => sale.id !== saleId));
+      return next;
+    });
+
+    if (!isTempSaleId(saleId)) {
+      setDeletedMeetingSalesByEventId((prev) => {
+        const next = new Map(prev);
+        const ids = next.get(eventId) || [];
+        next.set(eventId, [...ids, saleId]);
+        return next;
+      });
+    }
+  };
+
+  const saveMeetingResult = async (ev: any) => {
+    const eventId = String(ev?.id || '');
+    if (!eventId) return;
+
+    try {
+      setSavingMeetingResultEventId(eventId);
+      const row = meetingResultsByEventId.get(eventId) || {
+        id: '',
+        job_id: campaign.id,
+        meeting_id: eventId,
+        attendees_actual: null,
+        no_shows: null,
+        walk_ins: null,
+        appointments_booked: null,
+        appointments_attended: null,
+        products_sold_count: null,
+        notes: null,
+        reported_by: null,
+        reported_at: null,
+      };
+
+      const payload = {
+        job_id: campaign.id,
+        meeting_id: eventId,
+        attendees_actual: row.attendees_actual,
+        no_shows: row.no_shows,
+        walk_ins: row.walk_ins,
+        appointments_booked: row.appointments_booked,
+        appointments_attended: row.appointments_attended,
+        products_sold_count: row.products_sold_count,
+        notes: row.notes,
+        reported_by: user?.id ?? null,
+        reported_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('meeting_results')
+        .upsert(payload as any, { onConflict: 'job_id,meeting_id' })
+        .select(
+          'id, job_id, meeting_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count, notes, reported_by, reported_at'
+        )
+        .single();
+      if (error) throw error;
+
+      const saved = data as any;
+      const savedResultId = String(saved.id);
+
+      setMeetingResultsByEventId((prev) => {
+        const next = new Map(prev);
+        next.set(eventId, {
+          id: savedResultId,
+          job_id: String(saved.job_id),
+          meeting_id: String(saved.meeting_id),
+          attendees_actual: saved.attendees_actual === null ? null : Number(saved.attendees_actual),
+          no_shows: saved.no_shows === null ? null : Number(saved.no_shows),
+          walk_ins: saved.walk_ins === null ? null : Number(saved.walk_ins),
+          appointments_booked: saved.appointments_booked === null ? null : Number(saved.appointments_booked),
+          appointments_attended: saved.appointments_attended === null ? null : Number(saved.appointments_attended),
+          products_sold_count: saved.products_sold_count === null ? null : Number(saved.products_sold_count),
+          notes: saved.notes ?? null,
+          reported_by: saved.reported_by ?? null,
+          reported_at: saved.reported_at ?? null,
+        });
+        return next;
+      });
+
+      setMeetingSalesByEventId((prev) => {
+        const next = new Map(prev);
+        const list = [...(next.get(eventId) || [])].map((sale) => ({ ...sale, meeting_result_id: savedResultId }));
+        next.set(eventId, list);
+        return next;
+      });
+    } catch (err) {
+      console.error('saveMeetingResult failed', err);
+      alert('Failed to save meeting results.');
+    } finally {
+      setSavingMeetingResultEventId(null);
+    }
+  };
+
+  const saveMeetingSales = async (ev: any) => {
+    const eventId = String(ev?.id || '');
+    if (!eventId) return;
+
+    try {
+      setSavingMeetingSalesEventId(eventId);
+      const meetingResultId = meetingResultsByEventId.get(eventId)?.id || null;
+      const rows = meetingSalesByEventId.get(eventId) || [];
+      const deletedIds = deletedMeetingSalesByEventId.get(eventId) || [];
+
+      if (deletedIds.length) {
+        const { error: deleteErr } = await supabase.from('meeting_sales').delete().in('id', deletedIds);
+        if (deleteErr) throw deleteErr;
+      }
+
+      for (const row of rows.filter((sale) => !isTempSaleId(sale.id))) {
+        const { error: updateErr } = await supabase
+          .from('meeting_sales')
+          .update({
+            meeting_result_id: meetingResultId,
+            product_type: row.product_type,
+            carrier_or_company: row.carrier_or_company,
+            premium_or_asset_amount: row.premium_or_asset_amount,
+            gross_revenue: row.gross_revenue,
+            commission_amount: row.commission_amount,
+            status: row.status,
+            notes: row.notes,
+          } as any)
+          .eq('id', row.id);
+        if (updateErr) throw updateErr;
+      }
+
+      const insertRows = rows
+        .filter((sale) => isTempSaleId(sale.id))
+        .filter((sale) => {
+          return Boolean(
+            (sale.product_type && sale.product_type.trim()) ||
+              (sale.carrier_or_company && sale.carrier_or_company.trim()) ||
+              sale.premium_or_asset_amount !== null ||
+              sale.gross_revenue !== null ||
+              sale.commission_amount !== null ||
+              (sale.status && sale.status.trim()) ||
+              (sale.notes && sale.notes.trim())
+          );
+        })
+        .map((sale) => ({
+          job_id: campaign.id,
+          meeting_id: eventId,
+          meeting_result_id: meetingResultId,
+          product_type: sale.product_type,
+          carrier_or_company: sale.carrier_or_company,
+          premium_or_asset_amount: sale.premium_or_asset_amount,
+          gross_revenue: sale.gross_revenue,
+          commission_amount: sale.commission_amount,
+          status: sale.status,
+          notes: sale.notes,
+        }));
+
+      if (insertRows.length) {
+        const { error: insertErr } = await supabase.from('meeting_sales').insert(insertRows as any);
+        if (insertErr) throw insertErr;
+      }
+
+      const { data: refreshed, error: refreshErr } = await supabase
+        .from('meeting_sales')
+        .select(
+          'id, job_id, meeting_id, meeting_result_id, product_type, carrier_or_company, premium_or_asset_amount, gross_revenue, commission_amount, status, notes, created_at'
+        )
+        .eq('job_id', campaign.id)
+        .eq('meeting_id', eventId)
+        .order('created_at', { ascending: true });
+      if (refreshErr) throw refreshErr;
+
+      const nextRows: MeetingSaleRow[] = ((refreshed ?? []) as any[]).map((row) => ({
+        id: String(row.id),
+        job_id: String(row.job_id),
+        meeting_id: String(row.meeting_id),
+        meeting_result_id: row.meeting_result_id ?? null,
+        product_type: row.product_type ?? null,
+        carrier_or_company: row.carrier_or_company ?? null,
+        premium_or_asset_amount: row.premium_or_asset_amount === null ? null : Number(row.premium_or_asset_amount),
+        gross_revenue: row.gross_revenue === null ? null : Number(row.gross_revenue),
+        commission_amount: row.commission_amount === null ? null : Number(row.commission_amount),
+        status: row.status ?? null,
+        notes: row.notes ?? null,
+        created_at: row.created_at ?? undefined,
+      }));
+
+      setMeetingSalesByEventId((prev) => {
+        const next = new Map(prev);
+        next.set(eventId, nextRows);
+        return next;
+      });
+
+      setDeletedMeetingSalesByEventId((prev) => {
+        const next = new Map(prev);
+        next.delete(eventId);
+        return next;
+      });
+    } catch (err) {
+      console.error('saveMeetingSales failed', err);
+      alert('Failed to save meeting sales.');
+    } finally {
+      setSavingMeetingSalesEventId(null);
+    }
+  };
+
   const getDayOfWeek = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { weekday: 'long' });
@@ -866,33 +1297,197 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                       <div className="grid grid-cols-1 gap-2">
                         {events.slice(0,4).map((ev: any) => {
                           const parts = formatDateParts(ev.event_date);
-                          const isPast = ev.event_date ? new Date(ev.event_date + 'T23:59:59') < new Date() : false;
+                          const isPast = isPastEvent(ev);
                           const evAttendees = displayResponders
                             .filter(r => r.event_id === ev.id)
                             .reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
+                          const resultRow = meetingResultsByEventId.get(ev.id);
+                          const salesRows = meetingSalesByEventId.get(ev.id) || [];
                           return (
-                            <div key={ev.id} className={`flex items-center gap-3 p-2 rounded-md ${isPast ? 'bg-gray-50 text-gray-500' : 'bg-white shadow-sm'}`}>
-                              <div className={`w-20 text-center p-2 rounded ${isPast ? 'bg-gray-100' : 'bg-emerald-600 text-white'}`}>
-                                <div className="text-xs uppercase">{parts.month}</div>
-                                <div className="text-2xl font-extrabold leading-none">{parts.day}</div>
-                                <div className="text-xs">{parts.weekday}</div>
+                            <div key={ev.id} className={`rounded-md p-2 ${isPast ? 'bg-gray-50 text-gray-500' : 'bg-white shadow-sm'}`}>
+                              <div className="flex items-center gap-3">
+                                <div className={`w-20 text-center p-2 rounded ${isPast ? 'bg-gray-100' : 'bg-emerald-600 text-white'}`}>
+                                  <div className="text-xs uppercase">{parts.month}</div>
+                                  <div className="text-2xl font-extrabold leading-none">{parts.day}</div>
+                                  <div className="text-xs">{parts.weekday}</div>
+                                </div>
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm">{ev.venue_name || 'TBD'}</div>
+                                  <div className="text-xs text-slate-500">{ev.venue_city ? `${ev.venue_city}${ev.venue_state ? `, ${ev.venue_state}` : ''}` : ''}</div>
+                                  <div className="text-xs text-slate-400">Attendees: {evAttendees}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
+                                  {!!user && (
+                                    <button
+                                      type="button"
+                                      title="Edit meeting"
+                                      onClick={() => openEditMeeting(ev)}
+                                      className="text-xs text-slate-400 hover:text-blue-600 underline leading-none"
+                                    >Edit</button>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex-1">
-                                <div className="font-medium text-sm">{ev.venue_name || 'TBD'}</div>
-                                <div className="text-xs text-slate-500">{ev.venue_city ? `${ev.venue_city}${ev.venue_state ? `, ${ev.venue_state}` : ''}` : ''}</div>
-                                <div className="text-xs text-slate-400">Attendees: {evAttendees}</div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="text-sm text-slate-600">{ev.event_time ? formatTime(ev.event_time) : ''}</div>
-                                {!!user && (
-                                  <button
-                                    type="button"
-                                    title="Edit meeting"
-                                    onClick={() => openEditMeeting(ev)}
-                                    className="text-xs text-slate-400 hover:text-blue-600 underline leading-none"
-                                  >Edit</button>
-                                )}
-                              </div>
+
+                              {isPast && (
+                                <div className="mt-2 rounded border border-slate-200 bg-white p-2">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="text-xs font-semibold text-slate-700">Meeting Results</div>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveMeetingResult(ev)}
+                                      disabled={savingMeetingResultEventId === ev.id}
+                                      className="text-[11px] px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+                                    >
+                                      {savingMeetingResultEventId === ev.id ? 'Saving…' : 'Save results'}
+                                    </button>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                                    <input
+                                      inputMode="numeric"
+                                      value={formatNumberInput(resultRow?.attendees_actual)}
+                                      onChange={(e) => patchMeetingResult(ev.id, { attendees_actual: parseInteger(e.target.value) })}
+                                      placeholder="Attendees"
+                                      className="text-xs border rounded px-2 py-1.5"
+                                    />
+                                    <input
+                                      inputMode="numeric"
+                                      value={formatNumberInput(resultRow?.no_shows)}
+                                      onChange={(e) => patchMeetingResult(ev.id, { no_shows: parseInteger(e.target.value) })}
+                                      placeholder="No-shows"
+                                      className="text-xs border rounded px-2 py-1.5"
+                                    />
+                                    <input
+                                      inputMode="numeric"
+                                      value={formatNumberInput(resultRow?.walk_ins)}
+                                      onChange={(e) => patchMeetingResult(ev.id, { walk_ins: parseInteger(e.target.value) })}
+                                      placeholder="Walk-ins"
+                                      className="text-xs border rounded px-2 py-1.5"
+                                    />
+                                    <input
+                                      inputMode="numeric"
+                                      value={formatNumberInput(resultRow?.appointments_booked)}
+                                      onChange={(e) => patchMeetingResult(ev.id, { appointments_booked: parseInteger(e.target.value) })}
+                                      placeholder="Appointments booked"
+                                      className="text-xs border rounded px-2 py-1.5"
+                                    />
+                                    <input
+                                      inputMode="numeric"
+                                      value={formatNumberInput(resultRow?.appointments_attended)}
+                                      onChange={(e) => patchMeetingResult(ev.id, { appointments_attended: parseInteger(e.target.value) })}
+                                      placeholder="Appointments attended"
+                                      className="text-xs border rounded px-2 py-1.5"
+                                    />
+                                    <input
+                                      inputMode="numeric"
+                                      value={formatNumberInput(resultRow?.products_sold_count)}
+                                      onChange={(e) => patchMeetingResult(ev.id, { products_sold_count: parseInteger(e.target.value) })}
+                                      placeholder="Products sold count"
+                                      className="text-xs border rounded px-2 py-1.5"
+                                    />
+                                  </div>
+
+                                  <textarea
+                                    rows={2}
+                                    value={resultRow?.notes || ''}
+                                    onChange={(e) => patchMeetingResult(ev.id, { notes: e.target.value || null })}
+                                    placeholder="Results notes"
+                                    className="mt-2 w-full text-xs border rounded px-2 py-1.5"
+                                  />
+
+                                  <div className="mt-3 border-t pt-2">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="text-xs font-semibold text-slate-700">Sales</div>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => addMeetingSale(ev.id)}
+                                          className="text-[11px] px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1"
+                                        >
+                                          <Plus className="w-3 h-3" /> Add sale
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => saveMeetingSales(ev)}
+                                          disabled={savingMeetingSalesEventId === ev.id}
+                                          className="text-[11px] px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                        >
+                                          {savingMeetingSalesEventId === ev.id ? 'Saving…' : 'Save sales'}
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {salesRows.length === 0 ? (
+                                      <div className="text-[11px] text-slate-500">No sales rows.</div>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {salesRows.map((sale) => (
+                                          <div key={sale.id} className="rounded border border-slate-200 p-2 bg-slate-50">
+                                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                                              <input
+                                                value={sale.product_type || ''}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { product_type: e.target.value || null })}
+                                                placeholder="Product type"
+                                                className="text-xs border rounded px-2 py-1.5"
+                                              />
+                                              <input
+                                                value={sale.carrier_or_company || ''}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { carrier_or_company: e.target.value || null })}
+                                                placeholder="Carrier/company"
+                                                className="text-xs border rounded px-2 py-1.5"
+                                              />
+                                              <input
+                                                value={sale.status || ''}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { status: e.target.value || null })}
+                                                placeholder="Status"
+                                                className="text-xs border rounded px-2 py-1.5"
+                                              />
+                                              <input
+                                                inputMode="decimal"
+                                                value={formatNumberInput(sale.premium_or_asset_amount)}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { premium_or_asset_amount: parseDecimal(e.target.value) })}
+                                                placeholder="Premium/asset"
+                                                className="text-xs border rounded px-2 py-1.5"
+                                              />
+                                              <input
+                                                inputMode="decimal"
+                                                value={formatNumberInput(sale.gross_revenue)}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { gross_revenue: parseDecimal(e.target.value) })}
+                                                placeholder="Gross revenue"
+                                                className="text-xs border rounded px-2 py-1.5"
+                                              />
+                                              <input
+                                                inputMode="decimal"
+                                                value={formatNumberInput(sale.commission_amount)}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { commission_amount: parseDecimal(e.target.value) })}
+                                                placeholder="Commission"
+                                                className="text-xs border rounded px-2 py-1.5"
+                                              />
+                                            </div>
+                                            <div className="mt-2 flex items-start gap-2">
+                                              <textarea
+                                                rows={2}
+                                                value={sale.notes || ''}
+                                                onChange={(e) => patchMeetingSale(ev.id, sale.id, { notes: e.target.value || null })}
+                                                placeholder="Sale notes"
+                                                className="flex-1 text-xs border rounded px-2 py-1.5"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => removeMeetingSale(ev.id, sale.id)}
+                                                className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 inline-flex items-center gap-1"
+                                              >
+                                                <Trash2 className="w-3 h-3" /> Remove
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
