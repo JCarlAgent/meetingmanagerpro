@@ -1011,7 +1011,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   const saveMeetingResult = async (ev: any) => {
     const eventId = String(ev?.id || '');
-    if (!eventId) return;
+    if (!eventId) {
+      alert('Cannot save meeting results: meeting_id is missing.');
+      return;
+    }
+    if (!campaign?.id) {
+      alert('Cannot save meeting results: job_id is missing.');
+      return;
+    }
+
+    const hasMatchingMeeting = (events || []).some((e: any) => String(e?.id || '') === eventId);
+    if (!hasMatchingMeeting) {
+      alert(`Cannot save meeting results: meeting_id ${eventId} is not a known job_meetings.id for this campaign.`);
+      return;
+    }
 
     try {
       setSavingMeetingResultEventId(eventId);
@@ -1044,6 +1057,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         reported_at: new Date().toISOString(),
       };
 
+      console.info('[meeting_results] upsert payload', payload);
+
       const { data, error } = await supabase
         .from('meeting_results')
         .upsert(payload as any, { onConflict: 'job_id,meeting_id' })
@@ -1051,7 +1066,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           'id, job_id, meeting_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count, notes, reported_by, reported_at'
         )
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('[meeting_results] upsert failed', {
+          code: (error as any)?.code,
+          message: (error as any)?.message,
+          details: (error as any)?.details,
+          hint: (error as any)?.hint,
+          payload,
+          onConflict: 'job_id,meeting_id',
+        });
+        throw error;
+      }
 
       const saved = data as any;
       const savedResultId = String(saved.id);
@@ -1081,9 +1106,36 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         next.set(eventId, list);
         return next;
       });
+
+      console.info('[meeting_results] upsert success', {
+        id: savedResultId,
+        job_id: saved.job_id,
+        meeting_id: saved.meeting_id,
+      });
     } catch (err) {
-      console.error('saveMeetingResult failed', err);
-      alert('Failed to save meeting results.');
+      const e: any = err;
+      const code = e?.code ? ` (${e.code})` : '';
+      const msg = e?.message || String(err);
+      const details = e?.details ? `\nDetails: ${e.details}` : '';
+      const hint = e?.hint ? `\nHint: ${e.hint}` : '';
+
+      console.error('saveMeetingResult failed', {
+        code: e?.code,
+        message: e?.message,
+        details: e?.details,
+        hint: e?.hint,
+      });
+
+      let extra = '';
+      if (e?.code === '42P10') {
+        extra = '\n\nMissing unique constraint/index for ON CONFLICT (job_id,meeting_id).';
+      } else if (e?.code === '42501') {
+        extra = '\n\nRLS denied this operation for current user.';
+      } else if (e?.code === '23503') {
+        extra = '\n\nmeeting_id must reference an existing public.job_meetings.id.';
+      }
+
+      alert(`Failed to save meeting results${code}: ${msg}${details}${hint}${extra}`);
     } finally {
       setSavingMeetingResultEventId(null);
     }
