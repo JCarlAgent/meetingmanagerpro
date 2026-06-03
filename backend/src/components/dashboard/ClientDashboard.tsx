@@ -295,6 +295,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
       const respondersData = respondersResp.data ?? [];
       const resultsData = resultsResp.data ?? [];
       const salesData = salesResp.data ?? [];
+      const productsSoldFromSales = salesData.length > 0 ? salesData.length : null;
 
       setMeetingNumbers({
         totalMailed,
@@ -305,7 +306,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
         walkIns: sumNullable((resultsData as any[]).map((r) => r.walk_ins)),
         appointmentsBooked: sumNullable((resultsData as any[]).map((r) => r.appointments_booked)),
         appointmentsAttended: sumNullable((resultsData as any[]).map((r) => r.appointments_attended)),
-        productsSold: sumNullable((resultsData as any[]).map((r) => r.products_sold_count)),
+        productsSold: productsSoldFromSales,
         grossRevenue: sumNullable((salesData as any[]).map((s) => s.gross_revenue)),
         commission: sumNullable((salesData as any[]).map((s) => s.commission_amount)),
       });
