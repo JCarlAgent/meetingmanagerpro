@@ -208,7 +208,7 @@ export default async function handler(req: any, res: any) {
   const supabaseAdmin = getSupabaseAdmin();
 
   const { data: credsData, error: credsError } = await supabaseAdmin
-    .from('user_workthelead_credentials')
+    .from('user_seminaredge_credentials')
     .select('username_enc,password_enc')
     .eq('user_id', userId)
     .maybeSingle();
@@ -243,7 +243,7 @@ export default async function handler(req: any, res: any) {
     usernameLength: username.trim().length,
     passwordLength: password.trim().length,
     authParamNamesUsed: ['UserName', 'Password'],
-    credentialSource: 'user_workthelead_credentials',
+    credentialSource: 'user_seminaredge_credentials',
     requestMethod: 'GET',
   };
 

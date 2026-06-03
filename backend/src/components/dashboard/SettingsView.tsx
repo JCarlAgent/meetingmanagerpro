@@ -20,6 +20,12 @@ const SettingsView: React.FC = () => {
   const [leadsPreview, setLeadsPreview] = useState<string | null>(null);
   const [leadsPreviewError, setLeadsPreviewError] = useState<string | null>(null);
 
+  const [seminarEdgeUsername, setSeminarEdgeUsername] = useState('');
+  const [seminarEdgePassword, setSeminarEdgePassword] = useState('');
+  const [isSavingSeminarEdge, setIsSavingSeminarEdge] = useState(false);
+  const [isTestingSeminarEdge, setIsTestingSeminarEdge] = useState(false);
+  const [seminarEdgeStatus, setSeminarEdgeStatus] = useState<string | null>(null);
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -28,6 +34,12 @@ const SettingsView: React.FC = () => {
 
   // Saved credential preview (loaded on mount)
   const [credPreview, setCredPreview] = useState<{
+    hasCredentials: boolean;
+    usernamePreview?: string;
+    savedAt?: string | null;
+  } | null>(null);
+
+  const [seminarEdgeCredPreview, setSeminarEdgeCredPreview] = useState<{
     hasCredentials: boolean;
     usernamePreview?: string;
     savedAt?: string | null;
@@ -44,6 +56,14 @@ const SettingsView: React.FC = () => {
         if (resp.ok) {
           const data = await resp.json().catch(() => null);
           if (data) setCredPreview(data);
+        }
+
+        const seminarEdgeResp = await fetch('/api/integrations/seminaredge/credentials', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (seminarEdgeResp.ok) {
+          const data = await seminarEdgeResp.json().catch(() => null);
+          if (data) setSeminarEdgeCredPreview(data);
         }
       } catch { /* silently ignore */ }
     })();
@@ -122,6 +142,84 @@ const SettingsView: React.FC = () => {
       setStatus(lines.join('\n'));
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const saveSeminarEdgeCredentials = async () => {
+    setSeminarEdgeStatus(null);
+    setIsSavingSeminarEdge(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setSeminarEdgeStatus('Not logged in. Please log in again.');
+        return;
+      }
+
+      const resp = await fetch('/api/integrations/seminaredge/credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username: seminarEdgeUsername, password: seminarEdgePassword }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setSeminarEdgeStatus(data?.error || 'Failed to save Seminar Edge credentials');
+        return;
+      }
+
+      setSeminarEdgePassword('');
+      setSeminarEdgeStatus('Saved.');
+
+      setSeminarEdgeCredPreview({
+        hasCredentials: true,
+        usernamePreview: seminarEdgeUsername.length > 4
+          ? `${seminarEdgeUsername.slice(0, 2)}***${seminarEdgeUsername.slice(-2)}`
+          : '***',
+        savedAt: new Date().toISOString(),
+      });
+    } finally {
+      setIsSavingSeminarEdge(false);
+    }
+  };
+
+  const testSeminarEdgeConnection = async () => {
+    setSeminarEdgeStatus(null);
+    setIsTestingSeminarEdge(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setSeminarEdgeStatus('Not logged in. Please log in again.');
+        return;
+      }
+
+      const resp = await fetch('/api/integrations/seminaredge/test', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        setSeminarEdgeStatus(`Error ${resp.status}: ${data?.error || 'Seminar Edge test failed'}`);
+        return;
+      }
+
+      const lines: string[] = [];
+      lines.push(`Status: ${data?.ok ? '✓ Ready' : '✗ Failed'}`);
+      if (data?.usernamePreview) lines.push(`Username used: ${data.usernamePreview}`);
+      if (typeof data?.usernamePresent === 'boolean') lines.push(`Username present: ${data.usernamePresent}`);
+      if (typeof data?.passwordPresent === 'boolean') lines.push(`Password present: ${data.passwordPresent}`);
+      if (data?.credentialSource) lines.push(`Credential source: ${data.credentialSource}`);
+      if (data?.message) lines.push(data.message);
+
+      setSeminarEdgeStatus(lines.join('\n'));
+    } finally {
+      setIsTestingSeminarEdge(false);
     }
   };
 
@@ -424,6 +522,96 @@ const SettingsView: React.FC = () => {
                       {leadsPreview}
                     </pre>
                   )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mt-6">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 bg-emerald-600/10 rounded-lg flex items-center justify-center">
+            <Plug className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-slate-900">TeleDirect Seminar Edge Credentials</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Enter your Seminar Edge credentials. Stored securely server-side and kept separate from Work The Lead credentials.
+            </p>
+
+            {seminarEdgeCredPreview?.hasCredentials && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                <Shield className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>
+                  Saved credentials for: <strong className="text-slate-800">{seminarEdgeCredPreview.usernamePreview}</strong>
+                  {seminarEdgeCredPreview.savedAt && (
+                    <> &mdash; last updated {new Date(seminarEdgeCredPreview.savedAt).toLocaleString()}</>
+                  )}
+                </span>
+              </div>
+            )}
+            {seminarEdgeCredPreview && !seminarEdgeCredPreview.hasCredentials && (
+              <div className="mt-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                No Seminar Edge credentials saved yet.
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  UserName
+                </label>
+                <input
+                  value={seminarEdgeUsername}
+                  onChange={(e) => setSeminarEdgeUsername(e.target.value)}
+                  placeholder="Seminar Edge UserName"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Password
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="password"
+                    value={seminarEdgePassword}
+                    onChange={(e) => setSeminarEdgePassword(e.target.value)}
+                    placeholder="Enter password to save/update"
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  For security, the password is never shown after save.
+                </p>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={saveSeminarEdgeCredentials}
+                  disabled={isSavingSeminarEdge}
+                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  {isSavingSeminarEdge ? 'Saving…' : 'Save Seminar Edge credentials'}
+                </button>
+                <button
+                  type="button"
+                  onClick={testSeminarEdgeConnection}
+                  disabled={isTestingSeminarEdge}
+                  className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 font-medium px-4 py-2 rounded-lg transition-colors border border-slate-200"
+                >
+                  <TestTube2 className="w-4 h-4" />
+                  {isTestingSeminarEdge ? 'Testing…' : 'Test Seminar Edge credentials'}
+                </button>
+              </div>
+
+              {seminarEdgeStatus && (
+                <div className="mt-3 text-sm text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 whitespace-pre-wrap break-all">
+                  {seminarEdgeStatus}
                 </div>
               )}
             </div>
