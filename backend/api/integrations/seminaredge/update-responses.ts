@@ -309,6 +309,16 @@ export default async function handler(req: any, res: any) {
       looksXml,
       bodyHasError,
       rawPreview: normalizedBody.slice(0, 1200),
+      authDiagnostics: {
+        usernamePresent: credDiag.usernamePresent,
+        passwordPresent: credDiag.passwordPresent,
+        usernameLength: credDiag.usernameLength,
+        passwordLength: credDiag.passwordLength,
+        authParamNamesUsed: credDiag.authParamNamesUsed,
+        credentialSource: credDiag.credentialSource,
+        requestMethod: credDiag.requestMethod,
+        safeUrl,
+      },
       ...credDiag,
     });
     return;

@@ -490,24 +490,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
       const data = await resp.json().catch(() => ({}));
 
-      const summary = {
-        httpStatus: resp.status,
-        endpoint: data?.endpoint ?? null,
-        fieldNames: data?.fieldNames ?? [],
-        totalA: data?.totalA ?? 0,
-        totalG: data?.totalG ?? 0,
-        inserted: data?.inserted ?? 0,
-        updated: data?.updated ?? 0,
-        skipped: data?.skipped ?? 0,
-        orphanGuests: data?.pairingDiagnostics?.orphanGuestRows ?? 0,
-        pairingStrategy: data?.pairingDiagnostics?.strategy ?? null,
-        samplePairs: data?.pairingDiagnostics?.samplePairs ?? [],
-        recordsParsed: data?.source?.recordsParsed ?? null,
-        error: data?.error ?? null,
-        rawPreview: data?.rawPreview ?? null,
-      };
+      const fullResponse =
+        data && typeof data === 'object'
+          ? { httpStatus: resp.status, ...(data as Record<string, unknown>) }
+          : { httpStatus: resp.status, rawResponse: data ?? null };
 
-      setSeminarEdgeDebugOutput(JSON.stringify(summary, null, 2));
+      setSeminarEdgeDebugOutput(JSON.stringify(fullResponse, null, 2));
 
       if (resp.ok && ((data?.inserted ?? 0) > 0 || (data?.updated ?? 0) > 0)) {
         reloadResponders();
