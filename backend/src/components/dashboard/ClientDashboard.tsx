@@ -813,8 +813,9 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
         {expanded.numbers && (
           <div className="p-6 md:p-8 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300">
              
-             {/* Horizontal full-width stats row */}
-             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 mb-8">
+             {/* Campaign volume */}
+             <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Campaign Volume</div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                  <Mail className="w-6 h-6 text-slate-400 mb-3 block" />
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Mailed</div>
@@ -832,19 +833,15 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                    <div className="text-3xl font-black text-blue-900">{meetingNumbers.totalResponders.toLocaleString()}</div>
                  </div>
                </div>
-               <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
-                 <Users className="w-6 h-6 text-purple-400 mb-3 block" />
-                 <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Actual Attendees</div>
-                 <div className="text-3xl font-black text-purple-900">{formatMetric(meetingNumbers.actualAttendees)}</div>
-               </div>
-               <div className="bg-amber-50 p-6 rounded-xl border border-amber-100 col-span-2 lg:col-span-1">
-                 <CalendarCheck className="w-6 h-6 text-amber-400 mb-3 block" />
-                 <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Appointments Booked</div>
-                 <div className="text-3xl font-black text-amber-900">{formatMetric(meetingNumbers.appointmentsBooked)}</div>
-               </div>
              </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+             {/* Attendance and appointments */}
+             <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Attendance &amp; Appointments</div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+               <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                 <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Actual Attendees</div>
+                 <div className="text-2xl font-black text-purple-900">{formatMetric(meetingNumbers.actualAttendees)}</div>
+               </div>
                <div className="bg-white p-4 rounded-xl border border-slate-200">
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">No Shows</div>
                  <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.noShows)}</div>
@@ -857,6 +854,15 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Appointments Attended</div>
                  <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.appointmentsAttended)}</div>
                </div>
+               <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                 <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Appointments Booked</div>
+                 <div className="text-2xl font-black text-amber-900">{formatMetric(meetingNumbers.appointmentsBooked)}</div>
+               </div>
+             </div>
+
+             {/* Sales and revenue */}
+             <div className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Sales &amp; Revenue</div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                <div className="bg-white p-4 rounded-xl border border-slate-200">
                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Products Sold</div>
                  <div className="text-2xl font-black text-slate-900">{formatMetric(meetingNumbers.productsSold)}</div>
