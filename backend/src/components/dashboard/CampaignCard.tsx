@@ -104,6 +104,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [replaceExisting, setReplaceExisting] = useState(false);
+  const [seminarDebugEventId, setSeminarDebugEventId] = useState<string>('');
+  const [seminarDebugMeetingId, setSeminarDebugMeetingId] = useState<string>('');
+  const [seminarDebugSeminarId, setSeminarDebugSeminarId] = useState<string>('276067');
+  const [isTestingSeminarEdge, setIsTestingSeminarEdge] = useState(false);
+  const [seminarEdgeDebugOutput, setSeminarEdgeDebugOutput] = useState<string | null>(null);
   const [bulkAssignEventId, setBulkAssignEventId] = useState<string>('');
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [bulkAssignMessage, setBulkAssignMessage] = useState<string | null>(null);
@@ -243,6 +248,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       cancelled = true;
     };
   }, [campaign.id, events]);
+
+  // Seed the temporary Seminar Edge tester with the first meeting in this campaign.
+  useEffect(() => {
+    if (seminarDebugEventId) return;
+    if (!events?.length) return;
+    setSeminarDebugEventId(String(events[0].id));
+  }, [events, seminarDebugEventId]);
 
   // Prefer live-loaded responders; fall back to prop (legacy campaigns view) then stats count
   const displayResponders = localResponders.length > 0 ? localResponders : responders;
@@ -433,6 +445,77 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setImportMessage(`[FAIL] ${msg}`);
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const runSeminarEdgeDebugTest = async () => {
+    const eventId = seminarDebugEventId.trim();
+    const meetingId = seminarDebugMeetingId.trim();
+    const seminarId = seminarDebugSeminarId.trim();
+
+    if (!eventId) {
+      setSeminarEdgeDebugOutput('Select a meeting event first.');
+      return;
+    }
+    if (!meetingId && !seminarId) {
+      setSeminarEdgeDebugOutput('Enter a Meeting ID or Seminar ID.');
+      return;
+    }
+
+    setIsTestingSeminarEdge(true);
+    setSeminarEdgeDebugOutput('Running Seminar Edge route test…');
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) {
+        setSeminarEdgeDebugOutput('Not logged in.');
+        return;
+      }
+
+      const resp = await fetch('/api/integrations/seminaredge/update-responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          jobId: campaign.id,
+          eventId,
+          meetingId: meetingId || undefined,
+          seminarId: seminarId || undefined,
+          replaceExisting: false,
+        }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      const summary = {
+        httpStatus: resp.status,
+        endpoint: data?.endpoint ?? null,
+        fieldNames: data?.fieldNames ?? [],
+        totalA: data?.totalA ?? 0,
+        totalG: data?.totalG ?? 0,
+        inserted: data?.inserted ?? 0,
+        updated: data?.updated ?? 0,
+        skipped: data?.skipped ?? 0,
+        orphanGuests: data?.pairingDiagnostics?.orphanGuestRows ?? 0,
+        pairingStrategy: data?.pairingDiagnostics?.strategy ?? null,
+        samplePairs: data?.pairingDiagnostics?.samplePairs ?? [],
+        recordsParsed: data?.source?.recordsParsed ?? null,
+        error: data?.error ?? null,
+        rawPreview: data?.rawPreview ?? null,
+      };
+
+      setSeminarEdgeDebugOutput(JSON.stringify(summary, null, 2));
+
+      if (resp.ok && ((data?.inserted ?? 0) > 0 || (data?.updated ?? 0) > 0)) {
+        reloadResponders();
+      }
+    } catch (err: any) {
+      setSeminarEdgeDebugOutput(`Seminar Edge debug failed: ${err?.message || String(err)}`);
+    } finally {
+      setIsTestingSeminarEdge(false);
     }
   };
 
@@ -2017,6 +2100,66 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               >
                                 Debug TeleDirect API
                               </button>
+
+                              {/* Temporary Seminar Edge route tester (master-admin only) */}
+                              <div className="w-full mt-2 p-2 border border-amber-200 bg-amber-50 rounded">
+                                <div className="text-xs font-semibold text-amber-800">Temporary Debug: Seminar Edge Route Test</div>
+                                <div className="text-[11px] text-amber-700 mt-0.5">
+                                  Session-authenticated test only. This always sends replaceExisting=false and returns diagnostics only.
+                                </div>
+                                <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="block text-[11px] text-slate-600 mb-1">Event (meeting row)</label>
+                                    <select
+                                      value={seminarDebugEventId}
+                                      onChange={e => setSeminarDebugEventId(e.target.value)}
+                                      className="w-full p-1.5 text-xs border border-slate-300 rounded bg-white"
+                                    >
+                                      <option value="">— select event —</option>
+                                      {events.map(ev => (
+                                        <option key={ev.id} value={ev.id}>{formatEventOption(ev)}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] text-slate-600 mb-1">Meeting ID (preferred)</label>
+                                    <input
+                                      value={seminarDebugMeetingId}
+                                      onChange={e => setSeminarDebugMeetingId(e.target.value)}
+                                      placeholder="e.g. 595037"
+                                      className="w-full p-1.5 text-xs border border-slate-300 rounded bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] text-slate-600 mb-1">Seminar ID (fallback)</label>
+                                    <input
+                                      value={seminarDebugSeminarId}
+                                      onChange={e => setSeminarDebugSeminarId(e.target.value)}
+                                      placeholder="e.g. 276067"
+                                      className="w-full p-1.5 text-xs border border-slate-300 rounded bg-white"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <button
+                                    onClick={runSeminarEdgeDebugTest}
+                                    disabled={isTestingSeminarEdge || !seminarDebugEventId || (!seminarDebugMeetingId.trim() && !seminarDebugSeminarId.trim())}
+                                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded text-xs"
+                                  >
+                                    {isTestingSeminarEdge ? 'Testing…' : 'Run Seminar Edge Test'}
+                                  </button>
+                                  <button
+                                    onClick={() => setSeminarEdgeDebugOutput(null)}
+                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 rounded text-xs"
+                                  >
+                                    Clear Output
+                                  </button>
+                                </div>
+                                {seminarEdgeDebugOutput && (
+                                  <pre className="w-full mt-2 p-2 bg-white border border-amber-200 rounded text-[11px] text-slate-700 whitespace-pre-wrap break-words max-h-64 overflow-auto">{seminarEdgeDebugOutput}</pre>
+                                )}
+                              </div>
+
                               {syncMessage && (
                                 <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 break-all whitespace-pre-wrap">{syncMessage}</div>
                               )}
