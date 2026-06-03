@@ -275,7 +275,7 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
     };
 
     Promise.all([
-      supabase.from('responders').select('campaign_id').in('campaign_id', campaignIds),
+      supabase.from('responders').select('campaign_id, guests, status').in('campaign_id', campaignIds),
       supabase
         .from('meeting_results')
         .select('job_id, attendees_actual, no_shows, walk_ins, appointments_booked, appointments_attended, products_sold_count')
@@ -296,11 +296,15 @@ export default function ClientDashboard({ orgId, isFmo, onNavigate, campaigns = 
       const resultsData = resultsResp.data ?? [];
       const salesData = salesResp.data ?? [];
       const productsSoldFromSales = salesData.length > 0 ? salesData.length : null;
+      // Match existing dashboard responder logic: count A + G and exclude cancelled.
+      const totalRespondersIncludingGuests = (respondersData as any[])
+        .filter((r) => String(r?.status || 'registered').trim().toLowerCase() !== 'cancelled')
+        .reduce((sum, r) => sum + 1 + (Number.isFinite(Number(r?.guests)) ? Number(r.guests) : 0), 0);
 
       setMeetingNumbers({
         totalMailed,
         totalMeetings,
-        totalResponders: respondersData.length,
+        totalResponders: totalRespondersIncludingGuests,
         actualAttendees: sumNullable((resultsData as any[]).map((r) => r.attendees_actual)),
         noShows: sumNullable((resultsData as any[]).map((r) => r.no_shows)),
         walkIns: sumNullable((resultsData as any[]).map((r) => r.walk_ins)),
