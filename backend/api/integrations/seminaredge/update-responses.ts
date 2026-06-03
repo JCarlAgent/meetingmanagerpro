@@ -223,13 +223,34 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const username = decryptString(credsData.username_enc);
-  const password = decryptString(credsData.password_enc);
-
-  if (!username?.trim() || !password?.trim()) {
+  let username: string;
+  let password: string;
+  try {
+    username = decryptString(credsData.username_enc);
+    password = decryptString(credsData.password_enc);
+  } catch (decryptErr: any) {
     send(res, 500, {
-      error: 'Saved credentials are invalid after decrypt. Re-save credentials in Settings.',
-      usernamePreview: usernamePreview(username),
+      error: 'Failed to decrypt saved credentials. The encryption key may have changed. Re-save credentials in Settings.',
+      decryptError: decryptErr?.message ?? 'unknown',
+    });
+    return;
+  }
+
+  // Safe diagnostics — lengths only, no values ever exposed.
+  const credDiag = {
+    usernamePresent: username.trim().length > 0,
+    passwordPresent: password.trim().length > 0,
+    usernameLength: username.trim().length,
+    passwordLength: password.trim().length,
+    authParamNamesUsed: ['UserName', 'Password'],
+    credentialSource: 'user_workthelead_credentials',
+    requestMethod: 'GET',
+  };
+
+  if (!credDiag.usernamePresent || !credDiag.passwordPresent) {
+    send(res, 500, {
+      error: 'Saved credentials are blank after decrypt. Re-save credentials in Settings.',
+      ...credDiag,
     });
     return;
   }
@@ -281,13 +302,14 @@ export default async function handler(req: any, res: any) {
 
   if (!resp.ok || bodyHasError) {
     send(res, 502, {
-      error: `Seminar Edge request failed (${resp.status})`,
+      error: `Seminar Edge request failed (HTTP ${resp.status})`,
       endpoint,
       safeUrl,
       httpStatus: resp.status,
       looksXml,
       bodyHasError,
       rawPreview: normalizedBody.slice(0, 1200),
+      ...credDiag,
     });
     return;
   }
