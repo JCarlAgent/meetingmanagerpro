@@ -46,7 +46,17 @@ const Dashboard: React.FC = () => {
   const campaignsTableExistsRef = useRef<boolean | null>(null);
   const [debugInfo, setDebugInfo] = useState<any>(null);
 
-  useEffect(() => { fetchData(); }, [user]);
+  useEffect(() => {
+    // Clear UI state immediately to avoid showing stale data during user/org switches
+    setCampaigns([]);
+    setEvents([]);
+    setResponders([]);
+    setIsLoading(true);
+
+    // Trigger data fetch when user identity or effective org changes.
+    // Depend on user id/org/is_master_admin and actingOrgId to catch acting-org switches.
+    fetchData();
+  }, [user?.id, user?.org_id, user?.is_master_admin, actingOrgId]);
 
   useEffect(() => {
     if (!user) return;
