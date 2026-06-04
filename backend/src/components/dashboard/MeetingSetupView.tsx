@@ -124,25 +124,6 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
     }
   };
 
-  if (user?.is_master_admin && !actingOrg?.id) {
-    return (
-      <div className="max-w-5xl mx-auto">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Meeting Setup</h1>
-          <p className="text-slate-600 mt-2">Select a client first to continue onboarding.</p>
-          <button
-            type="button"
-            onClick={() => onNavigate('master-clients')}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
-          >
-            Go to Clients
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
     try {
       const saved = loadSetupState();
@@ -614,6 +595,25 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       value: `${m.location_name} • ${m.address1} • ${m.city}, ${m.state} • ${m.date} ${m.time}`,
     }));
   }, [meetings]);
+
+  if (user?.is_master_admin && !actingOrg?.id) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Meeting Setup</h1>
+          <p className="text-slate-600 mt-2">Select a client first to continue onboarding.</p>
+          <button
+            type="button"
+            onClick={() => onNavigate('master-clients')}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
+          >
+            Go to Clients
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto">

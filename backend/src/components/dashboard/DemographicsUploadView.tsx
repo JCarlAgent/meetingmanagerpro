@@ -81,17 +81,6 @@ const DemographicsUploadView: React.FC = () => {
 
   const effectiveOrgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
 
-  if (user?.is_master_admin && !actingOrg?.id) {
-    return (
-      <div className="max-w-5xl mx-auto">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Demographics CSV</h1>
-          <p className="text-slate-600 mt-2">Select a client first (Sidebar → Master → Clients).</p>
-        </div>
-      </div>
-    );
-  }
-
   const loadJobs = async () => {
     setIsLoadingJobs(true);
     try {
@@ -296,6 +285,17 @@ const DemographicsUploadView: React.FC = () => {
       setIsUploading(false);
     }
   };
+
+  if (user?.is_master_admin && !actingOrg?.id) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Demographics CSV</h1>
+          <p className="text-slate-600 mt-2">Select a client first (Sidebar → Master → Clients).</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
