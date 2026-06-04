@@ -223,6 +223,45 @@ export default async function handler(req: any, res: any) {
     const uniqueRecipients = Array.from(byFingerprint.values());
     const duplicatesSkipped = Math.max(0, rows.length - uniqueRecipients.length);
 
+    // Insert raw parsed rows into campaign_mailed_list_records so we can
+    // later link them to `recipients` via `recipient_id`.
+    const rawInsertBatchSize = 500;
+    const insertedRecords: Array<{ id: string; address: string | null; city: string | null; state: string | null; zip: string | null }> = [];
+    function buildRawRecord(row: CsvRow) {
+      const individual_name = pick(row, ['individual_name', 'individualname', 'individual name']);
+      const first = pick(row, ['first_name', 'firstname', 'first name']);
+      const last = pick(row, ['last_name', 'lastname', 'last name']);
+      const address = pick(row, ['address1', 'address_1', 'address', 'street', 'street_address', 'mailing_address', 'address line 1']);
+      const city = pick(row, ['city', 'town']);
+      const state = pick(row, ['state', 'st']);
+      const zip = pick(row, ['zip', 'zipcode', 'zip_code', 'postal', 'postal_code']);
+      return {
+        campaign_id: jobId,
+        individual_name: individual_name || null,
+        first_name: first || null,
+        last_name: last || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        zip: zip5(zip) || null,
+        claritas_ipa: pick(row, ['claritas_ipa', 'claritas', 'ipa']) || null,
+        age_band: pick(row, ['age_band', 'ageband']) || null,
+        est_income_code: pick(row, ['est_income_code', 'est_income_code']) || null,
+        est_income_range: pick(row, ['est_income_range', 'est_income_narrow_range']) || null,
+      };
+    }
+
+    for (let i = 0; i < rows.length; i += rawInsertBatchSize) {
+      const batch = rows.slice(i, i + rawInsertBatchSize).map(buildRawRecord);
+      const { data: insData, error: insErr } = await supabaseAdmin
+        .from('campaign_mailed_list_records')
+        .insert(batch)
+        .select('id, address, city, state, zip');
+
+      if (insErr) throw insErr;
+      insertedRecords.push(...((insData ?? []) as any));
+    }
+
     // Batch upsert recipients and insert mailings
     const batchSize = 500;
     let recipientsUpserted = 0;
@@ -279,6 +318,57 @@ export default async function handler(req: any, res: any) {
           throw mailErr;
         }
         mailingsInserted += (count ?? mailings.length);
+      }
+    }
+
+    // Link inserted campaign_mailed_list_records to recipients by fingerprint
+    // Build fingerprint -> recipient_id map from upserted recipients
+    const fpToId = new Map<string, string>();
+    // upserted recipients were stored above as `recipientsUpserted` but we
+    // retrieved ids in the upsert step (fpToId was local there). For safety,
+    // query recipients for this mailing_list upload by org_id and recent
+    // fingerprints derived from insertedRecords.
+    if (insertedRecords.length) {
+      // Recompute fingerprints for inserted records and map id -> fingerprint
+      const idToFp = new Map<string, string>();
+      for (const r of insertedRecords) {
+        const fp = fingerprintAddress({ address1: r.address, address2: '', city: r.city, state: r.state, zip: r.zip });
+        idToFp.set(r.id, fp);
+      }
+
+      // Fetch recipients matching these fingerprints for this org
+      const fps = Array.from(new Set(idToFp.values()));
+      const fpBatches: string[][] = [];
+      for (let i = 0; i < fps.length; i += 500) fpBatches.push(fps.slice(i, i + 500));
+      for (const fb of fpBatches) {
+        const { data: recs } = await supabaseAdmin
+          .from('recipients')
+          .select('id,fingerprint')
+          .in('fingerprint', fb);
+        for (const rr of (recs ?? []) as Array<{ id: string; fingerprint: string }>) {
+          fpToId.set(rr.fingerprint, rr.id);
+        }
+      }
+
+      // Group inserted record IDs by resolved recipient_id and update in batches
+      const byRecipient = new Map<string, string[]>();
+      for (const [id, fp] of idToFp.entries()) {
+        const rid = fpToId.get(fp);
+        if (!rid) continue;
+        const arr = byRecipient.get(rid) ?? [];
+        arr.push(id);
+        byRecipient.set(rid, arr);
+      }
+
+      for (const [recipient_id, ids] of byRecipient.entries()) {
+        for (let i = 0; i < ids.length; i += 500) {
+          const chunk = ids.slice(i, i + 500);
+          const { error: updErr } = await supabaseAdmin
+            .from('campaign_mailed_list_records')
+            .update({ recipient_id })
+            .in('id', chunk);
+          if (updErr) throw updErr;
+        }
       }
     }
 
