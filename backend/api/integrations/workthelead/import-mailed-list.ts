@@ -22,6 +22,7 @@
  */
 
 import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
+import { runMailedListPostprocess } from '../../_lib/mailedListPostprocess.js';
 
 // Each chunk is ~200 rows × ~200 bytes ≈ 40 KB raw → ~50 KB JSON-encoded.
 export const config = {
@@ -510,6 +511,21 @@ export default async function handler(req: any, res: any) {
     step = 'done';
     const allErrors = [...parseErrors, ...batchErrors];
     const firstRow = records[0] ?? null;
+
+    // If this is the final chunk of a real run, run the post-processing
+    // to create job_mailing_lists, recipients, mailings, and link records.
+    let postprocessResult: any = null;
+    if (chunkIndex === totalChunks - 1 && !isTestRun) {
+      try {
+        const admin = getSupabaseAdmin();
+        postprocessResult = await runMailedListPostprocess(admin, jobId, { mailedAtIso: new Date().toISOString() });
+      } catch (err: any) {
+        console.error('[import-mailed-list] postprocess error:', err);
+        // return an error so client sees failure; preserve insert success info
+        return res.status(500).json({ ok: false, step: 'postprocess', error: err?.message ?? String(err) });
+      }
+    }
+
     return res.status(200).json({
       ok: true,
       step,
@@ -534,6 +550,7 @@ export default async function handler(req: any, res: any) {
         homeowner_flag1:  firstRow.homeowner_flag1,
       } : null,
       importMode,
+      postprocess: postprocessResult,
     });
 
   } catch (err: any) {

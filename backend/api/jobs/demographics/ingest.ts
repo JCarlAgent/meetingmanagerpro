@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import Papa from 'papaparse';
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin.js';
+import { runMailedListPostprocess } from '../../_lib/mailedListPostprocess.js';
 
 type CsvRow = Record<string, unknown>;
 
@@ -262,115 +263,10 @@ export default async function handler(req: any, res: any) {
       insertedRecords.push(...((insData ?? []) as any));
     }
 
-    // Batch upsert recipients and insert mailings
-    const batchSize = 500;
-    let recipientsUpserted = 0;
-    let mailingsInserted = 0;
-
-    for (let i = 0; i < uniqueRecipients.length; i += batchSize) {
-      const batch = uniqueRecipients.slice(i, i + batchSize);
-
-      const { data: upserted, error: upErr } = await supabaseAdmin
-        .from('recipients')
-        .upsert(batch, { onConflict: 'org_id,fingerprint' })
-        .select('id,fingerprint');
-
-      if (upErr) throw upErr;
-
-      const upsertedRows = ((upserted ?? []) as unknown as Array<{ id: string; fingerprint: string }>);
-      recipientsUpserted += upsertedRows.length;
-
-      const fpToId = new Map<string, string>();
-      for (const r of upsertedRows) {
-        fpToId.set(r.fingerprint, r.id);
-      }
-
-      const mailings: Array<{
-        org_id: string;
-        job_id: string;
-        recipient_id: string;
-        mailing_list_id: string;
-        mailed_at: string;
-        pieces: number;
-      }> = [];
-
-      for (const r of batch) {
-        const recipient_id = fpToId.get(r.fingerprint);
-        if (!recipient_id) continue;
-        mailings.push({
-          org_id: job.org_id,
-          job_id: jobId,
-          recipient_id,
-          mailing_list_id: listRow.id,
-          mailed_at: mailedAtIso,
-          pieces: 1,
-        });
-      }
-
-      if (mailings.length) {
-        const { error: mailErr, count } = await supabaseAdmin
-          .from('mailings')
-          .insert(mailings, { count: 'exact' });
-
-        if (mailErr) {
-          // If re-ingested, unique index may raise errors. Return a helpful message.
-          // Prefer surfacing error and letting the user decide.
-          throw mailErr;
-        }
-        mailingsInserted += (count ?? mailings.length);
-      }
-    }
-
-    // Link inserted campaign_mailed_list_records to recipients by fingerprint
-    // Build fingerprint -> recipient_id map from upserted recipients
-    const fpToId = new Map<string, string>();
-    // upserted recipients were stored above as `recipientsUpserted` but we
-    // retrieved ids in the upsert step (fpToId was local there). For safety,
-    // query recipients for this mailing_list upload by org_id and recent
-    // fingerprints derived from insertedRecords.
-    if (insertedRecords.length) {
-      // Recompute fingerprints for inserted records and map id -> fingerprint
-      const idToFp = new Map<string, string>();
-      for (const r of insertedRecords) {
-        const fp = fingerprintAddress({ address1: r.address, address2: '', city: r.city, state: r.state, zip: r.zip });
-        idToFp.set(r.id, fp);
-      }
-
-      // Fetch recipients matching these fingerprints for this org
-      const fps = Array.from(new Set(idToFp.values()));
-      const fpBatches: string[][] = [];
-      for (let i = 0; i < fps.length; i += 500) fpBatches.push(fps.slice(i, i + 500));
-      for (const fb of fpBatches) {
-        const { data: recs } = await supabaseAdmin
-          .from('recipients')
-          .select('id,fingerprint')
-          .in('fingerprint', fb);
-        for (const rr of (recs ?? []) as Array<{ id: string; fingerprint: string }>) {
-          fpToId.set(rr.fingerprint, rr.id);
-        }
-      }
-
-      // Group inserted record IDs by resolved recipient_id and update in batches
-      const byRecipient = new Map<string, string[]>();
-      for (const [id, fp] of idToFp.entries()) {
-        const rid = fpToId.get(fp);
-        if (!rid) continue;
-        const arr = byRecipient.get(rid) ?? [];
-        arr.push(id);
-        byRecipient.set(rid, arr);
-      }
-
-      for (const [recipient_id, ids] of byRecipient.entries()) {
-        for (let i = 0; i < ids.length; i += 500) {
-          const chunk = ids.slice(i, i + 500);
-          const { error: updErr } = await supabaseAdmin
-            .from('campaign_mailed_list_records')
-            .update({ recipient_id })
-            .in('id', chunk);
-          if (updErr) throw updErr;
-        }
-      }
-    }
+    // Call shared postprocess helper to upsert recipients, create mailings,
+    // and link campaign_mailed_list_records.recipient_id. This centralizes
+    // the logic and keeps behavior identical between chunked and full-file flows.
+    const post = await runMailedListPostprocess(supabaseAdmin, jobId, { mailedAtIso, listId: listRow.id, storagePath, originalFilename });
 
     res.status(200).json({
       ok: true,
@@ -380,8 +276,8 @@ export default async function handler(req: any, res: any) {
       rowsParsed: rows.length,
       uniqueRecipients: uniqueRecipients.length,
       duplicatesSkipped,
-      recipientsUpserted,
-      mailingsInserted,
+      recipientsUpserted: post.recipientsUpserted,
+      mailingsInserted: post.mailingsInserted,
       mailedAt: mailedAtIso,
     });
   } catch (err: unknown) {
