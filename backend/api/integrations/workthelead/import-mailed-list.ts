@@ -303,7 +303,7 @@ export default async function handler(req: any, res: any) {
     const isTestRun    = body.isTestRun    === true;
     const validateOnly = body.validateOnly === true;
 
-    console.log('[import-mailed-list] parse', { jobId, chunkIndexRaw, totalChunksRaw, chunkIndex, totalChunks, isTestRun, validateOnly });
+    // parsed chunkIndex/totalChunks (coerced) retained for logic; no debug log
 
     // Resolve headerRow: prefer the explicitly-passed value, then auto-detect
     // from the first non-empty line of the csv payload using isHeaderRow().
@@ -417,7 +417,7 @@ export default async function handler(req: any, res: any) {
           note:       'position-based fallback',
         };
       }
-      console.log(`[import-mailed-list] validateOnly ageBandDiag:`, JSON.stringify(ageBandDiag));
+      // no debug log
 
       return res.status(200).json({
         ok: true,
@@ -521,21 +521,14 @@ export default async function handler(req: any, res: any) {
     // to create job_mailing_lists, recipients, mailings, and link records.
     let postprocessResult: any = null;
     const isFinalChunk = chunkIndex === totalChunks - 1;
-    console.log('[import-mailed-list] insert-done', { jobId, chunkIndex, totalChunks, inserted, isFinalChunk, isTestRun });
-
     if (isFinalChunk && !isTestRun) {
       try {
-        console.log('[import-mailed-list] postprocess starting', { jobId, chunkIndex, totalChunks });
         const admin = getSupabaseAdmin();
         postprocessResult = await runMailedListPostprocess(admin, jobId, { mailedAtIso: new Date().toISOString() });
-        console.log('[import-mailed-list] postprocess completed', { jobId, result: postprocessResult });
       } catch (err: any) {
-        console.error('[import-mailed-list] postprocess error:', err?.message ?? String(err));
         // return an error so client sees failure; preserve insert success info
         return res.status(500).json({ ok: false, step: 'postprocess', error: err?.message ?? String(err) });
       }
-    } else {
-      console.log('[import-mailed-list] skipping postprocess', { jobId, isFinalChunk, isTestRun });
     }
 
     return res.status(200).json({
