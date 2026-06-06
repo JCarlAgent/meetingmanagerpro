@@ -23,6 +23,7 @@ import SettingsView from './SettingsView';
 import SocialMediaIntegrationsView from './SocialMediaIntegrationsView';
 import DemographicsUploadView from './DemographicsUploadView';
 import MailingsReportView from './MailingsReportView';
+import MailingsPage from './MailingsPage';
 import ApprovalsArchiveView from './ApprovalsArchiveView';
 import HomeView from './HomeView';
 import CampaignMapView from './map/CampaignMapView';
@@ -591,7 +592,7 @@ const Dashboard: React.FC = () => {
       case 'meetings':
         return <OrgMeetingsView onNavigate={(view) => setActiveView(view)} />;
       case 'mailings':
-        return <MailingsReportView />;
+        return <MailingsPage />;
       case 'approvals':
         return <ApprovalsArchiveView />;
       case 'reports':
