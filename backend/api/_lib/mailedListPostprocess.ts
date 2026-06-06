@@ -146,15 +146,21 @@ export async function runMailedListPostprocess(
     if (upErr) throw upErr;
   }
 
-  // Fetch recipient ids for these fingerprints
+  // Fetch recipient ids for these fingerprints in safe-sized batches.
+  // Large `.in()` queries can exceed URL length limits or return truncated
+  // results; fetch by smaller batches and include the org_id filter to be
+  // explicit. Also check for errors on each call.
   const fpBatches: string[][] = [];
-  for (let i = 0; i < uniqueFps.length; i += 500) fpBatches.push(uniqueFps.slice(i, i + 500));
+  const FP_BATCH = 100;
+  for (let i = 0; i < uniqueFps.length; i += FP_BATCH) fpBatches.push(uniqueFps.slice(i, i + FP_BATCH));
   const fpToId = new Map<string, string>();
   for (const fb of fpBatches) {
-    const { data: recs } = await supabaseAdmin
+    const { data: recs, error: recErr } = await supabaseAdmin
       .from('recipients')
       .select('id,fingerprint')
+      .eq('org_id', org_id)
       .in('fingerprint', fb);
+    if (recErr) throw recErr;
     for (const rr of (recs ?? []) as Array<any>) fpToId.set(rr.fingerprint, rr.id);
   }
 
@@ -174,14 +180,14 @@ export async function runMailedListPostprocess(
     // DB unique index to avoid duplicate rows. This makes the helper
     // idempotent when re-processing the same mailing_list_id.
     try {
-      const { error: upErr, count } = await supabaseAdmin
+      const { data: inserted, error: upErr } = await supabaseAdmin
         .from('mailings')
-        .upsert(chunk, { onConflict: 'mailing_list_id,recipient_id', count: 'exact' });
+        .upsert(chunk, { onConflict: 'mailing_list_id,recipient_id' });
       if (upErr) {
         // If upsert fails for reasons other than unique-violation, propagate.
         throw upErr;
       }
-      mailingsInserted += (count ?? chunk.length);
+      mailingsInserted += (inserted ? inserted.length : chunk.length);
     } catch (err: any) {
       // Fallback: some Supabase clients or partial-unique indexes can still
       // surface unique-violation errors. If the error is a Postgres unique
@@ -217,6 +223,9 @@ export async function runMailedListPostprocess(
       if (updErr) throw updErr;
     }
   }
+
+  // Set a final recipientsUpserted count for reporting (number of unique fps upserted)
+  recipientsUpserted = recipientInputs.length;
 
   return {
     listId,
