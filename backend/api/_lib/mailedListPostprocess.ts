@@ -157,12 +157,32 @@ export async function runMailedListPostprocess(
   let mailingsInserted = 0;
   for (let i = 0; i < mailings.length; i += BATCH) {
     const chunk = mailings.slice(i, i + BATCH);
-    const { error: mailErr, count } = await supabaseAdmin.from('mailings').insert(chunk, { count: 'exact' });
-    if (mailErr) {
-      // allow unique index conflicts to pass (idempotency) by falling back to partial insert
-      throw mailErr;
+    // Attempt an upsert on the unique key (mailing_list_id, recipient_id).
+    // Supabase client supports `upsert` with `onConflict` which will use the
+    // DB unique index to avoid duplicate rows. This makes the helper
+    // idempotent when re-processing the same mailing_list_id.
+    try {
+      const { error: upErr, count } = await supabaseAdmin
+        .from('mailings')
+        .upsert(chunk, { onConflict: 'mailing_list_id,recipient_id', count: 'exact' });
+      if (upErr) {
+        // If upsert fails for reasons other than unique-violation, propagate.
+        throw upErr;
+      }
+      mailingsInserted += (count ?? chunk.length);
+    } catch (err: any) {
+      // Fallback: some Supabase clients or partial-unique indexes can still
+      // surface unique-violation errors. If the error is a Postgres unique
+      // violation (23505), continue; otherwise rethrow.
+      const pgCode = err?.code ?? err?.details ?? null;
+      if (String(pgCode) === '23505' || (err && /unique/i.test(String(err.message ?? '')))) {
+        // Count the chunk as inserted only for new rows is unknown here;
+        // conservatively assume existing rows were skipped.
+        // Do not increment mailingsInserted to avoid overstating.
+      } else {
+        throw err;
+      }
     }
-    mailingsInserted += (count ?? chunk.length);
   }
 
   // Update campaign_mailed_list_records.recipient_id in batches by grouping ids per recipient
