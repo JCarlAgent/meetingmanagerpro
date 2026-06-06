@@ -182,18 +182,29 @@ export async function runMailedListPostprocess(
 
   console.log(`Rows that can be linked to recipients: ${rowsToUpdate.length}`);
 
-  // Update campaign_mailed_list_records.recipient_id in batches using upsert
-  // on the primary key `id`. This is more efficient than updating per-recipient.
+  // Update campaign_mailed_list_records.recipient_id in batches by performing
+  // safe UPDATEs per row (only when recipient_id IS NULL). We avoid using
+  // upsert which would attempt to insert partial rows and violate NOT NULL
+  // constraints. Updates are executed concurrently per batch for speed.
   let rowsUpdated = 0;
   for (let i = 0; i < rowsToUpdate.length; i += BATCH) {
     const chunk = rowsToUpdate.slice(i, i + BATCH);
-    // Use upsert on primary key to set recipient_id for existing rows.
-    const { data: updated, error: updErr } = await supabaseAdmin
-      .from('campaign_mailed_list_records')
-      .upsert(chunk, { onConflict: 'id' });
-    if (updErr) throw updErr;
-    console.log(`  updated rows batch ${i / BATCH + 1}: attempted=${chunk.length} updated=${updated ? updated.length : 'unknown'}`);
-    rowsUpdated += updated ? updated.length : chunk.length;
+    console.log(`  updating rows batch ${i / BATCH + 1}: attempted=${chunk.length}`);
+    const results = await Promise.all(
+      chunk.map(async (r) => {
+        const { data: updated, error } = await supabaseAdmin
+          .from('campaign_mailed_list_records')
+          .update({ recipient_id: r.recipient_id })
+          .eq('id', r.id)
+          .is('recipient_id', null)
+          .select('id');
+        if (error) throw error;
+        return (updated ? updated.length : 0);
+      })
+    );
+    const batchUpdated = results.reduce((a, b) => a + b, 0);
+    console.log(`  updated rows batch ${i / BATCH + 1}: updated=${batchUpdated}`);
+    rowsUpdated += batchUpdated;
   }
 
   // After linkage, insert mailings ledger rows (one per unique recipient linked)
