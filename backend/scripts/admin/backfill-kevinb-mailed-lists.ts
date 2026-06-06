@@ -55,15 +55,27 @@ async function main() {
   console.log(`- mailings for list (${listId}): ${mailingsList ?? 0}`);
 
   // Compute unique fingerprints (use helper's fingerprintAddress)
-  const { data: rows } = await admin
-    .from('campaign_mailed_list_records')
-    .select('id,first_name,last_name,address,city,state,zip')
-    .eq('campaign_id', jobId);
-
+  // Paginate to ensure we inspect all rows.
   const fps = new Set<string>();
-  for (const r of (rows ?? []) as any[]) {
-    const fp = fingerprintAddress({ address1: r.address, address2: '', city: r.city, state: r.state, zip: r.zip });
-    fps.add(fp);
+  const PAGE = 1000;
+  let offset = 0;
+  while (true) {
+    const { data: page, error: pageErr } = await admin
+      .from('campaign_mailed_list_records')
+      .select('id,first_name,last_name,address,city,state,zip')
+      .eq('campaign_id', jobId)
+      .range(offset, offset + PAGE - 1);
+    if (pageErr) {
+      console.error('Error fetching page for fingerprinting:', pageErr);
+      process.exit(1);
+    }
+    if (!page || page.length === 0) break;
+    for (const r of page as any[]) {
+      const fp = fingerprintAddress({ address1: r.address, address2: '', city: r.city, state: r.state, zip: r.zip });
+      fps.add(fp);
+    }
+    if (page.length < PAGE) break;
+    offset += PAGE;
   }
 
   console.log(`- unique recipient fingerprints in mailed list: ${fps.size}`);

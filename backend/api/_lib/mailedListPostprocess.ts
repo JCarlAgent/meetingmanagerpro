@@ -85,11 +85,23 @@ export async function runMailedListPostprocess(
     await supabaseAdmin.from('job_mailing_lists').update({ row_count }).eq('id', listId);
   }
 
-  // Fetch raw mailed-list rows to compute fingerprints and build recipients
-  const { data: rows } = await supabaseAdmin
-    .from('campaign_mailed_list_records')
-    .select('id,first_name,last_name,address,city,state,zip')
-    .eq('campaign_id', jobId);
+  // Fetch raw mailed-list rows to compute fingerprints and build recipients.
+  // Use pagination (.range) to ensure we fetch ALL rows (Supabase defaults to limits).
+  const rows: any[] = [];
+  const PAGE = 1000;
+  let offset = 0;
+  while (true) {
+    const { data: page, error: pageErr } = await supabaseAdmin
+      .from('campaign_mailed_list_records')
+      .select('id,first_name,last_name,address,city,state,zip')
+      .eq('campaign_id', jobId)
+      .range(offset, offset + PAGE - 1);
+    if (pageErr) throw pageErr;
+    if (!page || page.length === 0) break;
+    rows.push(...page);
+    if (page.length < PAGE) break;
+    offset += PAGE;
+  }
 
   const idToFp = new Map<string, string>();
   const fps: string[] = [];
