@@ -85,23 +85,28 @@ export async function runMailedListPostprocess(
     await supabaseAdmin.from('job_mailing_lists').update({ row_count }).eq('id', listId);
   }
 
-  // Fetch raw mailed-list rows to compute fingerprints and build recipients.
+  // Fetch raw mailed-list rows that are missing recipient linkage only.
+  // This minimizes re-processing already-linked rows and speeds execution.
   // Use pagination (.range) to ensure we fetch ALL rows (Supabase defaults to limits).
   const rows: any[] = [];
   const PAGE = 1000;
   let offset = 0;
+  console.log('Fetching campaign_mailed_list_records missing recipient_id (paginated)...');
   while (true) {
     const { data: page, error: pageErr } = await supabaseAdmin
       .from('campaign_mailed_list_records')
       .select('id,first_name,last_name,address,city,state,zip')
       .eq('campaign_id', jobId)
+      .is('recipient_id', null)
       .range(offset, offset + PAGE - 1);
     if (pageErr) throw pageErr;
     if (!page || page.length === 0) break;
     rows.push(...page);
+    console.log(`  fetched page: offset=${offset} rows=${page.length}`);
     if (page.length < PAGE) break;
     offset += PAGE;
   }
+  console.log(`Total rows missing recipient_id to process: ${rows.length}`);
 
   const idToFp = new Map<string, string>();
   const fps: string[] = [];
@@ -138,12 +143,15 @@ export async function runMailedListPostprocess(
   // Upsert recipients in batches
   const BATCH = 500;
   let recipientsUpserted = 0;
+  console.log('Upserting recipients in batches...');
   for (let i = 0; i < recipientInputs.length; i += BATCH) {
     const batch = recipientInputs.slice(i, i + BATCH);
-    const { error: upErr } = await supabaseAdmin
+    const { data: upserted, error: upErr } = await supabaseAdmin
       .from('recipients')
       .upsert(batch, { onConflict: 'org_id,fingerprint' });
     if (upErr) throw upErr;
+    console.log(`  recipients upserted batch ${i / BATCH + 1}: attempted=${batch.length} returned=${upserted ? upserted.length : 'unknown'}`);
+    recipientsUpserted += upserted ? upserted.length : batch.length;
   }
 
   // Fetch recipient ids for these fingerprints in safe-sized batches.
@@ -164,72 +172,63 @@ export async function runMailedListPostprocess(
     for (const rr of (recs ?? []) as Array<any>) fpToId.set(rr.fingerprint, rr.id);
   }
 
-  // Insert mailings ledger rows (one per recipient)
-  const mailings: any[] = [];
-  for (const fp of uniqueFps) {
+  // Build mapping of rows -> recipient_id for only the rows we fetched
+  const rowsToUpdate: Array<{ id: string; recipient_id: string }> = [];
+  for (const [id, fp] of idToFp.entries()) {
     const rid = fpToId.get(fp);
     if (!rid) continue;
+    rowsToUpdate.push({ id, recipient_id: rid });
+  }
+
+  console.log(`Rows that can be linked to recipients: ${rowsToUpdate.length}`);
+
+  // Update campaign_mailed_list_records.recipient_id in batches using upsert
+  // on the primary key `id`. This is more efficient than updating per-recipient.
+  let rowsUpdated = 0;
+  for (let i = 0; i < rowsToUpdate.length; i += BATCH) {
+    const chunk = rowsToUpdate.slice(i, i + BATCH);
+    // Use upsert on primary key to set recipient_id for existing rows.
+    const { data: updated, error: updErr } = await supabaseAdmin
+      .from('campaign_mailed_list_records')
+      .upsert(chunk, { onConflict: 'id' });
+    if (updErr) throw updErr;
+    console.log(`  updated rows batch ${i / BATCH + 1}: attempted=${chunk.length} updated=${updated ? updated.length : 'unknown'}`);
+    rowsUpdated += updated ? updated.length : chunk.length;
+  }
+
+  // After linkage, insert mailings ledger rows (one per unique recipient linked)
+  const uniqueRecipientIds = Array.from(new Set(rowsToUpdate.map((r) => r.recipient_id)));
+  console.log(`Preparing mailings for ${uniqueRecipientIds.length} recipients (idempotent upsert)...`);
+  const mailings: any[] = [];
+  for (const rid of uniqueRecipientIds) {
     mailings.push({ org_id, job_id: jobId, recipient_id: rid, mailing_list_id: listId, mailed_at: mailedAtIso, pieces: 1 });
   }
 
   let mailingsInserted = 0;
   for (let i = 0; i < mailings.length; i += BATCH) {
     const chunk = mailings.slice(i, i + BATCH);
-    // Attempt an upsert on the unique key (mailing_list_id, recipient_id).
-    // Supabase client supports `upsert` with `onConflict` which will use the
-    // DB unique index to avoid duplicate rows. This makes the helper
-    // idempotent when re-processing the same mailing_list_id.
     try {
       const { data: inserted, error: upErr } = await supabaseAdmin
         .from('mailings')
         .upsert(chunk, { onConflict: 'mailing_list_id,recipient_id' });
-      if (upErr) {
-        // If upsert fails for reasons other than unique-violation, propagate.
-        throw upErr;
-      }
-      mailingsInserted += (inserted ? inserted.length : chunk.length);
+      if (upErr) throw upErr;
+      console.log(`  mailings upsert batch ${i / BATCH + 1}: attempted=${chunk.length} inserted=${inserted ? inserted.length : 'unknown'}`);
+      mailingsInserted += inserted ? inserted.length : chunk.length;
     } catch (err: any) {
-      // Fallback: some Supabase clients or partial-unique indexes can still
-      // surface unique-violation errors. If the error is a Postgres unique
-      // violation (23505), continue; otherwise rethrow.
       const pgCode = err?.code ?? err?.details ?? null;
       if (String(pgCode) === '23505' || (err && /unique/i.test(String(err.message ?? '')))) {
-        // Count the chunk as inserted only for new rows is unknown here;
-        // conservatively assume existing rows were skipped.
-        // Do not increment mailingsInserted to avoid overstating.
+        // ignore unique violations
       } else {
         throw err;
       }
     }
   }
 
-  // Update campaign_mailed_list_records.recipient_id in batches by grouping ids per recipient
-  const byRecipient = new Map<string, string[]>();
-  for (const [id, fp] of idToFp.entries()) {
-    const rid = fpToId.get(fp);
-    if (!rid) continue;
-    const arr = byRecipient.get(rid) ?? [];
-    arr.push(id);
-    byRecipient.set(rid, arr);
-  }
-
-  for (const [recipient_id, ids] of byRecipient.entries()) {
-    for (let i = 0; i < ids.length; i += BATCH) {
-      const chunk = ids.slice(i, i + BATCH);
-      const { error: updErr } = await supabaseAdmin
-        .from('campaign_mailed_list_records')
-        .update({ recipient_id })
-        .in('id', chunk);
-      if (updErr) throw updErr;
-    }
-  }
-
-  // Set a final recipientsUpserted count for reporting (number of unique fps upserted)
-  recipientsUpserted = recipientInputs.length;
-
   return {
     listId,
-    recipientsUpserted: recipientInputs.length,
+    rowsMissingInitially: rows.length,
+    rowsLinked: rowsUpdated,
+    recipientsUpserted,
     mailingsInserted,
   };
 }
