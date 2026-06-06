@@ -32,7 +32,7 @@ const BuildListPreview: React.FC = () => {
 
   return (
     <div>
-      <p className="text-sm text-slate-600">This is a non-destructive preview only. No changes will be made.</p>
+      <p className="text-sm text-slate-600">Build future mailing lists while automatically excluding suppressed households and prior responders. This preview is non-destructive; no changes will be made.</p>
       <div className="mt-4 grid grid-cols-1 gap-2">
         <div className="text-sm text-slate-700">Eligible recipients: <span className="font-semibold">{totalEligible == null ? '—' : totalEligible}</span></div>
         <div className="text-sm text-slate-700">Suppressed recipients excluded: <span className="font-semibold">{totalSuppressed == null ? '—' : totalSuppressed}</span></div>

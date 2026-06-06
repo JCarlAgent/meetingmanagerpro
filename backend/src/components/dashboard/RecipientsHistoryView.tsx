@@ -12,6 +12,8 @@ type RecipientRow = {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  times_mailed?: number;
+  last_mailed?: string | null;
 };
 
 const RecipientsHistoryView: React.FC = () => {
@@ -32,7 +34,29 @@ const RecipientsHistoryView: React.FC = () => {
         const { data, error } = await q;
         if (error) throw error;
         if (!isMounted) return;
-        setRows((data as any) || []);
+        const recs = (data as any) || [];
+
+        // Enrich recipients with mailing stats (times mailed, last mailed)
+        const recipientIds = recs.map((r: any) => r.id).filter(Boolean);
+        if (recipientIds.length > 0) {
+          const mailRes = await supabase.from('mailings').select('recipient_id, mailed_at').in('recipient_id', recipientIds as any[]);
+          const mails = mailRes.data || [];
+          const counts: Record<string, number> = {};
+          const lastBy: Record<string, string> = {};
+          mails.forEach((m: any) => {
+            const rid = m.recipient_id;
+            if (!rid) return;
+            counts[rid] = (counts[rid] || 0) + 1;
+            const ma = m.mailed_at;
+            if (ma) {
+              if (!lastBy[rid] || new Date(ma) > new Date(lastBy[rid])) lastBy[rid] = ma;
+            }
+          });
+          const enriched = recs.map((r: any) => ({ ...r, times_mailed: counts[r.id] || 0, last_mailed: lastBy[r.id] || null }));
+          setRows(enriched);
+        } else {
+          setRows(recs);
+        }
       } catch (err) {
         setRows([]);
       } finally {
@@ -71,6 +95,8 @@ const RecipientsHistoryView: React.FC = () => {
             <tr className="text-left text-slate-500 border-b border-slate-200">
               <th className="py-2 pr-4 font-medium">Name</th>
               <th className="py-2 pr-4 font-medium">Address</th>
+              <th className="py-2 pr-4 font-medium">Times Mailed</th>
+              <th className="py-2 pr-4 font-medium">Last Mailed</th>
             </tr>
           </thead>
           <tbody>
@@ -78,6 +104,8 @@ const RecipientsHistoryView: React.FC = () => {
               <tr key={r.id} className="border-b border-slate-100">
                 <td className="py-3 pr-4 text-slate-900">{(r.first_name || r.last_name) ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() : <span className="text-slate-500">(no name)</span>}</td>
                 <td className="py-3 pr-4 text-slate-700">{[r.address1, `${r.city ?? ''} ${r.state ?? ''}`.trim(), r.postal_code].filter(Boolean).join(' • ') || '—'}</td>
+                <td className="py-3 pr-4 text-slate-900 font-semibold">{r.times_mailed ?? 0}</td>
+                <td className="py-3 pr-4 text-slate-700">{r.last_mailed ? new Date(r.last_mailed).toLocaleString() : '—'}</td>
               </tr>
             ))}
           </tbody>

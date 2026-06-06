@@ -65,11 +65,11 @@ const MailingsOverview: React.FC = () => {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-      <Card title="Total unique recipients" value={String(totals.recipients)} />
-      <Card title="Total mailing records" value={String(totals.mailings)} />
-      <Card title="Total purchased lists" value={String(totals.purchasedLists)} />
-      <Card title="Suppressed recipients" value={String(totals.suppressed)} />
-      <Card title="Last mailing date" value={totals.lastMailedAt ? new Date(totals.lastMailedAt).toLocaleDateString() : '—'} />
+      <Card title="Households in Database" value={String(totals.recipients)} />
+      <Card title="Mail Pieces Tracked" value={String(totals.mailings)} />
+      <Card title="Imported Mailing Lists" value={String(totals.purchasedLists)} />
+      <Card title="Suppressed Households" value={String(totals.suppressed)} />
+      <Card title="Last Mailing Activity" value={totals.lastMailedAt ? new Date(totals.lastMailedAt).toLocaleDateString() : '—'} />
     </div>
   );
 };

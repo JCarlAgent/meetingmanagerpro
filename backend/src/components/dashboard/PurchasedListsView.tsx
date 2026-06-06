@@ -10,10 +10,13 @@ type Row = {
   uploaded_at: string | null;
 };
 
+type JobMap = Record<string, { job_number?: string | null; title?: string | null }>;
+
 const PurchasedListsView: React.FC = () => {
   const { user } = useAuth();
   const { actingOrg } = useActingOrg();
   const [rows, setRows] = useState<Row[]>([]);
+  const [jobMap, setJobMap] = useState<JobMap>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,7 +42,21 @@ const PurchasedListsView: React.FC = () => {
         const { data, error } = await q;
         if (error) throw error;
         if (!isMounted) return;
-        setRows((data as any) || []);
+        const lists = (data as any) || [];
+
+        // Fetch job metadata for displayed lists
+        const jobIds = Array.from(new Set(lists.map((l: any) => l.job_id)));
+        let jobMap: JobMap = {};
+        if (jobIds.length > 0) {
+          const jobsRes = await supabase.from('jobs').select('id, job_number, title').in('id', jobIds).limit(200);
+          const jobs = jobsRes.data || [];
+          jobs.forEach((j: any) => { jobMap[j.id] = { job_number: j.job_number, title: j.title }; });
+        }
+
+        // attach job metadata to rows via map lookup (render-time will use map)
+        setRows(lists || []);
+        // store jobMap in state for render
+        setJobMap(jobMap);
       } catch (err) {
         setRows([]);
       } finally {
@@ -58,17 +75,26 @@ const PurchasedListsView: React.FC = () => {
       <table className="min-w-full text-sm">
         <thead>
           <tr className="text-left text-slate-500 border-b border-slate-200">
-            <th className="py-2 pr-4 font-medium">Uploaded</th>
-            <th className="py-2 pr-4 font-medium">Row count</th>
-            <th className="py-2 pr-4 font-medium">Job</th>
+            <th className="py-2 pr-4 font-medium">Campaign</th>
+            <th className="py-2 pr-4 font-medium">Imported Date</th>
+            <th className="py-2 pr-4 font-medium">Households</th>
+            <th className="py-2 pr-4 font-medium">Responders</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(r => (
             <tr key={r.id} className="border-b border-slate-100">
+              <td className="py-3 pr-4 text-slate-700">
+                {(() => {
+                  const j = jobMap[r.job_id];
+                  if (j && (j.title || j.job_number)) return `${j.title ?? ''}${j.title && j.job_number ? ' — ' : ''}${j.job_number ?? ''}`.trim();
+                  return r.job_id;
+                })()}
+              </td>
               <td className="py-3 pr-4 text-slate-700">{r.uploaded_at ? new Date(r.uploaded_at).toLocaleString() : '—'}</td>
               <td className="py-3 pr-4 text-slate-900 font-semibold">{r.row_count ?? '—'}</td>
-              <td className="py-3 pr-4 text-slate-700">{r.job_id}</td>
+              <td className="py-3 pr-4 text-slate-700">—</td>
+              
             </tr>
           ))}
         </tbody>

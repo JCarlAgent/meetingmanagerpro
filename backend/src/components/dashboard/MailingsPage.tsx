@@ -11,7 +11,7 @@ const MailingsPage: React.FC = () => {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Mailings</h1>
-          <p className="text-slate-600 mt-1">Every mailing makes the system smarter — overview and history.</p>
+          <p className="text-slate-600 mt-1">Every mailing creates intelligence that improves future campaigns.</p>
         </div>
       </div>
 
