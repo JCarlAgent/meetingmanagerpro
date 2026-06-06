@@ -1,3 +1,13 @@
+# Local/private working files
+Other stuff/
+schema_backup.sql
+*_backup.sql
+*-backup.sql
+*.numbers
+*.pages
+
+# Supabase local temp files
+supabase/.temp/
 # Logs
 logs
 *.log
