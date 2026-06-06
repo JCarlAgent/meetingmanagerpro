@@ -11,7 +11,7 @@ type RecipientRow = {
   address1: string | null;
   city: string | null;
   state: string | null;
-  zip: string | null;
+  postal_code: string | null;
 };
 
 const RecipientsHistoryView: React.FC = () => {
@@ -27,7 +27,7 @@ const RecipientsHistoryView: React.FC = () => {
       setIsLoading(true);
       try {
         const orgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
-        let q = supabase.from('recipients').select('id, first_name, last_name, address1, city, state, zip').order('created_at', { ascending: false }).limit(1000);
+        let q = supabase.from('recipients').select('id, first_name, last_name, address1, city, state, postal_code').order('created_at', { ascending: false }).limit(1000);
         if (orgId) q = q.eq('org_id', orgId);
         const { data, error } = await q;
         if (error) throw error;
@@ -48,7 +48,7 @@ const RecipientsHistoryView: React.FC = () => {
     if (!q) return rows;
     return rows.filter(r => {
       const name = `${r.first_name ?? ''} ${r.last_name ?? ''}`.toLowerCase();
-      const addr = `${r.address1 ?? ''} ${r.city ?? ''} ${r.state ?? ''} ${r.zip ?? ''}`.toLowerCase();
+      const addr = `${r.address1 ?? ''} ${r.city ?? ''} ${r.state ?? ''} ${r.postal_code ?? ''}`.toLowerCase();
       return name.includes(q) || addr.includes(q);
     });
   }, [rows, search]);
@@ -77,7 +77,7 @@ const RecipientsHistoryView: React.FC = () => {
             {filtered.slice(0, 1000).map(r => (
               <tr key={r.id} className="border-b border-slate-100">
                 <td className="py-3 pr-4 text-slate-900">{(r.first_name || r.last_name) ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() : <span className="text-slate-500">(no name)</span>}</td>
-                <td className="py-3 pr-4 text-slate-700">{[r.address1, `${r.city ?? ''} ${r.state ?? ''}`.trim(), r.zip].filter(Boolean).join(' • ') || '—'}</td>
+                <td className="py-3 pr-4 text-slate-700">{[r.address1, `${r.city ?? ''} ${r.state ?? ''}`.trim(), r.postal_code].filter(Boolean).join(' • ') || '—'}</td>
               </tr>
             ))}
           </tbody>
