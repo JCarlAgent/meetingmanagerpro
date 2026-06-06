@@ -23,7 +23,7 @@ const MailingsOverview: React.FC = () => {
 
         const recipientsQ = supabase.from('recipients').select('id', { count: 'exact', head: true });
         const mailingsQ = supabase.from('mailings').select('id', { count: 'exact', head: true });
-        const listsQ = supabase.from('job_mailing_lists').select('id', { count: 'exact', head: true });
+        let listsQ = supabase.from('job_mailing_lists').select('id', { count: 'exact', head: true });
         const suppressQ = supabase.from('mailing_suppressions').select('id', { count: 'exact', head: true });
         const lastQ = supabase.from('mailings').select('mailed_at').order('mailed_at', { ascending: false }).limit(1);
 
@@ -31,7 +31,16 @@ const MailingsOverview: React.FC = () => {
         if (orgId) {
           recipientsQ.eq('org_id', orgId);
           mailingsQ.eq('org_id', orgId);
-          listsQ.eq('org_id', orgId);
+          // job_mailing_lists does not have org_id; scope by jobs belonging to org
+          const jobsRes = await supabase.from('jobs').select('id').eq('org_id', orgId).limit(1000);
+          const jobIds = (jobsRes.data || []).map((j: any) => j.id);
+          if (jobIds.length === 0) {
+            // No jobs for org — return zeros
+            if (!isMounted) return;
+            setTotals({ recipients: 0, mailings: 0, purchasedLists: 0, suppressed: 0, lastMailedAt: null });
+            return;
+          }
+          listsQ = listsQ.in('job_id', jobIds as any[]);
           suppressQ.eq('org_id', orgId);
           lastQ.eq('org_id', orgId);
         }

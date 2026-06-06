@@ -23,7 +23,19 @@ const PurchasedListsView: React.FC = () => {
       try {
         const orgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
         let q = supabase.from('job_mailing_lists').select('id, job_id, row_count, uploaded_at').order('uploaded_at', { ascending: false }).limit(200);
-        if (orgId) q = q.eq('org_id', orgId);
+        if (orgId) {
+          // job_mailing_lists does not have org_id — scope by jobs for the org
+          const jobsRes = await supabase.from('jobs').select('id').eq('org_id', orgId).limit(1000);
+          const jobIds = (jobsRes.data || []).map((j: any) => j.id);
+          if (!jobIds || jobIds.length === 0) {
+            // nothing for this org
+            if (!isMounted) return;
+            setRows([]);
+            setLoading(false);
+            return;
+          }
+          q = q.in('job_id', jobIds as any[]);
+        }
         const { data, error } = await q;
         if (error) throw error;
         if (!isMounted) return;
