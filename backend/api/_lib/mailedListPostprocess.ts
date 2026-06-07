@@ -182,29 +182,35 @@ export async function runMailedListPostprocess(
 
   console.log(`Rows that can be linked to recipients: ${rowsToUpdate.length}`);
 
-  // Update campaign_mailed_list_records.recipient_id in batches by performing
-  // safe UPDATEs per row (only when recipient_id IS NULL). We avoid using
-  // upsert which would attempt to insert partial rows and violate NOT NULL
-  // constraints. Updates are executed concurrently per batch for speed.
+  // Update campaign_mailed_list_records.recipient_id in controlled chunks.
+  // Avoid large concurrent Promise.all calls that can cause network/fetch failures.
+  const UPDATE_CHUNK = 50; // process 50 rows at a time
+  const CONCURRENCY = 5; // within each chunk, run up to 5 concurrent requests
   let rowsUpdated = 0;
-  for (let i = 0; i < rowsToUpdate.length; i += BATCH) {
-    const chunk = rowsToUpdate.slice(i, i + BATCH);
-    console.log(`  updating rows batch ${i / BATCH + 1}: attempted=${chunk.length}`);
-    const results = await Promise.all(
-      chunk.map(async (r) => {
-        const { data: updated, error } = await supabaseAdmin
-          .from('campaign_mailed_list_records')
-          .update({ recipient_id: r.recipient_id })
-          .eq('id', r.id)
-          .is('recipient_id', null)
-          .select('id');
-        if (error) throw error;
-        return (updated ? updated.length : 0);
-      })
-    );
-    const batchUpdated = results.reduce((a, b) => a + b, 0);
-    console.log(`  updated rows batch ${i / BATCH + 1}: updated=${batchUpdated}`);
-    rowsUpdated += batchUpdated;
+  const totalToLink = rowsToUpdate.length;
+  let processed = 0;
+  console.log(`Updating linkage for ${totalToLink} rows with concurrency ${CONCURRENCY} and chunk ${UPDATE_CHUNK}...`);
+  for (let i = 0; i < rowsToUpdate.length; i += UPDATE_CHUNK) {
+    const group = rowsToUpdate.slice(i, i + UPDATE_CHUNK);
+    for (let j = 0; j < group.length; j += CONCURRENCY) {
+      const pool = group.slice(j, j + CONCURRENCY);
+      const results = await Promise.all(
+        pool.map(async (r) => {
+          const { data: updated, error } = await supabaseAdmin
+            .from('campaign_mailed_list_records')
+            .update({ recipient_id: r.recipient_id })
+            .eq('id', r.id)
+            .is('recipient_id', null)
+            .select('id');
+          if (error) throw error;
+          return (updated ? updated.length : 0);
+        })
+      );
+      const poolUpdated = results.reduce((a, b) => a + b, 0);
+      rowsUpdated += poolUpdated;
+      processed += pool.length;
+      console.log(`  updating linkage ${processed}/${totalToLink} (updated this step=${poolUpdated})`);
+    }
   }
 
   // After linkage, insert mailings ledger rows (one per unique recipient linked)
