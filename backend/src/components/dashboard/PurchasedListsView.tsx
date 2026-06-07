@@ -17,6 +17,7 @@ const PurchasedListsView: React.FC = () => {
   const { actingOrg } = useActingOrg();
   const [rows, setRows] = useState<Row[]>([]);
   const [jobMap, setJobMap] = useState<JobMap>({});
+  const [mailCounts, setMailCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,8 +45,18 @@ const PurchasedListsView: React.FC = () => {
         if (!isMounted) return;
         const lists = (data as any) || [];
 
+        // Deduplicate by job_id — show only the most recent import per campaign
+        const latestByJob = new Map<string, any>();
+        for (const l of lists) {
+          const existing = latestByJob.get(l.job_id);
+          if (!existing || new Date(l.uploaded_at ?? 0) > new Date(existing.uploaded_at ?? 0)) {
+            latestByJob.set(l.job_id, l);
+          }
+        }
+        const dedupedLists = Array.from(latestByJob.values());
+
         // Fetch job metadata for displayed lists
-        const jobIds = Array.from(new Set(lists.map((l: any) => l.job_id)));
+        const jobIds = Array.from(new Set(dedupedLists.map((l: any) => l.job_id)));
         let jobMap: JobMap = {};
         if (jobIds.length > 0) {
           const jobsRes = await supabase.from('jobs').select('id, job_number, title').in('id', jobIds).limit(200);
@@ -53,8 +64,16 @@ const PurchasedListsView: React.FC = () => {
           jobs.forEach((j: any) => { jobMap[j.id] = { job_number: j.job_number, title: j.title }; });
         }
 
+        // Fetch actual tracked mailings count per list_id (prefer over row_count)
+        const mailCountMap: Record<string, number> = {};
+        for (const l of dedupedLists) {
+          const { count } = await supabase.from('mailings').select('id', { count: 'exact', head: true }).eq('mailing_list_id', l.id);
+          mailCountMap[l.id] = Number(count ?? 0);
+        }
+
         // attach job metadata to rows via map lookup (render-time will use map)
-        setRows(lists || []);
+        setRows(dedupedLists || []);
+        setMailCounts(mailCountMap);
         // store jobMap in state for render
         setJobMap(jobMap);
       } catch (err) {
@@ -92,7 +111,7 @@ const PurchasedListsView: React.FC = () => {
                 })()}
               </td>
               <td className="py-3 pr-4 text-slate-700">{r.uploaded_at ? new Date(r.uploaded_at).toLocaleString() : '—'}</td>
-              <td className="py-3 pr-4 text-slate-900 font-semibold">{r.row_count ?? '—'}</td>
+              <td className="py-3 pr-4 text-slate-900 font-semibold">{mailCounts[r.id] > 0 ? mailCounts[r.id].toLocaleString() : (r.row_count != null ? r.row_count.toLocaleString() : '—')}</td>
               <td className="py-3 pr-4 text-slate-700">—</td>
               
             </tr>
