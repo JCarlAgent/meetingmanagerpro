@@ -107,23 +107,75 @@ async function main() {
     console.log(`linked this batch=${linkedThisBatch} skipped this batch=${skipped.length} remaining=${remaining}`);
   }
 
-  // After linkage complete, insert mailings for distinct recipient_ids for the job
-  const { data: simple } = await admin
-    .from('campaign_mailed_list_records')
-    .select('recipient_id')
-    .eq('campaign_id', jobId)
-    .not('recipient_id', 'is', null);
-  const recipientIds = Array.from(new Set((simple ?? []).map((r: any) => r.recipient_id)));
-
-  console.log(`Preparing to upsert mailings for ${recipientIds.length} recipients`);
-  const MAIL_BATCH = 250;
-  for (let i = 0; i < recipientIds.length; i += MAIL_BATCH) {
-    const chunk = recipientIds.slice(i, i + MAIL_BATCH);
-    const payload = chunk.map((rid) => ({ org_id: orgId, job_id: jobId, recipient_id: rid, mailing_list_id: listId, mailed_at: new Date().toISOString(), pieces: 1 }));
-    const { data: inserted, error: insErr } = await admin.from('mailings').upsert(payload, { onConflict: 'mailing_list_id,recipient_id' });
-    if (insErr) throw insErr;
-    console.log(`  mailings upsert batch ${i / MAIL_BATCH + 1}: attempted=${payload.length} inserted=${inserted ? inserted.length : 'unknown'}`);
+  // Paginate all linked recipient_ids for this job
+  const MAIL_PAGE = 1000;
+  let mailOffset = 0;
+  const allRecipientIds = new Set<string>();
+  while (true) {
+    const { data: page, error: pageErr } = await admin
+      .from('campaign_mailed_list_records')
+      .select('recipient_id')
+      .eq('campaign_id', jobId)
+      .not('recipient_id', 'is', null)
+      .range(mailOffset, mailOffset + MAIL_PAGE - 1);
+    if (pageErr) throw pageErr;
+    if (!page || page.length === 0) break;
+    for (const r of page as any[]) if (r.recipient_id) allRecipientIds.add(r.recipient_id);
+    if (page.length < MAIL_PAGE) break;
+    mailOffset += MAIL_PAGE;
   }
+  const recipientIds = Array.from(allRecipientIds);
+  console.log(`Distinct linked recipients found: ${recipientIds.length}`);
+
+  // Fetch existing mailings for this list to avoid duplicate inserts
+  const existingMailedIds = new Set<string>();
+  let existingOffset = 0;
+  while (true) {
+    const { data: existing, error: exErr } = await admin
+      .from('mailings')
+      .select('recipient_id')
+      .eq('mailing_list_id', listId)
+      .range(existingOffset, existingOffset + MAIL_PAGE - 1);
+    if (exErr) throw exErr;
+    if (!existing || existing.length === 0) break;
+    for (const m of existing as any[]) if (m.recipient_id) existingMailedIds.add(m.recipient_id);
+    if (existing.length < MAIL_PAGE) break;
+    existingOffset += MAIL_PAGE;
+  }
+  console.log(`Existing mailings found for list: ${existingMailedIds.size}`);
+
+  const toInsert = recipientIds.filter((rid) => !existingMailedIds.has(rid));
+  console.log(`Mailings to insert: ${toInsert.length}`);
+
+  const MAIL_BATCH = 100;
+  const mailedAt = new Date().toISOString();
+  let mailingsInserted = 0;
+  for (let i = 0; i < toInsert.length; i += MAIL_BATCH) {
+    const chunk = toInsert.slice(i, i + MAIL_BATCH);
+    const payload = chunk.map((rid) => ({ org_id: orgId, job_id: jobId, recipient_id: rid, mailing_list_id: listId, mailed_at: mailedAt, pieces: 1 }));
+    try {
+      const { error: insErr } = await admin.from('mailings').insert(payload);
+      if (insErr) {
+        const code = (insErr as any).code ?? '';
+        if (String(code) === '23505') {
+          console.log(`  mailings batch ${i / MAIL_BATCH + 1}: unique violation, skipping chunk`);
+        } else {
+          throw insErr;
+        }
+      } else {
+        mailingsInserted += chunk.length;
+        console.log(`  mailings inserted batch ${i / MAIL_BATCH + 1}: attempted=${chunk.length} (total so far=${mailingsInserted})`);
+      }
+    } catch (err: any) {
+      const pgCode = err?.code ?? '';
+      if (String(pgCode) === '23505') {
+        console.log(`  mailings batch ${i / MAIL_BATCH + 1}: unique violation, skipping`);
+      } else {
+        throw err;
+      }
+    }
+  }
+  console.log(`Mailings insert complete: total inserted=${mailingsInserted}`);
 
   console.log('Resume backfill complete.');
   process.exit(0);
