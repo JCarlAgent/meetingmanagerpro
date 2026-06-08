@@ -8,6 +8,7 @@ type Row = {
   job_id: string;
   row_count: number | null;
   uploaded_at: string | null;
+  planned_mail_date: string | null;
 };
 
 type JobMap = Record<string, { job_number?: string | null; title?: string | null }>;
@@ -18,6 +19,7 @@ const PurchasedListsView: React.FC = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [jobMap, setJobMap] = useState<JobMap>({});
   const [mailCounts, setMailCounts] = useState<Record<string, number>>({});
+  const [printOrderDates, setPrintOrderDates] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ const PurchasedListsView: React.FC = () => {
       setLoading(true);
       try {
         const orgId = user?.is_master_admin ? (actingOrg?.id ?? null) : (user?.org_id ?? null);
-        let q = supabase.from('job_mailing_lists').select('id, job_id, row_count, uploaded_at').order('uploaded_at', { ascending: false }).limit(200);
+        let q = supabase.from('job_mailing_lists').select('id, job_id, row_count, uploaded_at, planned_mail_date').order('uploaded_at', { ascending: false }).limit(200);
         if (orgId) {
           // job_mailing_lists does not have org_id — scope by jobs for the org
           const jobsRes = await supabase.from('jobs').select('id').eq('org_id', orgId).limit(1000);
@@ -71,10 +73,18 @@ const PurchasedListsView: React.FC = () => {
           mailCountMap[l.id] = Number(count ?? 0);
         }
 
-        // attach job metadata to rows via map lookup (render-time will use map)
+        // Fetch latest print_orders.mailed_at per job (actual mail date)
+        const poMap: Record<string, string | null> = {};
+        if (jobIds.length > 0) {
+          const poRes = await supabase.from('print_orders').select('job_id, mailed_at').in('job_id', jobIds).order('mailed_at', { ascending: false });
+          for (const po of ((poRes.data || []) as any[])) {
+            if (po.job_id && po.mailed_at && !poMap[po.job_id]) poMap[po.job_id] = po.mailed_at;
+          }
+        }
+
         setRows(dedupedLists || []);
         setMailCounts(mailCountMap);
-        // store jobMap in state for render
+        setPrintOrderDates(poMap);
         setJobMap(jobMap);
       } catch (err) {
         setRows([]);
@@ -95,9 +105,11 @@ const PurchasedListsView: React.FC = () => {
         <thead>
           <tr className="text-left text-slate-500 border-b border-slate-200">
             <th className="py-2 pr-4 font-medium">Campaign</th>
-            <th className="py-2 pr-4 font-medium">Imported Date</th>
-            <th className="py-2 pr-4 font-medium">Households</th>
-            <th className="py-2 pr-4 font-medium">Responders</th>
+            <th className="py-2 pr-4 font-medium">List Imported</th>
+            <th className="py-2 pr-4 font-medium">Planned Mail Date</th>
+            <th className="py-2 pr-4 font-medium">Actual Mail Date</th>
+            <th className="py-2 pr-4 font-medium">Households Purchased</th>
+            <th className="py-2 pr-4 font-medium">Actual Mailed</th>
           </tr>
         </thead>
         <tbody>
@@ -110,9 +122,11 @@ const PurchasedListsView: React.FC = () => {
                   return r.job_id;
                 })()}
               </td>
-              <td className="py-3 pr-4 text-slate-700">{r.uploaded_at ? new Date(r.uploaded_at).toLocaleString() : '—'}</td>
-              <td className="py-3 pr-4 text-slate-900 font-semibold">{mailCounts[r.id] > 0 ? mailCounts[r.id].toLocaleString() : (r.row_count != null ? r.row_count.toLocaleString() : '—')}</td>
-              <td className="py-3 pr-4 text-slate-700">—</td>
+              <td className="py-3 pr-4 text-slate-700">{r.uploaded_at ? new Date(r.uploaded_at).toLocaleDateString() : '—'}</td>
+              <td className="py-3 pr-4 text-slate-700">{r.planned_mail_date ? new Date(r.planned_mail_date).toLocaleDateString() : <span className="text-slate-400 italic">Not scheduled</span>}</td>
+              <td className="py-3 pr-4 text-slate-700">{printOrderDates[r.job_id] ? new Date(printOrderDates[r.job_id]!).toLocaleDateString() : <span className="text-slate-400 italic">Not confirmed</span>}</td>
+              <td className="py-3 pr-4 text-slate-700">{r.row_count != null ? r.row_count.toLocaleString() : '—'}</td>
+              <td className="py-3 pr-4 text-slate-900 font-semibold">{mailCounts[r.id] > 0 ? mailCounts[r.id].toLocaleString() : '—'}</td>
               
             </tr>
           ))}

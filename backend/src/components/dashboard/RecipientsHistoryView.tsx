@@ -34,10 +34,10 @@ const RecipientsHistoryView: React.FC = () => {
   const [appliedSearch, setAppliedSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [listActivityDate, setListActivityDate] = useState<string | null>(null);
+  const [bestMailDate, setBestMailDate] = useState<{ date: string | null; label: string }>({ date: null, label: '' });
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch real list activity date once (latest job_mailing_lists.uploaded_at for this org)
+  // Fetch best available mail date (actual > planned — do not use uploaded_at as a mail date)
   useEffect(() => {
     if (!orgId) return;
     let active = true;
@@ -45,9 +45,16 @@ const RecipientsHistoryView: React.FC = () => {
       const { data: jobs } = await supabase.from('jobs').select('id').eq('org_id', orgId).limit(1000);
       const jobIds = (jobs || []).map((j: any) => j.id);
       if (!jobIds.length || !active) return;
-      const { data } = await supabase.from('job_mailing_lists').select('uploaded_at')
-        .in('job_id', jobIds as any[]).order('uploaded_at', { ascending: false }).limit(1);
-      if (active && (data as any)?.[0]?.uploaded_at) setListActivityDate((data as any)[0].uploaded_at);
+      const [poRes, listRes] = await Promise.all([
+        supabase.from('print_orders').select('mailed_at').in('job_id', jobIds as any[]).order('mailed_at', { ascending: false }).limit(1),
+        supabase.from('job_mailing_lists').select('planned_mail_date').in('job_id', jobIds as any[]).order('planned_mail_date', { ascending: false }).limit(1),
+      ]);
+      if (!active) return;
+      const actualDate: string | null = (poRes.data as any)?.[0]?.mailed_at ?? null;
+      const plannedDate: string | null = (listRes.data as any)?.[0]?.planned_mail_date ?? null;
+      if (actualDate) setBestMailDate({ date: actualDate, label: 'Actual Mail Date' });
+      else if (plannedDate) setBestMailDate({ date: plannedDate, label: 'Planned Mail Date' });
+      else setBestMailDate({ date: null, label: '' });
     })();
     return () => { active = false; };
   }, [orgId]);
@@ -168,7 +175,7 @@ const RecipientsHistoryView: React.FC = () => {
                 <td className="py-3 pr-4 text-slate-700">{[r.city, r.state].filter(Boolean).join(', ') || '—'}</td>
                 <td className="py-3 pr-4 text-slate-700 font-mono text-xs">{r.postal_code || '—'}</td>
                 <td className="py-3 pr-4 text-slate-900 font-semibold">{r.times_mailed}</td>
-                <td className="py-3 pr-4 text-slate-700">{r.times_mailed > 0 && listActivityDate ? new Date(listActivityDate).toLocaleDateString() : '—'}</td>
+                <td className="py-3 pr-4 text-slate-700">{r.times_mailed > 0 ? (bestMailDate.date ? new Date(bestMailDate.date).toLocaleDateString() : <span className="text-slate-400 italic">Not confirmed</span>) : '—'}</td>
               </tr>
             ))}
           </tbody>

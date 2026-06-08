@@ -13,7 +13,7 @@ const Card: React.FC<{ title: string; value: string }> = ({ title, value }) => (
 const MailingsOverview: React.FC = () => {
   const { user } = useAuth();
   const { actingOrg } = useActingOrg();
-  const [totals, setTotals] = useState({ recipients: 0, mailings: 0, purchasedLists: 0, suppressed: 0, lastMailedAt: null as string | null });
+  const [totals, setTotals] = useState({ recipients: 0, mailings: 0, purchasedLists: 0, suppressed: 0, lastDate: null as string | null, lastDateSource: '' as string });
 
   useEffect(() => {
     let isMounted = true;
@@ -40,29 +40,42 @@ const MailingsOverview: React.FC = () => {
           }
           // Count distinct jobs with any list rows (not raw row count)
           const listsQ = supabase.from('job_mailing_lists').select('job_id').in('job_id', jobIds as any[]);
-          // Last activity = latest uploaded_at from job_mailing_lists (not backfill timestamp)
-          const lastQ = supabase.from('job_mailing_lists').select('uploaded_at').in('job_id', jobIds as any[]).order('uploaded_at', { ascending: false }).limit(1);
+          const lastListQ = supabase.from('job_mailing_lists').select('uploaded_at, planned_mail_date').in('job_id', jobIds as any[]).order('uploaded_at', { ascending: false }).limit(1);
+          const lastPoQ = supabase.from('print_orders').select('mailed_at').in('job_id', jobIds as any[]).order('mailed_at', { ascending: false }).limit(1);
 
-          const [rRes, mRes, lRes, sRes, lastRes] = await Promise.all([recipientsQ, mailingsQ, listsQ, suppressQ, lastQ]);
+          const [rRes, mRes, lRes, sRes, lastListRes, lastPoRes] = await Promise.all([recipientsQ, mailingsQ, listsQ, suppressQ, lastListQ, lastPoQ]);
           if (!isMounted) return;
+          const actualMailDate: string | null = (lastPoRes.data as any)?.[0]?.mailed_at ?? null;
+          const plannedMailDate: string | null = (lastListRes.data as any)?.[0]?.planned_mail_date ?? null;
+          const uploadedAt: string | null = (lastListRes.data as any)?.[0]?.uploaded_at ?? null;
+          const lastDate = actualMailDate ?? plannedMailDate ?? uploadedAt;
+          const lastDateSource = actualMailDate ? 'Actual Mail Date' : plannedMailDate ? 'Planned Mail Date' : 'List Imported';
           setTotals({
             recipients: (rRes.count as number) || 0,
             mailings: (mRes.count as number) || 0,
             purchasedLists: new Set((lRes.data || []).map((l: any) => l.job_id)).size,
             suppressed: (sRes.count as number) || 0,
-            lastMailedAt: (lastRes.data && lastRes.data[0] && lastRes.data[0].uploaded_at) || null,
+            lastDate,
+            lastDateSource,
           });
         } else {
           const listsQ = supabase.from('job_mailing_lists').select('job_id');
-          const lastQ = supabase.from('job_mailing_lists').select('uploaded_at').order('uploaded_at', { ascending: false }).limit(1);
-          const [rRes, mRes, lRes, sRes, lastRes] = await Promise.all([recipientsQ, mailingsQ, listsQ, suppressQ, lastQ]);
+          const lastListQ = supabase.from('job_mailing_lists').select('uploaded_at, planned_mail_date').order('uploaded_at', { ascending: false }).limit(1);
+          const lastPoQ = supabase.from('print_orders').select('mailed_at').order('mailed_at', { ascending: false }).limit(1);
+          const [rRes, mRes, lRes, sRes, lastListRes, lastPoRes] = await Promise.all([recipientsQ, mailingsQ, listsQ, suppressQ, lastListQ, lastPoQ]);
           if (!isMounted) return;
+          const actualMailDate: string | null = (lastPoRes.data as any)?.[0]?.mailed_at ?? null;
+          const plannedMailDate: string | null = (lastListRes.data as any)?.[0]?.planned_mail_date ?? null;
+          const uploadedAt: string | null = (lastListRes.data as any)?.[0]?.uploaded_at ?? null;
+          const lastDate = actualMailDate ?? plannedMailDate ?? uploadedAt;
+          const lastDateSource = actualMailDate ? 'Actual Mail Date' : plannedMailDate ? 'Planned Mail Date' : 'List Imported';
           setTotals({
             recipients: (rRes.count as number) || 0,
             mailings: (mRes.count as number) || 0,
             purchasedLists: new Set((lRes.data || []).map((l: any) => l.job_id)).size,
             suppressed: (sRes.count as number) || 0,
-            lastMailedAt: (lastRes.data && lastRes.data[0] && lastRes.data[0].uploaded_at) || null,
+            lastDate,
+            lastDateSource,
           });
         }
       } catch (err) {
@@ -79,7 +92,7 @@ const MailingsOverview: React.FC = () => {
       <Card title="Mail Pieces Tracked" value={String(totals.mailings)} />
       <Card title="Imported Mailing Lists" value={String(totals.purchasedLists)} />
       <Card title="Suppressed Households" value={String(totals.suppressed)} />
-      <Card title="Last Mailing Activity" value={totals.lastMailedAt ? new Date(totals.lastMailedAt).toLocaleDateString() : '—'} />
+      <Card title={totals.lastDateSource || 'Last Mailing Activity'} value={totals.lastDate ? new Date(totals.lastDate).toLocaleDateString() : '—'} />
     </div>
   );
 };
