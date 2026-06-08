@@ -55,6 +55,13 @@ function parseCsv(raw: string): Record<string, string>[] {
   });
 }
 
+// Strip apartment/unit portion from an address string for fallback matching
+function stripUnit(address1: string): string {
+  return address1
+    .replace(/\s+(APT|UNIT|STE|SUITE|#)\s*\S+\s*$/i, '')
+    .trim();
+}
+
 // Attempt to resolve address fields from common CSV header variants
 function extractAddressFields(row: Record<string, string>) {
   const get = (...keys: string[]) => {
@@ -128,22 +135,60 @@ async function main() {
     for (const r of (recs ?? []) as any[]) fpToRecipientId.set(r.fingerprint, r.id);
   }
 
-  const matchedFps = Array.from(csvFps).filter(fp => fpToRecipientId.has(fp));
-  const unmatchedFps = Array.from(csvFps).filter(fp => !fpToRecipientId.has(fp));
-  console.log(`  Matched recipients: ${matchedFps.length}`);
-  console.log(`  Unmatched CSV fingerprints: ${unmatchedFps.length}`);
+  const primaryMatchedFps = Array.from(csvFps).filter(fp => fpToRecipientId.has(fp));
+  const primaryUnmatchedFps = Array.from(csvFps).filter(fp => !fpToRecipientId.has(fp));
+  console.log(`  Primary matched recipients: ${primaryMatchedFps.length}`);
+  console.log(`  Primary unmatched CSV fingerprints: ${primaryUnmatchedFps.length}`);
 
-  // Log unmatched rows
-  if (unmatchedFps.length > 0) {
-    console.log('\nUnmatched rows (first 20):');
-    for (const fp of unmatchedFps.slice(0, 20)) {
+  // ── Fallback pass: strip APT/UNIT/STE/# and re-fingerprint ────────────────
+  // Maps fallback fp → original fp so we can reuse fpToRow lookups
+  const fallbackFpToOrigFp = new Map<string, string>();
+  const fallbackFps = new Set<string>();
+  for (const origFp of primaryUnmatchedFps) {
+    const row = csvFpToRow.get(origFp);
+    if (!row) continue;
+    const parts = extractAddressFields(row);
+    const stripped = stripUnit(parts.address1);
+    if (stripped === parts.address1) continue; // no unit found — skip
+    const fallbackFp = fingerprintAddress({ address1: stripped, address2: parts.address2, city: parts.city, state: parts.state, zip: parts.zip });
+    fallbackFps.add(fallbackFp);
+    if (!fallbackFpToOrigFp.has(fallbackFp)) fallbackFpToOrigFp.set(fallbackFp, origFp);
+  }
+
+  const fallbackFpList = Array.from(fallbackFps);
+  for (let i = 0; i < fallbackFpList.length; i += FP_BATCH) {
+    const batch = fallbackFpList.slice(i, i + FP_BATCH);
+    const { data: recs, error } = await admin
+      .from('recipients')
+      .select('id,fingerprint')
+      .eq('org_id', orgId)
+      .in('fingerprint', batch);
+    if (error) throw error;
+    for (const r of (recs ?? []) as any[]) {
+      // Store against the ORIGINAL fp so downstream code stays consistent
+      const origFp = fallbackFpToOrigFp.get(r.fingerprint);
+      if (origFp && !fpToRecipientId.has(origFp)) fpToRecipientId.set(origFp, r.id);
+    }
+  }
+
+  const fallbackMatchedFps = primaryUnmatchedFps.filter(fp => fpToRecipientId.has(fp));
+  const stillUnmatchedFps  = primaryUnmatchedFps.filter(fp => !fpToRecipientId.has(fp));
+  const matchedFps = [...primaryMatchedFps, ...fallbackMatchedFps];
+  console.log(`  Fallback matched recipients: ${fallbackMatchedFps.length}`);
+  console.log(`  Still unmatched: ${stillUnmatchedFps.length}`);
+  console.log(`  Total matched recipients: ${matchedFps.length}`);
+
+  // Log still-unmatched rows
+  if (stillUnmatchedFps.length > 0) {
+    console.log('\nStill unmatched rows (first 20):');
+    for (const fp of stillUnmatchedFps.slice(0, 20)) {
       const row = csvFpToRow.get(fp);
       if (row) {
         const parts = extractAddressFields(row);
         console.log(`  ${parts.address1} | ${parts.city}, ${parts.state} ${parts.zip}`);
       }
     }
-    if (unmatchedFps.length > 20) console.log(`  ... and ${unmatchedFps.length - 20} more.`);
+    if (stillUnmatchedFps.length > 20) console.log(`  ... and ${stillUnmatchedFps.length - 20} more.`);
   }
 
   // Current mailings count for old list
@@ -155,6 +200,10 @@ async function main() {
 
   if (dryRun) {
     console.log('\n--- DRY RUN complete. No DB changes made. ---');
+    console.log(`  Primary matched:  ${primaryMatchedFps.length}`);
+    console.log(`  Fallback matched: ${fallbackMatchedFps.length}`);
+    console.log(`  Still unmatched:  ${stillUnmatchedFps.length}`);
+    console.log(`  Total matched:    ${matchedFps.length}`);
     console.log(`  Would create 1 new job_mailing_lists row with row_count=${matchedFps.length}`);
     console.log(`  Would insert ${matchedFps.length} mailings rows`);
     console.log(`  Would delete ${oldMailingsCount ?? 0} old mailings rows for oldListId`);
@@ -162,6 +211,7 @@ async function main() {
   }
 
   // Safety gate: require reasonable match rate
+  const unmatchedFps = stillUnmatchedFps;
   const matchRate = csvFps.size > 0 ? matchedFps.length / csvFps.size : 0;
   if (matchRate < 0.8) {
     console.error(`\nSafety check failed: match rate ${(matchRate * 100).toFixed(1)}% is below 80%. Aborting. Re-run with --dryRun to review unmatched rows.`);
@@ -225,7 +275,7 @@ async function main() {
   console.log('\nReconcile complete.');
   console.log(`  New mailing_list_id: ${newListId}`);
   console.log(`  Matched & mailed: ${mailingsInserted}`);
-  console.log(`  Unmatched (not in DB): ${unmatchedFps.length}`);
+  console.log(`  Unmatched (not in DB): ${stillUnmatchedFps.length}`);
   process.exit(0);
 }
 
