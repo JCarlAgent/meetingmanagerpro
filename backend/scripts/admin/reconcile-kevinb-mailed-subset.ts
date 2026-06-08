@@ -62,7 +62,7 @@ function extractAddressFields(row: Record<string, string>) {
     return '';
   };
   return {
-    address1: get('address', 'address1', 'addr', 'street', 'addr1', 'mailing_address'),
+    address1: get('address', 'address1', 'addr', 'street', 'addr1', 'mailing_address', 'deladdr', 'delivery_address', 'street_address', 'altaddr'),
     address2: get('address2', 'addr2', 'apt', 'unit'),
     city: get('city', 'city_name'),
     state: get('state', 'st', 'state_code'),
