@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useActingOrg } from '@/lib/actingOrg';
-import { calcPlannedMailDate } from '../../api/_lib/plannedMailDate';
+import { calcPlannedMailDate } from '@/lib/plannedMailDate';
 
 type Row = {
   id: string;
