@@ -16,6 +16,7 @@ import { AdminPanelPage } from "./pages/AdminPanelPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AuthUrlHandler from "./lib/AuthUrlHandler";
 import DebugAuthPage from "./pages/DebugAuthPage";
+import DemoPage from "./pages/demo";
 
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
               <Route path="/_debug_auth" element={<DebugAuthPage />} />
               <Route path="/admin-panel" element={<AdminPanelPage />} />
               <Route path="*" element={<NotFound />} />
+              <Route path="/demo" element={<DemoPage />} />
 
             </Routes>
           </BrowserRouter>
