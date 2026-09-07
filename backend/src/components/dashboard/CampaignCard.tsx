@@ -450,22 +450,15 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
-  const selectedMeeting = useMemo(
-    () => events.find((event) => event.id === selectedEventId) ?? null,
-    [events, selectedEventId]
-  );
+  const updateTeleDirectRegistrantsForMeeting = async (meeting: any) => {
+    const eventId = String(meeting?.id ?? '').trim();
+    const meetingId = String(meeting?.teledirect_meeting_id ?? '').trim();
 
-  const selectedTeleDirectMeetingId = useMemo(() => {
-    if (!selectedMeeting) return '';
-    return String(selectedMeeting.teledirect_meeting_id ?? '').trim();
-  }, [selectedMeeting]);
-
-  const updateTeleDirectRegistrants = async () => {
-    if (!selectedEventId) {
-      setTeleDirectSyncMessage('Select a meeting first.');
+    if (!eventId) {
+      setTeleDirectSyncMessage('No meeting selected for update.');
       return;
     }
-    if (!selectedTeleDirectMeetingId) {
+    if (!meetingId) {
       setTeleDirectSyncMessage('No TeleDirect Meeting ID is configured for this meeting.');
       return;
     }
@@ -489,8 +482,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         },
         body: JSON.stringify({
           jobId: campaign.id,
-          eventId: selectedEventId,
-          meetingId: selectedTeleDirectMeetingId,
+          eventId,
+          meetingId,
           replaceExisting: false,
         }),
       });
@@ -1546,6 +1539,21 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                   )}
                                 </div>
                               </div>
+                              {user?.is_master_admin && (
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateTeleDirectRegistrantsForMeeting(ev)}
+                                    disabled={isUpdatingTeleDirectRegistrants || !String(ev?.teledirect_meeting_id ?? '').trim()}
+                                    title={String(ev?.teledirect_meeting_id ?? '').trim()
+                                      ? 'Update this meeting’s confirmations from TeleDirect'
+                                      : 'No TeleDirect Meeting ID is configured for this meeting.'}
+                                    className="text-[11px] px-2 py-1 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white"
+                                  >
+                                    Update Confirmations
+                                  </button>
+                                </div>
+                              )}
 
                               {isPast && (
                                 <div className="mt-2 rounded border border-slate-200 bg-white p-2">
@@ -1870,16 +1878,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                             </button>
                           )}
                           {/* ── Primary: TeleDirect export import ── */}
-                          {user?.is_master_admin && (
-                            <button
-                              onClick={updateTeleDirectRegistrants}
-                              disabled={isUpdatingTeleDirectRegistrants || !selectedEventId}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded text-sm font-medium"
-                              title={selectedTeleDirectMeetingId ? 'Update this meeting’s registrants from TeleDirect' : 'No TeleDirect Meeting ID is configured for this meeting.'}
-                            >
-                              {isUpdatingTeleDirectRegistrants ? 'Updating…' : 'Update TeleDirect Registrants'}
-                            </button>
-                          )}
                           {user?.is_master_admin && (
                             <button
                               onClick={() => { setShowTsvImport(v => !v); setImportMessage(null); }}
