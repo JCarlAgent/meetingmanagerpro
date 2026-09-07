@@ -1,3 +1,4 @@
+import https from 'node:https';
 import { decryptString } from '../../_lib/crypto.js';
 import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
@@ -17,9 +18,23 @@ function extractTeleDirectError(xml: string): string | null {
   return String(match[1]).replace(/<[^>]+>/g, '').trim();
 }
 
-function usernamePreview(u: string): string {
-  if (u.length <= 4) return '***';
-  return `${u.slice(0, 2)}***${u.slice(-2)}`;
+function extractReturnedMeetingId(xml: string): string | null {
+  const match = xml.match(/<MeetingID[^>]*>([\s\S]*?)<\/MeetingID>/i) || xml.match(/MeetingID\s*=\s*["']?([0-9A-Za-z-]+)["']?/i);
+  if (!match || !match[1]) return null;
+  return String(match[1]).replace(/<[^>]+>/g, '').trim();
+}
+
+function countAttendees(xml: string): number {
+  const matches = xml.match(/<Attendee\b/gi) || [];
+  return matches.length;
+}
+
+function legacyUrlEncodedBody(username: string, password: string, meetingId: string) {
+  return new URLSearchParams({
+    UserName: username,
+    Password: password,
+    MeetingID: meetingId,
+  }).toString();
 }
 
 export default async function handler(req: any, res: any) {
@@ -78,19 +93,14 @@ export default async function handler(req: any, res: any) {
     const password = decryptString(data.password_enc);
 
     const diagnostics = {
-      usernamePresent: username.trim().length > 0,
-      passwordPresent: password.trim().length > 0,
-      usernameLength: username.trim().length,
-      passwordLength: password.trim().length,
-      authParamNamesUsed: ['UserName', 'Password'],
-      credentialSource: 'user_seminaredge_credentials',
       requestMethod: 'GET',
+      requestBodyType: 'application/x-www-form-urlencoded',
+      credentialSource: 'user_seminaredge_credentials',
     };
 
-    if (!diagnostics.usernamePresent || !diagnostics.passwordPresent) {
+    if (!username.trim() || !password.trim()) {
       send(res, 200, {
         ok: false,
-        usernamePreview: usernamePreview(username),
         testedRemote: false,
         message: 'Saved Seminar Edge credentials are blank after decrypt. Re-save credentials in Settings.',
         ...diagnostics,
@@ -102,61 +112,99 @@ export default async function handler(req: any, res: any) {
       send(res, 200, {
         ok: true,
         testedRemote: false,
-        usernamePreview: usernamePreview(username),
         message: 'Seminar Edge credentials are present and decrypted. Add a Meeting ID or Seminar ID to perform a remote auth test.',
         ...diagnostics,
       });
       return;
     }
 
-    const baseUrl = 'https://client.teledirect.com/seminaredge/api';
-    const byMeeting = !!meetingId;
-    const endpoint = byMeeting ? 'get_AttendeesByMeetingID.asp' : 'get_AttendeesBySeminarID.asp';
-    const idKey = byMeeting ? 'MeetingID' : 'SeminarID';
-    const idValue = byMeeting ? meetingId : seminarId;
+    const legacyUrl = 'https://client.teledirect.com/seminaredge/api/get_AttendeesByMeetingID.asp';
+    const legacyBody = legacyUrlEncodedBody(username, password, meetingId || seminarId);
+    const legacyBodyLength = Buffer.byteLength(legacyBody, 'utf8');
 
-    const qs = [
-      `UserName=${encodeURIComponent(username)}`,
-      `Password=${encodeURIComponent(password)}`,
-      `${idKey}=${encodeURIComponent(idValue)}`,
-    ].join('&');
+    let httpStatus = 0;
+    let contentType = '';
+    let responseText = '';
+    let bodyWasSent = false;
 
-    const safeQs = [
-      `UserName=${encodeURIComponent(usernamePreview(username))}`,
-      'Password=***',
-      `${idKey}=${encodeURIComponent(idValue)}`,
-    ].join('&');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const req = https.request(
+          legacyUrl,
+          {
+            method: 'GET',
+            headers: {
+              Accept: 'text/xml, application/xml, */*',
+              'User-Agent': 'Mozilla/5.0 (compatible; MeetingsManagerPRO/1.0; diagnostics)',
+              Connection: 'close',
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Length': String(legacyBodyLength),
+            },
+          },
+          (res) => {
+            httpStatus = res.statusCode ?? 0;
+            contentType = String(res.headers['content-type'] || '');
 
-    const url = `${baseUrl}/${endpoint}?${qs}`;
-    const safeUrl = `${baseUrl}/${endpoint}?${safeQs}`;
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+            res.on('end', () => {
+              responseText = Buffer.concat(chunks).toString('utf8');
+              resolve();
+            });
+            res.on('error', reject);
+          },
+        );
 
-    const resp = await fetch(url, { method: 'GET' });
-    const text = await resp.text();
-    const normalized = stripXml(text);
+        req.on('error', reject);
+        req.write(legacyBody);
+        bodyWasSent = true;
+        req.end();
+      });
+    } catch (e: any) {
+      send(res, 200, {
+        ok: false,
+        testedRemote: true,
+        requestMethod: 'GET',
+        requestBodySent: bodyWasSent,
+        requestBodyByteLength: legacyBodyLength,
+        httpStatus: 0,
+        contentType: null,
+        returnedMeetingId: null,
+        xmlReceived: false,
+        teleDirectError: 'Request failed before receiving a response from TeleDirect.',
+        attendeeCount: null,
+        message: e?.message || 'Legacy Seminar Edge request failed',
+      });
+      return;
+    }
+
+    const normalized = stripXml(responseText);
     const lower = normalized.toLowerCase();
     const teleDirectError = extractTeleDirectError(normalized);
+    const xmlReceived = normalized.length > 0 && (normalized.startsWith('<?xml') || normalized.startsWith('<'));
     const bodyHasError =
       !!teleDirectError ||
       lower.includes('<error>') ||
       lower.includes('login failed') ||
       lower.includes('invalid user') ||
       lower.includes('invalid password');
+    const returnedMeetingId = extractReturnedMeetingId(normalized);
+    const attendeeCount = xmlReceived && !bodyHasError ? countAttendees(normalized) : 0;
 
-    if (!resp.ok || bodyHasError) {
+    if (bodyHasError || httpStatus >= 400) {
       send(res, 200, {
         ok: false,
         testedRemote: true,
-        endpoint,
-        safeUrl,
-        httpStatus: resp.status,
-        usernamePreview: usernamePreview(username),
-        errorInBody: bodyHasError,
-        teleDirectError: teleDirectError ? `TeleDirect error: ${teleDirectError}` : null,
-        rawPreview: normalized.slice(0, 600),
-        message: bodyHasError
-          ? (teleDirectError ? `TeleDirect error: ${teleDirectError}` : 'Seminar Edge returned an XML error body. Credentials are likely wrong or not Seminar Edge credentials.')
-          : `HTTP ${resp.status} from Seminar Edge`,
-        ...diagnostics,
+        requestMethod: 'GET',
+        requestBodySent: bodyWasSent,
+        requestBodyByteLength: legacyBodyLength,
+        httpStatus,
+        contentType,
+        returnedMeetingId: returnedMeetingId || null,
+        xmlReceived,
+        teleDirectError: teleDirectError ? `TeleDirect error: ${teleDirectError}` : (bodyHasError ? 'TeleDirect returned an XML error body.' : null),
+        attendeeCount: null,
+        message: teleDirectError ? `TeleDirect error: ${teleDirectError}` : 'Seminar Edge returned an XML error body.',
       });
       return;
     }
@@ -164,14 +212,16 @@ export default async function handler(req: any, res: any) {
     send(res, 200, {
       ok: true,
       testedRemote: true,
-      endpoint,
-      safeUrl,
-      httpStatus: resp.status,
-      usernamePreview: usernamePreview(username),
-      errorInBody: false,
-      rawPreview: normalized.slice(0, 600),
-      message: 'Seminar Edge remote auth test returned XML with no error.',
-      ...diagnostics,
+      requestMethod: 'GET',
+      requestBodySent: bodyWasSent,
+      requestBodyByteLength: legacyBodyLength,
+      httpStatus,
+      contentType,
+      returnedMeetingId: returnedMeetingId || null,
+      xmlReceived,
+      teleDirectError: null,
+      attendeeCount: attendeeCount || 0,
+      message: 'Legacy Seminar Edge request completed successfully.',
     });
   } catch (e: any) {
     send(res, 500, { error: e?.message || 'Server error' });
