@@ -22,6 +22,7 @@ const SettingsView: React.FC = () => {
 
   const [seminarEdgeUsername, setSeminarEdgeUsername] = useState('');
   const [seminarEdgePassword, setSeminarEdgePassword] = useState('');
+  const [seminarEdgeMeetingId, setSeminarEdgeMeetingId] = useState('595037');
   const [isSavingSeminarEdge, setIsSavingSeminarEdge] = useState(false);
   const [isTestingSeminarEdge, setIsTestingSeminarEdge] = useState(false);
   const [seminarEdgeStatus, setSeminarEdgeStatus] = useState<string | null>(null);
@@ -195,11 +196,17 @@ const SettingsView: React.FC = () => {
         return;
       }
 
+      const payload = seminarEdgeMeetingId.trim()
+        ? { meetingId: seminarEdgeMeetingId.trim() }
+        : {};
+
       const resp = await fetch('/api/integrations/seminaredge/test', {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify(payload),
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -211,6 +218,9 @@ const SettingsView: React.FC = () => {
 
       const lines: string[] = [];
       lines.push(`Status: ${data?.ok ? '✓ Ready' : '✗ Failed'}`);
+      if (data?.testedRemote === false) lines.push('Remote attendee request: not performed');
+      if (data?.endpoint) lines.push(`Endpoint: ${data.endpoint}`);
+      if (data?.safeUrl) lines.push(`URL: ${data.safeUrl}`);
       if (data?.usernamePreview) lines.push(`Username used: ${data.usernamePreview}`);
       if (typeof data?.usernamePresent === 'boolean') lines.push(`Username present: ${data.usernamePresent}`);
       if (typeof data?.passwordPresent === 'boolean') lines.push(`Password present: ${data.passwordPresent}`);
@@ -585,6 +595,23 @@ const SettingsView: React.FC = () => {
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
                   For security, the password is never shown after save.
+                </p>
+              </div>
+
+              <div className="mt-2">
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  TeleDirect Meeting ID
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={seminarEdgeMeetingId}
+                  onChange={(e) => setSeminarEdgeMeetingId(e.target.value)}
+                  placeholder="595037"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Diagnostic only. This is not saved as a credential and is used for the live TeleDirect MeetingID test.
                 </p>
               </div>
 
