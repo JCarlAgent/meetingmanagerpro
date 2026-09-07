@@ -591,7 +591,7 @@ export default async function handler(req: any, res: any) {
   send(res, 200, {
     ok: true,
     endpoint,
-    httpStatus: resp.status,
+    httpStatus,
     containerTag,
     allTagsFound,
     inserted,

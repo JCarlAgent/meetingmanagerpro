@@ -99,7 +99,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [editMeetingError, setEditMeetingError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [teleDirectSyncMessage, setTeleDirectSyncMessage] = useState<string | null>(null);
-  const [isUpdatingTeleDirectRegistrants, setIsUpdatingTeleDirectRegistrants] = useState(false);
+  const [syncingMeetingId, setSyncingMeetingId] = useState<string | null>(null);
+  const [meetingSyncMessages, setMeetingSyncMessages] = useState<Record<string, string>>({});
   const [showTsvImport, setShowTsvImport] = useState(false);
   const [tsvText, setTsvText] = useState('');
   const [importEventId, setImportEventId] = useState<string>('');
@@ -463,14 +464,17 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       return;
     }
 
-    setIsUpdatingTeleDirectRegistrants(true);
-    setTeleDirectSyncMessage('Updating TeleDirect registrants…');
+    setSyncingMeetingId(eventId);
+    setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: 'Updating TeleDirect confirmations…' }));
+    setTeleDirectSyncMessage('Updating TeleDirect confirmations…');
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token ?? null;
       if (!token) {
-        setTeleDirectSyncMessage('Not logged in.');
+        const msg = 'Not logged in.';
+        setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: msg }));
+        setTeleDirectSyncMessage(msg);
         return;
       }
 
@@ -491,24 +495,33 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok) {
-        setTeleDirectSyncMessage(`Update failed: ${data?.error || 'TeleDirect sync failed'}`);
+        const msg = `TeleDirect sync failed: ${data?.error || 'Unknown TeleDirect error.'}`;
+        setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: msg }));
+        setTeleDirectSyncMessage(msg);
         return;
       }
 
-      const summary = [
-        `Attendees received: ${data?.totalA ?? 0}`,
-        `Responders inserted: ${data?.inserted ?? 0}`,
-        `Responders updated: ${data?.updated ?? 0}`,
-        data?.skipped ? `Skipped: ${data.skipped}` : '',
-        data?.errors?.length ? `Errors: ${data.errors.join(' | ')}` : '',
-      ].filter(Boolean).join('\n');
+      const totalReceived = Number(data?.totalA ?? 0);
+      const inserted = Number(data?.inserted ?? 0);
+      const updated = Number(data?.updated ?? 0);
+      const skipped = Number(data?.skipped ?? 0);
 
-      setTeleDirectSyncMessage(summary || 'TeleDirect registrants updated.');
+      let msg = '';
+      if ((inserted + updated) === 0) {
+        msg = 'Confirmations are already up to date.';
+      } else {
+        msg = `Confirmations updated: ${totalReceived} received, ${inserted} added, ${updated} updated, ${skipped} skipped.`;
+      }
+
+      setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: msg }));
+      setTeleDirectSyncMessage(msg);
       reloadResponders();
     } catch (err: any) {
-      setTeleDirectSyncMessage(`Update failed: ${err?.message || String(err)}`);
+      const msg = `TeleDirect sync failed: ${err?.message || 'Unknown TeleDirect error.'}`;
+      setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: msg }));
+      setTeleDirectSyncMessage(msg);
     } finally {
-      setIsUpdatingTeleDirectRegistrants(false);
+      setSyncingMeetingId((current) => (current === eventId ? null : current));
     }
   };
 
@@ -1540,18 +1553,23 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 </div>
                               </div>
                               {user?.is_master_admin && (
-                                <div className="mt-2 flex items-center justify-between gap-2">
+                                <div className="mt-2 flex flex-col gap-1">
                                   <button
                                     type="button"
                                     onClick={() => updateTeleDirectRegistrantsForMeeting(ev)}
-                                    disabled={isUpdatingTeleDirectRegistrants || !String(ev?.teledirect_meeting_id ?? '').trim()}
+                                    disabled={syncingMeetingId === ev.id || !String(ev?.teledirect_meeting_id ?? '').trim()}
                                     title={String(ev?.teledirect_meeting_id ?? '').trim()
                                       ? 'Update this meeting’s confirmations from TeleDirect'
                                       : 'No TeleDirect Meeting ID is configured for this meeting.'}
                                     className="text-[11px] px-2 py-1 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white"
                                   >
-                                    Update Confirmations
+                                    {syncingMeetingId === ev.id ? 'Updating…' : 'Update Confirmations'}
                                   </button>
+                                  {meetingSyncMessages[ev.id] && (
+                                    <div className="text-[10px] leading-snug text-slate-700 bg-white border border-slate-200 rounded px-2 py-1">
+                                      {meetingSyncMessages[ev.id]}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
