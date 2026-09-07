@@ -7,12 +7,6 @@ function send(res: any, status: number, body: any) {
   res.end(JSON.stringify(body));
 }
 
-function usernamePreview(u: string): string {
-  if (!u) return '(blank)';
-  if (u.length <= 4) return '***';
-  return `${u.slice(0, 2)}***${u.slice(-2)}`;
-}
-
 function redact(text: string, username?: string, password?: string) {
   let out = String(text || '');
   if (username) out = out.split(username).join('[REDACTED_USERNAME]');
@@ -122,6 +116,8 @@ export default async function handler(req: any, res: any) {
   const errorMatch = rawText.match(/<error[^>]*>([\s\S]*?)<\/error>/i);
   const xmlHasError = Boolean(errorMatch) || lower.includes('login failed') || lower.includes('invalid user') || lower.includes('invalid password');
   const xmlErrorMessage = errorMatch ? String(errorMatch[1]).trim() : (lower.includes('login failed') ? 'Login failed' : '');
+  const meetingIdReturnedMatch = rawText.match(/\bMeetingID\s*=\s*["']?([0-9A-Za-z-]+)["']?/i);
+  const meetingIdReturned = meetingIdReturnedMatch ? String(meetingIdReturnedMatch[1]).trim() : null;
 
   // Count attendee-like tags as a heuristic for record count
   const tagCandidates = ['Attendee','attendee','Record','record','Lead','lead','Row','row','Item','item'];
@@ -146,7 +142,7 @@ export default async function handler(req: any, res: any) {
     xml_contains_error: xmlHasError,
     xml_error_message: xmlErrorMessage || null,
     attendee_count: attendeeCount,
-    xml_preview_redacted: safePreview.replace(/\n/g, '\\n'),
-    username_preview: usernamePreview(username),
+    meeting_id_returned: meetingIdReturned,
+    xml_preview_redacted: safePreview.replace(/\n/g, '\n'),
   });
 }
