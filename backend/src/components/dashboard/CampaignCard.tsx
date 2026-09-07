@@ -94,10 +94,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   // --- Edit Meeting state (master admin only) ---
   const [editingMeeting, setEditingMeeting] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ event_date: '', event_time: '', venue_name: '', venue_address: '', venue_city: '', venue_state: '' });
+  const [editForm, setEditForm] = useState({ event_date: '', event_time: '', venue_name: '', venue_address: '', venue_city: '', venue_state: '', teledirect_meeting_id: '' });
   const [isSavingMeeting, setIsSavingMeeting] = useState(false);
   const [editMeetingError, setEditMeetingError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [teleDirectSyncMessage, setTeleDirectSyncMessage] = useState<string | null>(null);
+  const [isUpdatingTeleDirectRegistrants, setIsUpdatingTeleDirectRegistrants] = useState(false);
   const [showTsvImport, setShowTsvImport] = useState(false);
   const [tsvText, setTsvText] = useState('');
   const [importEventId, setImportEventId] = useState<string>('');
@@ -448,6 +450,75 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
+  const selectedMeeting = useMemo(
+    () => events.find((event) => event.id === selectedEventId) ?? null,
+    [events, selectedEventId]
+  );
+
+  const selectedTeleDirectMeetingId = useMemo(() => {
+    if (!selectedMeeting) return '';
+    return String(selectedMeeting.teledirect_meeting_id ?? '').trim();
+  }, [selectedMeeting]);
+
+  const updateTeleDirectRegistrants = async () => {
+    if (!selectedEventId) {
+      setTeleDirectSyncMessage('Select a meeting first.');
+      return;
+    }
+    if (!selectedTeleDirectMeetingId) {
+      setTeleDirectSyncMessage('No TeleDirect Meeting ID is configured for this meeting.');
+      return;
+    }
+
+    setIsUpdatingTeleDirectRegistrants(true);
+    setTeleDirectSyncMessage('Updating TeleDirect registrants…');
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) {
+        setTeleDirectSyncMessage('Not logged in.');
+        return;
+      }
+
+      const resp = await fetch('/api/integrations/seminaredge/update-responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          jobId: campaign.id,
+          eventId: selectedEventId,
+          meetingId: selectedTeleDirectMeetingId,
+          replaceExisting: false,
+        }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        setTeleDirectSyncMessage(`Update failed: ${data?.error || 'TeleDirect sync failed'}`);
+        return;
+      }
+
+      const summary = [
+        `Attendees received: ${data?.totalA ?? 0}`,
+        `Responders inserted: ${data?.inserted ?? 0}`,
+        `Responders updated: ${data?.updated ?? 0}`,
+        data?.skipped ? `Skipped: ${data.skipped}` : '',
+        data?.errors?.length ? `Errors: ${data.errors.join(' | ')}` : '',
+      ].filter(Boolean).join('\n');
+
+      setTeleDirectSyncMessage(summary || 'TeleDirect registrants updated.');
+      reloadResponders();
+    } catch (err: any) {
+      setTeleDirectSyncMessage(`Update failed: ${err?.message || String(err)}`);
+    } finally {
+      setIsUpdatingTeleDirectRegistrants(false);
+    }
+  };
+
   const runSeminarEdgeDebugTest = async () => {
     const eventId = seminarDebugEventId.trim();
     const meetingId = seminarDebugMeetingId.trim();
@@ -548,6 +619,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       venue_address: ev.venue_address ?? '',
       venue_city: ev.venue_city ?? '',
       venue_state: ev.venue_state ?? '',
+      teledirect_meeting_id: ev.teledirect_meeting_id ?? '',
     });
     setEditMeetingError(null);
   };
@@ -567,6 +639,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         address1: editForm.venue_address,
         city: editForm.venue_city,
         state: editForm.venue_state,
+        teledirect_meeting_id: editForm.teledirect_meeting_id?.trim() || null,
         ...(startsAt ? { starts_at: startsAt } : {}),
       };
       const { error } = await supabase.from('job_meetings').update(updates).eq('id', editingMeeting.id);
@@ -1776,6 +1849,16 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           {/* ── Primary: TeleDirect export import ── */}
                           {user?.is_master_admin && (
                             <button
+                              onClick={updateTeleDirectRegistrants}
+                              disabled={isUpdatingTeleDirectRegistrants || !selectedEventId}
+                              className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded text-sm font-medium"
+                              title={selectedTeleDirectMeetingId ? 'Update this meeting’s registrants from TeleDirect' : 'No TeleDirect Meeting ID is configured for this meeting.'}
+                            >
+                              {isUpdatingTeleDirectRegistrants ? 'Updating…' : 'Update TeleDirect Registrants'}
+                            </button>
+                          )}
+                          {user?.is_master_admin && (
+                            <button
                               onClick={() => { setShowTsvImport(v => !v); setImportMessage(null); }}
                               className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium"
                             >
@@ -2148,6 +2231,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 )}
                               </div>
 
+                              {teleDirectSyncMessage && (
+                                <div className="w-full mt-1 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 break-all whitespace-pre-wrap">{teleDirectSyncMessage}</div>
+                              )}
                               {syncMessage && (
                                 <div className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 break-all whitespace-pre-wrap">{syncMessage}</div>
                               )}
@@ -2235,6 +2321,16 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                   <label className="block text-xs font-medium text-slate-600 mb-1">State</label>
                   <input type="text" maxLength={2} value={editForm.venue_state} onChange={e => setEditForm(f => ({ ...f, venue_state: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">TeleDirect Meeting ID</label>
+                <input
+                  type="text"
+                  value={editForm.teledirect_meeting_id}
+                  onChange={e => setEditForm(f => ({ ...f, teledirect_meeting_id: e.target.value }))}
+                  placeholder="Enter TeleDirect Meeting ID"
+                  className="w-full border rounded px-2 py-1.5 text-sm"
+                />
               </div>
             </div>
             {editMeetingError && <p className="mt-3 text-xs text-red-600">{editMeetingError}</p>}

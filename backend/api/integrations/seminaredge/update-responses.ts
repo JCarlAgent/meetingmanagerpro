@@ -1,3 +1,4 @@
+import https from 'node:https';
 import { decryptString } from '../../_lib/crypto.js';
 import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
@@ -262,31 +263,68 @@ export default async function handler(req: any, res: any) {
   const idKey = primaryByMeeting ? 'MeetingID' : 'SeminarID';
   const idValue = primaryByMeeting ? meetingId : seminarId;
 
-  const qs = [
-    `UserName=${encodeURIComponent(username)}`,
-    `Password=${encodeURIComponent(password)}`,
-    `${idKey}=${encodeURIComponent(idValue)}`,
-  ].join('&');
+  const body = new URLSearchParams({
+    UserName: username,
+    Password: password,
+    [idKey]: idValue,
+  }).toString();
 
-  const safeQs = [
-    `UserName=${encodeURIComponent(usernamePreview(username))}`,
-    'Password=***',
-    `${idKey}=${encodeURIComponent(idValue)}`,
-  ].join('&');
+  const bodyByteLength = Buffer.byteLength(body, 'utf8');
+  const safeBody = new URLSearchParams({
+    UserName: usernamePreview(username),
+    Password: '***',
+    [idKey]: idValue,
+  }).toString();
 
-  const url = `${baseUrl}/${endpoint}?${qs}`;
-  const safeUrl = `${baseUrl}/${endpoint}?${safeQs}`;
-
-  let resp: Response;
+  let httpStatus = 0;
+  let contentType = '';
   let rawText = '';
+  let bodyWasSent = false;
+
   try {
-    resp = await fetch(url, { method: 'GET' });
-    rawText = await resp.text();
+    await new Promise<void>((resolve, reject) => {
+      const req = https.request(
+        `${baseUrl}/${endpoint}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'text/xml, application/xml, */*',
+            'User-Agent': 'Mozilla/5.0 (compatible; MeetingsManagerPRO/1.0; diagnostics)',
+            Connection: 'close',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': String(bodyByteLength),
+          },
+        },
+        (res) => {
+          httpStatus = res.statusCode ?? 0;
+          contentType = String(res.headers['content-type'] || '');
+
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+          });
+          res.on('end', () => {
+            rawText = Buffer.concat(chunks).toString('utf8');
+            resolve();
+          });
+          res.on('error', reject);
+        }
+      );
+
+      req.on('error', reject);
+      req.write(body);
+      bodyWasSent = true;
+      req.end();
+    });
   } catch (e: any) {
     send(res, 502, {
       error: 'Failed calling Seminar Edge API',
       message: e?.message || 'Unknown fetch error',
-      safeUrl,
+      requestMethod: 'GET',
+      requestBodySent: bodyWasSent,
+      requestBodyByteLength: bodyByteLength,
+      endpoint,
+      safeBody,
     });
     return;
   }
@@ -300,12 +338,15 @@ export default async function handler(req: any, res: any) {
     bodyLower.includes('invalid user') ||
     bodyLower.includes('invalid password');
 
-  if (!resp.ok || bodyHasError) {
+  if (httpStatus >= 400 || bodyHasError) {
     send(res, 502, {
-      error: `Seminar Edge request failed (HTTP ${resp.status})`,
+      error: `Seminar Edge request failed (HTTP ${httpStatus})`,
       endpoint,
-      safeUrl,
-      httpStatus: resp.status,
+      httpStatus,
+      contentType,
+      requestMethod: 'GET',
+      requestBodySent: bodyWasSent,
+      requestBodyByteLength: bodyByteLength,
       looksXml,
       bodyHasError,
       rawPreview: normalizedBody.slice(0, 1200),
@@ -317,7 +358,7 @@ export default async function handler(req: any, res: any) {
         authParamNamesUsed: credDiag.authParamNamesUsed,
         credentialSource: credDiag.credentialSource,
         requestMethod: credDiag.requestMethod,
-        safeUrl,
+        safeBody,
       },
       ...credDiag,
     });

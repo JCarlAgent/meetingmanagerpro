@@ -51,6 +51,7 @@ export interface Event {
   max_capacity: number;
   status: 'open' | 'full' | 'closed';
   created_at: string;
+  teledirect_meeting_id?: string | null;
   responders?: Responder[];
 }
 

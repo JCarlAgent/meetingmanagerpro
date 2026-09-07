@@ -297,6 +297,7 @@ const Dashboard: React.FC = () => {
             max_capacity: 0,
             status: 'open',
             created_at: m.created_at,
+            teledirect_meeting_id: m.teledirect_meeting_id ?? null,
           };
         });
 
