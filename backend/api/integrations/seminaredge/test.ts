@@ -11,6 +11,12 @@ function stripXml(xml: string) {
   return xml.replace(/\s+/g, ' ').trim();
 }
 
+function extractTeleDirectError(xml: string): string | null {
+  const match = xml.match(/<Error[^>]*>([\s\S]*?)<\/Error>/i) || xml.match(/<error[^>]*>([\s\S]*?)<\/error>/i);
+  if (!match || !match[1]) return null;
+  return String(match[1]).replace(/<[^>]+>/g, '').trim();
+}
+
 function usernamePreview(u: string): string {
   if (u.length <= 4) return '***';
   return `${u.slice(0, 2)}***${u.slice(-2)}`;
@@ -128,7 +134,9 @@ export default async function handler(req: any, res: any) {
     const text = await resp.text();
     const normalized = stripXml(text);
     const lower = normalized.toLowerCase();
+    const teleDirectError = extractTeleDirectError(normalized);
     const bodyHasError =
+      !!teleDirectError ||
       lower.includes('<error>') ||
       lower.includes('login failed') ||
       lower.includes('invalid user') ||
@@ -143,9 +151,10 @@ export default async function handler(req: any, res: any) {
         httpStatus: resp.status,
         usernamePreview: usernamePreview(username),
         errorInBody: bodyHasError,
+        teleDirectError: teleDirectError ? `TeleDirect error: ${teleDirectError}` : null,
         rawPreview: normalized.slice(0, 600),
         message: bodyHasError
-          ? 'Seminar Edge returned an XML error body. Credentials are likely wrong or not Seminar Edge credentials.'
+          ? (teleDirectError ? `TeleDirect error: ${teleDirectError}` : 'Seminar Edge returned an XML error body. Credentials are likely wrong or not Seminar Edge credentials.')
           : `HTTP ${resp.status} from Seminar Edge`,
         ...diagnostics,
       });
