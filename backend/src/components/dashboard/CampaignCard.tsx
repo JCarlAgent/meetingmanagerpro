@@ -626,6 +626,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   const saveMeetingEdit = async () => {
     if (!editingMeeting) return;
+    const meetingId = String(editingMeeting.id ?? '').trim();
+    if (!meetingId) {
+      setEditMeetingError('No meeting row selected for update.');
+      return;
+    }
+
     setIsSavingMeeting(true);
     setEditMeetingError(null);
     try {
@@ -634,16 +640,28 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       const timeVal = (editForm.event_time || '00:00').substring(0, 5);
       // UTC-literal storage: append Z so no browser timezone offset is applied.
       const startsAt = dateVal ? `${dateVal}T${timeVal}:00Z` : undefined;
-      const updates: Record<string, string | undefined> = {
+      const normalizedTeleDirectId = editForm.teledirect_meeting_id?.trim() || null;
+      const updates: Record<string, string | null | undefined> = {
         location_name: editForm.venue_name,
         address1: editForm.venue_address,
         city: editForm.venue_city,
         state: editForm.venue_state,
-        teledirect_meeting_id: editForm.teledirect_meeting_id?.trim() || null,
+        teledirect_meeting_id: normalizedTeleDirectId,
         ...(startsAt ? { starts_at: startsAt } : {}),
       };
-      const { error } = await supabase.from('job_meetings').update(updates).eq('id', editingMeeting.id);
+
+      const { data: updatedRow, error } = await supabase
+        .from('job_meetings')
+        .update(updates)
+        .eq('id', meetingId)
+        .select('id, teledirect_meeting_id')
+        .single();
+
       if (error) throw error;
+
+      const savedTeleDirectId = updatedRow?.teledirect_meeting_id ?? normalizedTeleDirectId ?? '';
+      setEditingMeeting((prev) => prev ? { ...prev, teledirect_meeting_id: savedTeleDirectId || null } : prev);
+      setEditForm((prev) => ({ ...prev, teledirect_meeting_id: savedTeleDirectId }));
       setEditingMeeting(null);
       onRefresh?.();
     } catch (err) {
@@ -1509,6 +1527,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 <div className="flex-1">
                                   <div className="font-medium text-sm">{ev.venue_name || 'TBD'}</div>
                                   <div className="text-xs text-slate-500">{ev.venue_city ? `${ev.venue_city}${ev.venue_state ? `, ${ev.venue_state}` : ''}` : ''}</div>
+                                  {ev.teledirect_meeting_id ? (
+                                    <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                                      TeleDirect ID: {ev.teledirect_meeting_id}
+                                    </div>
+                                  ) : null}
                                   <div className="text-xs text-slate-400">Attendees: {evAttendees}</div>
                                 </div>
                                 <div className="flex items-center gap-2">
