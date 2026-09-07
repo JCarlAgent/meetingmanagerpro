@@ -61,6 +61,8 @@ const ResponderList: React.FC<ResponderListProps> = ({
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [isTestingTeleDirect, setIsTestingTeleDirect] = useState(false);
+  const [teleDirectDiag, setTeleDirectDiag] = useState<any | null>(null);
 
   const eventMap = new Map(events.map(e => [e.id, e]));
 
@@ -411,8 +413,67 @@ const ResponderList: React.FC<ResponderListProps> = ({
             onClick={() => printResponders(null)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-xs"
           ><Printer className="w-3.5 h-3.5" />Print All Meetings</button>
+          <button
+            onClick={async () => {
+              setIsTestingTeleDirect(true);
+              setTeleDirectDiag(null);
+              try {
+                const session = await (await import('@/lib/supabase')).supabase.auth.getSession();
+                const token = session.data.session?.access_token;
+                if (!token) { setTeleDirectDiag({ error: 'Not logged in' }); setIsTestingTeleDirect(false); return; }
+
+                // Determine MeetingID to test — prefer any seminar/meeting id on selected event
+                let meetingId = '595037';
+                if (selectedEventId) {
+                  const ev = eventMap.get(selectedEventId) as any;
+                  if (ev) {
+                    const cand = ['seminar_id','seminarId','meeting_id','meetingId','tele_meeting_id','external_meeting_id'];
+                    for (const k of cand) { if (ev[k]) { meetingId = String(ev[k]); break; } }
+                  }
+                }
+
+                const resp = await fetch('/api/integrations/seminaredge/diagnostic', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ meetingId, eventId: selectedEventId }),
+                });
+                const data = await resp.json().catch(() => ({ error: 'Invalid JSON response' }));
+                setTeleDirectDiag(data);
+              } catch (err: any) {
+                setTeleDirectDiag({ error: err?.message ?? String(err) });
+              } finally {
+                setIsTestingTeleDirect(false);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs"
+            disabled={isTestingTeleDirect}
+          >
+            <Users className="w-3.5 h-3.5" />{isTestingTeleDirect ? 'Testing…' : 'Test TeleDirect Connection'}
+          </button>
         </div>
       </div>
+
+      {teleDirectDiag && (
+        <div className="p-4 border-b border-slate-200 bg-slate-50 text-sm text-slate-800">
+          <div><strong>TeleDirect Diagnostic:</strong></div>
+          <div className="mt-2">
+            <div>credentials record found: <strong>{String(teleDirectDiag.credentials_record_found ?? teleDirectDiag?.credentials_record_found ?? 'unknown')}</strong></div>
+            <div>username present: <strong>{String(teleDirectDiag.username_present ?? 'unknown')}</strong></div>
+            <div>password decrypted: <strong>{String(teleDirectDiag.password_decrypted ?? 'unknown')}</strong></div>
+            <div>MeetingID used: <strong>{String(teleDirectDiag.meetingId ?? '')}</strong></div>
+            <div>request method: <strong>{String(teleDirectDiag.request_method ?? '')}</strong></div>
+            <div>HTTP status: <strong>{String(teleDirectDiag.http_status ?? '')}</strong></div>
+            <div>content type: <strong>{String(teleDirectDiag.content_type ?? '')}</strong></div>
+            <div>XML received: <strong>{String(teleDirectDiag.xml_received ?? '')}</strong></div>
+            <div>XML contains &lt;Error&gt;: <strong>{String(teleDirectDiag.xml_contains_error ?? '')}</strong></div>
+            <div>XML error message: <strong>{String(teleDirectDiag.xml_error_message ?? '')}</strong></div>
+            <div>attendee count (heuristic): <strong>{String(teleDirectDiag.attendee_count ?? 0)}</strong></div>
+            <div className="mt-2">XML preview (redacted):
+              <pre className="whitespace-pre-wrap break-words bg-white p-2 rounded mt-1 text-xs">{String(teleDirectDiag.xml_preview_redacted ?? '').replace(/\\n/g, '\n')}</pre>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Unassigned banner */}
       {unassignedCount > 0 && filter !== 'waitlist' && (
