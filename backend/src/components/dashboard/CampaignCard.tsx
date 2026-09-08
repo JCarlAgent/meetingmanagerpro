@@ -119,6 +119,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [mailedCsv, setMailedCsv] = useState('');
   const [mailedFileName, setMailedFileName] = useState<string | null>(null);
   const [mailedRowCount, setMailedRowCount] = useState<number | null>(null);
+
+  const normalizeResponderStatus = (status?: string | null) => String(status ?? 'registered').trim().toLowerCase();
+
+  useEffect(() => {
+    setLocalResponders(responders ?? []);
+  }, [responders]);
   const [isImportingMail, setIsImportingMail] = useState(false);
   const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
   const [isMatchingMail, setIsMatchingMail] = useState(false);
@@ -259,8 +265,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     setSeminarDebugEventId(String(events[0].id));
   }, [events, seminarDebugEventId]);
 
-  // Prefer live-loaded responders; fall back to prop (legacy campaigns view) then stats count
-  const displayResponders = localResponders.length > 0 ? localResponders : responders;
+  // Use the current prop-driven responder collection as the canonical source of truth for counts.
+  // localResponders is kept only as a rehydrated mirror for immediate local updates; it must not
+  // override freshly fetched props after a meeting edit or responder refresh.
+  const authoritativeResponders = responders ?? [];
+  const displayResponders = authoritativeResponders;
   const totalResponders = displayResponders.length || (campaign.stats?.responses_total ?? 0);
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
   const mailedCount = campaign.stats?.mailed_count ?? (campaign as any).mailed_count ?? campaign.stats?.mailed ?? 0;
@@ -268,7 +277,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   // Attendees = sum of (1 primary + guests) across NON-cancelled responders (registered + waitlist).
   // Matches the same formula used in ResponderList totalSignupsCount.
   const nonCancelledResponders = displayResponders.filter(
-    r => (r.status || 'registered').trim().toLowerCase() !== 'cancelled'
+    r => normalizeResponderStatus(r.status) !== 'cancelled'
   );
   const attendeesCount = nonCancelledResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0) || (campaign.stats?.responses_total ?? 0);
   const responseRate = deliveredCount > 0 ? ((attendeesCount / deliveredCount) * 100) : 0;
@@ -1517,9 +1526,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           const eventId = String(ev?.id || '');
                           const parts = formatDateParts(ev.event_date);
                           const isPast = isPastEvent(ev);
-                          const evAttendees = displayResponders
-                            .filter(r => String(r.event_id || '') === eventId)
-                            .reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
+                          const meetingResponders = displayResponders.filter(
+                            r => String(r.event_id || '') === eventId && normalizeResponderStatus(r.status) !== 'cancelled'
+                          );
+                          const evAttendees = meetingResponders.reduce((sum, r) => sum + 1 + (r.guests ?? 0), 0);
                           const resultRow = meetingResultsByEventId.get(eventId);
                           const salesRows = meetingSalesByEventId.get(eventId) || [];
                           return (
@@ -2298,7 +2308,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             </div>
           </div>
           <ResponderList
-            responders={displayResponders.length > 0 ? displayResponders : responders}
+            responders={displayResponders}
             events={events}
             selectedEventId={selectedEventId}
             onSelectEvent={setSelectedEventId}
