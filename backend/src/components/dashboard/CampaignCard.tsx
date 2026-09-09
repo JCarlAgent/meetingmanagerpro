@@ -122,9 +122,6 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
 
   const normalizeResponderStatus = (status?: string | null) => String(status ?? 'registered').trim().toLowerCase();
 
-  useEffect(() => {
-    setLocalResponders(responders ?? []);
-  }, [responders]);
   const [isImportingMail, setIsImportingMail] = useState(false);
   const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
   const [isMatchingMail, setIsMatchingMail] = useState(false);
@@ -265,10 +262,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     setSeminarDebugEventId(String(events[0].id));
   }, [events, seminarDebugEventId]);
 
-  // Use the current prop-driven responder collection as the canonical source of truth for counts.
-  // localResponders is kept only as a rehydrated mirror for immediate local updates; it must not
-  // override freshly fetched props after a meeting edit or responder refresh.
-  const authoritativeResponders = responders ?? [];
+  // The card must use the direct campaign-scoped responder collection loaded from Supabase.
+  // The Dashboard prop can be empty/stale for the job, so it must never replace the live
+  // campaign responder set used for attendee calculations and rendering.
+  const authoritativeResponders = localResponders;
   const displayResponders = authoritativeResponders;
   const totalResponders = displayResponders.length || (campaign.stats?.responses_total ?? 0);
   const purchasedList = campaign.mail_quantity ?? 0; // job_mailing_lists.row_count when available (Dashboard mapping)
