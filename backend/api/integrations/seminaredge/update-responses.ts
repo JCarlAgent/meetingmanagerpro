@@ -188,7 +188,6 @@ export default async function handler(req: any, res: any) {
   const jobId = (payload?.jobId ?? '').toString().trim();
   const eventId = (payload?.eventId ?? '').toString().trim();
   const meetingId = (payload?.meetingId ?? '').toString().trim();
-  const seminarId = (payload?.seminarId ?? '').toString().trim();
   const replaceExisting = Boolean(payload?.replaceExisting);
 
   if (!jobId) {
@@ -201,8 +200,8 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  if (!meetingId && !seminarId) {
-    send(res, 400, { error: 'meetingId or seminarId is required' });
+  if (!meetingId) {
+    send(res, 400, { error: 'meetingId is required' });
     return;
   }
 
@@ -259,9 +258,10 @@ export default async function handler(req: any, res: any) {
   const baseUrl = 'https://client.teledirect.com/seminaredge/api';
   const primaryByMeeting = !!meetingId;
 
-  const endpoint = primaryByMeeting ? 'get_AttendeesByMeetingID.asp' : 'get_AttendeesBySeminarID.asp';
-  const idKey = primaryByMeeting ? 'MeetingID' : 'SeminarID';
-  const idValue = primaryByMeeting ? meetingId : seminarId;
+  const endpoint = 'get_AttendeesByMeetingID.asp';
+  const safeUrl = `${baseUrl}/${endpoint}`;
+  const idKey = 'MeetingID';
+  const idValue = meetingId;
 
   const body = new URLSearchParams({
     UserName: username,
@@ -349,7 +349,6 @@ export default async function handler(req: any, res: any) {
       requestBodyByteLength: bodyByteLength,
       looksXml,
       bodyHasError,
-      rawPreview: normalizedBody.slice(0, 1200),
       authDiagnostics: {
         usernamePresent: credDiag.usernamePresent,
         passwordPresent: credDiag.passwordPresent,
@@ -600,7 +599,6 @@ export default async function handler(req: any, res: any) {
     totalA,
     totalG,
     fieldNames,
-    rawPreview: normalizedBody.slice(0, 1200),
     pairingDiagnostics: {
       strategy: 'Sequential row-order pairing (A row owns following G rows until next A row)',
       orphanGuestRows,
@@ -609,7 +607,6 @@ export default async function handler(req: any, res: any) {
     source: {
       safeUrl,
       meetingId: meetingId || null,
-      seminarId: seminarId || null,
       replaceExisting,
       recordsParsed: records.length,
     },
