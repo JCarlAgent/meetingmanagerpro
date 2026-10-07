@@ -9,6 +9,7 @@ export type MeetingDraft = {
   state: string;
   date: string; // yyyy-mm-dd
   time: string; // HH:mm
+  timezone?: string;
 };
 
 export type SetupState = {

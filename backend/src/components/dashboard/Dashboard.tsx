@@ -28,6 +28,7 @@ import ApprovalsArchiveView from './ApprovalsArchiveView';
 import HomeView from './HomeView';
 import CampaignMapView from './map/CampaignMapView';
 import { RefreshCw, Plus, Search, FolderKanban, UserPlus } from 'lucide-react';
+import { formatVenueLocalDateTime, getMeetingTimeZone, wallClockTimeToUtcIso } from '@/lib/meetingTime';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -269,18 +270,22 @@ const Dashboard: React.FC = () => {
 
         // Map job_meetings -> event-like objects
         const jobMeetEvents = (jobMeetings || []).map((m: any) => {
-          // starts_at is stored as UTC ISO. Extract display values in LOCAL time so the
-          // meeting clock time shown matches what the admin originally entered.
           const d = m.starts_at ? new Date(m.starts_at) : null;
           const pad = (n: number) => String(n).padStart(2, '0');
-          // Use getUTC* so the stored UTC value is read back as-is (no browser
-          // timezone offset applied — meeting times are literal local times).
-          const localDate = d
+          const timezone = getMeetingTimeZone(m.timezone);
+
+          const legacyLocalDate = d
             ? `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
             : '';
-          const localTime = d
+          const legacyLocalTime = d
             ? `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
             : '';
+
+          const display = m.timezone ? formatVenueLocalDateTime(m.starts_at, timezone) : {
+            date: legacyLocalDate,
+            time: legacyLocalTime,
+          };
+
           return {
             id: m.id,
             campaign_id: m.job_id,
@@ -291,13 +296,14 @@ const Dashboard: React.FC = () => {
             venue_postal_code: m.postal_code || '',
             venue_lat: typeof m.venue_lat === 'number' ? m.venue_lat : null,
             venue_lng: typeof m.venue_lng === 'number' ? m.venue_lng : null,
-            event_date: localDate,
-            event_time: localTime,
+            event_date: display.date,
+            event_time: display.time,
             event_type: '',
             max_capacity: 0,
             status: 'open',
             created_at: m.created_at,
             teledirect_meeting_id: m.teledirect_meeting_id ?? null,
+            timezone,
           };
         });
 
@@ -472,10 +478,9 @@ const Dashboard: React.FC = () => {
       // Insert job_meetings for each event
       for (const event of data.events || []) {
         if (event.venue_name && event.event_date) {
-          // Treat entered time as a literal local business time — store as UTC
-          // by appending Z directly (no JS timezone offset applied).
+          const timezone = getMeetingTimeZone(event?.timezone);
           const timeVal = (event.event_time || '00:00').substring(0, 5);
-          const startsAt = `${event.event_date}T${timeVal}:00Z`;
+          const startsAt = wallClockTimeToUtcIso(event.event_date, timeVal, timezone);
 
           const { error: jmErr } = await supabase.from('job_meetings').insert({
             job_id: jobId,
@@ -484,6 +489,7 @@ const Dashboard: React.FC = () => {
             address1: event.venue_address,
             city: event.venue_city,
             state: event.venue_state,
+            timezone,
           });
           if (jmErr) throw jmErr;
         }

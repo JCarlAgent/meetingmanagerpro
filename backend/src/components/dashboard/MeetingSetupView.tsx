@@ -16,6 +16,12 @@ import {
   type MeetingDraft,
   type RsvpMethod,
 } from '@/lib/setupState';
+import {
+  MEETING_TIMEZONE_OPTIONS,
+  getMeetingTimeZone,
+  inferMeetingTimezoneFromState,
+  wallClockTimeToUtcIso,
+} from '@/lib/meetingTime';
 
 function formatUnknownError(err: unknown, fallback: string): string {
   if (!err) return fallback;
@@ -82,7 +88,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
-    return { location_name: '', address1: '', city: '', state: '', date: `${yyyy}-${mm}-${dd}`, time: '18:00' };
+    return { location_name: '', address1: '', city: '', state: '', date: `${yyyy}-${mm}-${dd}`, time: '18:00', timezone: '' };
   });
 
   const [initials, setInitials] = useState<Record<string, string>>({
@@ -108,7 +114,7 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
-      return { location_name: '', address1: '', city: '', state: '', date: `${yyyy}-${mm}-${dd}`, time: '18:00' };
+      return { location_name: '', address1: '', city: '', state: '', date: `${yyyy}-${mm}-${dd}`, time: '18:00', timezone: '' };
     });
     setRsvpMethods({ call_center: true, qr_code: true });
     setDemographicsNotes('');
@@ -173,7 +179,12 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       }
 
       if (typeof saved.templateId === 'string') setSelectedTemplateId(saved.templateId);
-      if (Array.isArray(saved.meetings)) setMeetings(saved.meetings as MeetingDraft[]);
+      if (Array.isArray(saved.meetings)) {
+        setMeetings((saved.meetings as MeetingDraft[]).map((meeting) => ({
+          ...meeting,
+          timezone: getMeetingTimeZone(meeting.timezone) || inferMeetingTimezoneFromState(meeting.state, meeting.timezone),
+        })));
+      }
       if (typeof saved.mailQuantity === 'number') setMailQuantity(saved.mailQuantity);
 
       isHydratedRef.current = true;
@@ -181,6 +192,15 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    if (!meetingDraft.timezone) {
+      const inferred = inferMeetingTimezoneFromState(meetingDraft.state, meetingDraft.timezone);
+      if (inferred && inferred !== meetingDraft.timezone) {
+        setMeetingDraft((prev) => ({ ...prev, timezone: inferred }));
+      }
+    }
+  }, [meetingDraft.state, meetingDraft.timezone]);
 
   useEffect(() => {
     try {
@@ -754,13 +774,35 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
               />
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Time zone</label>
+              <select
+                value={meetingDraft.timezone || ''}
+                onChange={(e) => setMeetingDraft((p) => ({ ...p, timezone: e.target.value }))}
+                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Select timezone</option>
+                {MEETING_TIMEZONE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <button
               type="button"
               onClick={() => {
-                const m = { ...meetingDraft };
+                const m = {
+                  ...meetingDraft,
+                  timezone: inferMeetingTimezoneFromState(meetingDraft.state, meetingDraft.timezone),
+                };
                 if (!m.location_name || !m.address1 || !m.city || !m.state || !m.date || !m.time) {
                   alert('Fill out all location fields first.');
+                  return;
+                }
+                if (!m.timezone) {
+                  alert('Select the meeting time zone before adding this meeting.');
                   return;
                 }
                 setMeetings((prev) => [...prev, m]);
@@ -817,14 +859,22 @@ const MeetingSetupView: React.FC<MeetingSetupViewProps> = ({ onNewCampaign, onNa
                     const { error: delErr } = await supabase.from('job_meetings').delete().eq('job_id', job.id);
                     if (delErr) throw delErr;
 
-                    const payload = meetings.map((m) => ({
-                      job_id: job.id,
-                      location_name: m.location_name,
-                      address1: m.address1,
-                      city: m.city,
-                      state: m.state,
-                      starts_at: new Date(`${m.date}T${m.time}:00`).toISOString(),
-                    }));
+                    const payload = meetings.map((m) => {
+                      const timezone = inferMeetingTimezoneFromState(m.state, m.timezone);
+                      if (!timezone) {
+                        throw new Error(`Select a time zone for ${m.location_name || 'this meeting'}.`);
+                      }
+
+                      return {
+                        job_id: job.id,
+                        location_name: m.location_name,
+                        address1: m.address1,
+                        city: m.city,
+                        state: m.state,
+                        timezone,
+                        starts_at: wallClockTimeToUtcIso(m.date, m.time, timezone),
+                      };
+                    });
 
                     const { error: insErr } = await supabase.from('job_meetings').insert(payload);
                     if (insErr) throw insErr;
