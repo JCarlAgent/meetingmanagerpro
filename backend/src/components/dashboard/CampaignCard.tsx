@@ -3,6 +3,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { formatPhoneDisplay } from '@/lib/utils';
 import { Campaign, Event, Responder } from '@/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { 
   ChevronDown,
   ChevronUp,
@@ -39,6 +50,8 @@ interface CampaignCardProps {
   onAddResponder?: (campaignId: string) => void;
   // optional callback to re-fetch campaign/event data after a meeting edit
   onRefresh?: () => void;
+  // optional callback when a job has been deleted from the list
+  onDeleteCampaign?: (campaignId: string) => void;
   // optional callback to open the full campaign map view
   onOpenMap?: (campaignId: string) => void;
 }
@@ -91,6 +104,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [showAllZips, setShowAllZips] = useState(false);
   const [localResponders, setLocalResponders] = useState<Responder[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDeletingJob, setIsDeletingJob] = useState(false);
 
   // --- Edit Meeting state (master admin only) ---
   const [editingMeeting, setEditingMeeting] = useState<any | null>(null);
@@ -145,6 +159,56 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       .eq('campaign_id', campaign.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => { setLocalResponders(data ?? []); });
+  };
+
+  const handleDeleteJob = async () => {
+    if (!campaign.id) return;
+    setIsDeletingJob(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) {
+        throw new Error('Not logged in.');
+      }
+
+      const resp = await fetch('/api/jobs/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ jobId: campaign.id }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data?.success === false || data?.deleted === false) {
+        throw new Error(data?.error || 'Unable to delete this job. Please try again.');
+      }
+
+      if (data?.storageCleanupWarning) {
+        toast({
+          title: 'Job deleted',
+          description: 'Job deleted, but some stored files could not be cleaned up.',
+        });
+      } else {
+        toast({
+          title: 'Job deleted',
+          description: 'This job and its associated data were removed.',
+        });
+      }
+
+      onDeleteCampaign?.(campaign.id);
+      await onRefresh?.();
+    } catch (err) {
+      console.error('Failed to delete job', err);
+      toast({
+        title: 'Delete failed',
+        description: formatUnknownError(err, 'Unable to delete this job. Please try again.'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingJob(false);
+    }
   };
 
   // Load real responders for this campaign/job from Supabase (newest first)
@@ -1461,6 +1525,38 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                           }}
                           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border transition-colors hover:opacity-90 ${isPaid ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
                         >{isPaid ? 'Paid ✓' : 'Mark Paid'}</button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-red-700 transition-colors hover:bg-red-100"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete Job
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Job?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete this job and its associated job data. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction asChild>
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteJob}
+                                  disabled={isDeletingJob}
+                                  className="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                                >
+                                  {isDeletingJob ? 'Deleting…' : 'Delete Job'}
+                                </button>
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
