@@ -157,6 +157,93 @@ function isLikelyGuestRow(record: Record<string, string>, agMarker: string): boo
   return false;
 }
 
+function normalizeLookupToken(value: string | null): string | null {
+  const cleaned = (value ?? '').replace(/\s+/g, ' ').trim();
+  return cleaned ? cleaned.toLowerCase() : null;
+}
+
+function getAttendeeRelationship(record: Record<string, string>) {
+  const attendeeId = getField(record, 'AttendeeID', 'Attendee_Id', 'AttendeeId', 'ID') || null;
+  const mainAttendeeId = getField(record, 'MainAttendeeID', 'MainAttendee_Id', 'MainAttendeeId', 'ParentAttendeeID', 'ParentAttendeeId') || '0';
+  const normalizedAttendeeId = attendeeId ? attendeeId.trim() : null;
+  const normalizedMainAttendeeId = normalizeLookupToken(mainAttendeeId);
+  const explicitGuest = !!normalizedAttendeeId && !!normalizedMainAttendeeId && normalizedMainAttendeeId !== '0' && normalizedMainAttendeeId !== normalizedAttendeeId;
+
+  return {
+    attendeeId: normalizedAttendeeId,
+    mainAttendeeId: normalizedMainAttendeeId,
+    explicitGuest,
+  };
+}
+
+function normalizeGuestName(value: string | null): string | null {
+  const cleaned = (value ?? '').replace(/\s+/g, ' ').trim();
+  return cleaned ? cleaned.toLowerCase() : null;
+}
+
+function guestNameAlreadyIncluded(existingGuestName: string | null, candidate: string | null): boolean {
+  const existingKey = normalizeGuestName(existingGuestName);
+  const candidateKey = normalizeGuestName(candidate);
+  if (!candidateKey) return true;
+  if (!existingKey) return false;
+  return existingKey === candidateKey || existingKey.includes(candidateKey);
+}
+
+async function findExistingResponderMatches(
+  supabaseAdmin: any,
+  jobId: string,
+  eventId: string,
+  input: {
+    phone: string | null;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  }
+) {
+  const { phone, email, firstName, lastName } = input;
+  let query = supabaseAdmin
+    .from('responders')
+    .select('id, first_name, last_name, phone, email, guests, guest_name, mail_record_id, notes')
+    .eq('campaign_id', jobId)
+    .eq('event_id', eventId);
+
+  if (phone && lastName) {
+    query = query.eq('phone', phone).ilike('last_name', lastName);
+  } else if (phone) {
+    query = query.eq('phone', phone);
+  } else if (email) {
+    query = query.eq('email', email);
+  } else {
+    const firstKey = normalizeLookupToken(firstName);
+    const lastKey = normalizeLookupToken(lastName);
+    if (!firstKey || !lastKey) {
+      return { rows: [], error: null, ambiguous: false, status: 'none' as const };
+    }
+    query = query.ilike('first_name', firstKey).ilike('last_name', lastKey);
+  }
+
+  const { data, error } = await query.limit(2);
+  if (error) {
+    return { rows: [], error, ambiguous: false, status: 'error' as const };
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length === 0) {
+    return { rows: [], error: null, ambiguous: false, status: 'none' as const };
+  }
+  if (rows.length > 1) {
+    return { rows, error: null, ambiguous: true, status: 'multiple' as const };
+  }
+
+  return {
+    rows,
+    error: null,
+    ambiguous: false,
+    status: 'single' as const,
+    row: rows[0],
+  };
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -185,10 +272,11 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const jobId = (payload?.jobId ?? '').toString().trim();
-  const eventId = (payload?.eventId ?? '').toString().trim();
-  const meetingId = (payload?.meetingId ?? '').toString().trim();
+  const jobId = ((payload?.jobId ?? payload?.campaign_id ?? '').toString()).trim();
+  const eventId = ((payload?.eventId ?? payload?.event_id ?? '').toString()).trim();
+  const meetingId = ((payload?.meetingId ?? payload?.MeetingID ?? payload?.meeting_id ?? '').toString()).trim();
   const replaceExisting = Boolean(payload?.replaceExisting);
+  const dryRun = Boolean(payload?.dryRun);
 
   if (!jobId) {
     send(res, 400, { error: 'jobId is required' });
@@ -371,6 +459,98 @@ export default async function handler(req: any, res: any) {
   }
   const fieldNames = Array.from(fieldNameSet);
 
+  if (dryRun) {
+    const primaryStatuses: Array<string> = [];
+    const primaryGuestCounts: number[] = [];
+    const primaryByAttendeeId = new Map<string, string>();
+
+    let primaryCount = 0;
+    let guestCount = 0;
+    let registeredPrimaryCount = 0;
+    let waitlistPrimaryCount = 0;
+    let cancelledPrimaryCount = 0;
+    let rowsWithMainAttendeeZero = 0;
+    let rowsWithMainAttendeeNonZero = 0;
+    let guestReferencesResolved = 0;
+    let unresolvedGuestReferences = 0;
+
+    for (const record of records) {
+      const relationship = getAttendeeRelationship(record);
+      const agMarker = getAgMarker(record);
+      const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
+      if (!looksGuest && relationship.attendeeId) {
+        primaryByAttendeeId.set(relationship.attendeeId, relationship.attendeeId);
+      }
+      if (relationship.mainAttendeeId === '0') {
+        rowsWithMainAttendeeZero += 1;
+      } else if (relationship.mainAttendeeId) {
+        rowsWithMainAttendeeNonZero += 1;
+      }
+    }
+
+    for (const record of records) {
+      const agMarker = getAgMarker(record);
+      const relationship = getAttendeeRelationship(record);
+      const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
+      const statusRaw = getField(record, 'Status', 'AttendeeStatus', 'ReservationStatus') || 'registered';
+      const status = statusRaw.toLowerCase();
+
+      if (looksGuest) {
+        guestCount += 1;
+        if (primaryStatuses.length > 0) {
+          primaryGuestCounts[primaryGuestCounts.length - 1] += 1;
+        }
+        if (relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && relationship.mainAttendeeId !== relationship.attendeeId) {
+          if (primaryByAttendeeId.has(relationship.mainAttendeeId)) {
+            guestReferencesResolved += 1;
+          } else {
+            unresolvedGuestReferences += 1;
+          }
+        }
+        continue;
+      }
+
+      primaryStatuses.push(status || 'registered');
+      primaryGuestCounts.push(0);
+      primaryCount += 1;
+
+      if (status === 'cancelled' || status === 'canceled') {
+        cancelledPrimaryCount += 1;
+      } else if (status === 'waitlist' || status === 'waiting list' || status === 'waitlisted') {
+        waitlistPrimaryCount += 1;
+      } else {
+        registeredPrimaryCount += 1;
+      }
+    }
+
+    const nonCancelledPrimaryCount = primaryCount - cancelledPrimaryCount;
+    const guestsOnNonCancelledPrimaries = primaryStatuses
+      .map((status, index) => (status === 'cancelled' || status === 'canceled' ? 0 : primaryGuestCounts[index]))
+      .reduce((sum, count) => sum + count, 0);
+
+    send(res, 200, {
+      dryRun: true,
+      totalReceived: records.length,
+      primaryCount,
+      guestCount,
+      registeredPrimaryCount,
+      waitlistPrimaryCount,
+      cancelledPrimaryCount,
+      nonCancelledPrimaryCount,
+      guestsOnNonCancelledPrimaries,
+      attendeeEquivalentTotal: nonCancelledPrimaryCount + guestsOnNonCancelledPrimaries,
+      rowsWithMainAttendeeZero,
+      rowsWithMainAttendeeNonZero,
+      guestReferencesResolved,
+      unresolvedGuestReferences,
+      relationshipFieldsPresent: {
+        attendeeId: records.some(r => !!getAttendeeRelationship(r).attendeeId),
+        mainAttendeeId: records.some(r => !!getAttendeeRelationship(r).mainAttendeeId),
+      },
+    });
+    return;
+  }
+
   if (replaceExisting) {
     const { error: deleteError } = await supabaseAdmin
       .from('responders')
@@ -394,6 +574,60 @@ export default async function handler(req: any, res: any) {
   let totalA = 0;
   let totalG = 0;
 
+  const apiPrimaryByAttendeeId = new Map<string, Record<string, string>>();
+  const guestPrimaryAttendeeMap = new Map<string, string>();
+  let lastPrimaryRecord: Record<string, string> | null = null;
+
+  for (const record of records) {
+    const relationship = getAttendeeRelationship(record);
+    const attendeeId = relationship.attendeeId;
+    const agMarker = getAgMarker(record);
+    const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
+
+    if (attendeeId) {
+      apiPrimaryByAttendeeId.set(attendeeId, record);
+    }
+
+    if (attendeeId && relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && relationship.mainAttendeeId !== attendeeId) {
+      guestPrimaryAttendeeMap.set(attendeeId, relationship.mainAttendeeId);
+    }
+
+    if (!looksGuest) {
+      lastPrimaryRecord = record;
+    }
+  }
+
+  const primaryRecords: Array<{ index: number; record: Record<string, string> }> = [];
+  const guestRecords: Array<{ index: number; record: Record<string, string>; primaryRecord: Record<string, string> | null; primaryApiId: string | null }> = [];
+
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    const agMarker = getAgMarker(record);
+    const relationship = getAttendeeRelationship(record);
+    const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
+
+    if (looksGuest) {
+      const primaryApiId = relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && relationship.mainAttendeeId !== relationship.attendeeId
+        ? relationship.mainAttendeeId
+        : null;
+      const resolvedPrimaryRecord = primaryApiId && apiPrimaryByAttendeeId.get(primaryApiId)
+        ? apiPrimaryByAttendeeId.get(primaryApiId) ?? lastPrimaryRecord
+        : lastPrimaryRecord;
+
+      guestRecords.push({
+        index: i,
+        record,
+        primaryRecord: resolvedPrimaryRecord ?? null,
+        primaryApiId: primaryApiId ?? null,
+      });
+      continue;
+    }
+
+    primaryRecords.push({ index: i, record });
+  }
+
+  const apiPrimaryDbIdByAttendeeId = new Map<string, string>();
+  const seenGuestKeysByPrimary = new Map<string, Set<string>>();
   let currentAttendee: {
     index: number;
     id: string | null;
@@ -401,64 +635,16 @@ export default async function handler(req: any, res: any) {
     firstName: string | null;
     lastName: string | null;
   } | null = null;
-
   let orphanGuestRows = 0;
   const pairingSamples: string[] = [];
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
+  for (const { index, record } of primaryRecords) {
     const agMarker = getAgMarker(record);
-
     const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname') || null;
     const lastName = getField(record, 'LastName', 'Last_Name', 'LName', 'lastname') || null;
     const phone = normalizePhone(getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum'));
     const email = getField(record, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').toLowerCase() || null;
     const timestamp = getField(record, 'TimeStamp', 'Timestamp', 'CreatedOn', 'CreateDate', 'DateCreated') || null;
-
-    const looksGuest = isLikelyGuestRow(record, agMarker);
-
-    if (looksGuest) {
-      totalG += 1;
-
-      if (currentAttendee?.id) {
-        const { data: existingGuestData, error: existingGuestErr } = await supabaseAdmin
-          .from('responders')
-          .select('guests,guest_name')
-          .eq('id', currentAttendee.id)
-          .maybeSingle();
-
-        if (!existingGuestErr && existingGuestData) {
-          const nextGuests = Number(existingGuestData.guests ?? 0) + 1;
-          const guestFullName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
-          const nextGuestName = existingGuestData.guest_name || guestFullName;
-
-          const { error: bumpErr } = await supabaseAdmin
-            .from('responders')
-            .update({
-              guests: nextGuests,
-              guest_name: nextGuestName,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', currentAttendee.id);
-
-          if (bumpErr) {
-            skipped += 1;
-          }
-        } else {
-          skipped += 1;
-        }
-
-        if (pairingSamples.length < 8) {
-          const lhs = [currentAttendee.firstName, currentAttendee.lastName].filter(Boolean).join(' ').trim() || 'Unknown A';
-          const rhs = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Unnamed G';
-          pairingSamples.push(`A#${currentAttendee.index + 1}(${lhs}) <- G#${i + 1}(${rhs})`);
-        }
-      } else {
-        orphanGuestRows += 1;
-      }
-
-      continue;
-    }
 
     totalA += 1;
 
@@ -500,48 +686,51 @@ export default async function handler(req: any, res: any) {
       updated_at: new Date().toISOString(),
     };
 
-    let existingId: string | null = null;
+    const attendeeRelationship = getAttendeeRelationship(record);
+    const candidateMatch = await findExistingResponderMatches(supabaseAdmin, jobId, eventId, { phone, email, firstName, lastName });
 
-    if (phone && lastName) {
-      const { data: byPhoneLast } = await supabaseAdmin
-        .from('responders')
-        .select('id')
-        .eq('campaign_id', jobId)
-        .eq('event_id', eventId)
-        .eq('phone', phone)
-        .ilike('last_name', lastName)
-        .maybeSingle();
+    let resolvedExistingId: string | null = null;
 
-      existingId = byPhoneLast?.id ?? null;
-    } else if (phone && !lastName) {
-      const { data: byPhone } = await supabaseAdmin
-        .from('responders')
-        .select('id')
-        .eq('campaign_id', jobId)
-        .eq('event_id', eventId)
-        .eq('phone', phone)
-        .maybeSingle();
-
-      existingId = byPhone?.id ?? null;
+    if (candidateMatch.status === 'error') {
+      skipped += 1;
+      currentAttendee = null;
+      continue;
     }
 
-    if (!existingId && email) {
-      const { data: byEmail } = await supabaseAdmin
-        .from('responders')
-        .select('id')
-        .eq('campaign_id', jobId)
-        .eq('event_id', eventId)
-        .eq('email', email)
-        .maybeSingle();
-
-      existingId = byEmail?.id ?? null;
+    if (candidateMatch.status === 'multiple') {
+      skipped += 1;
+      currentAttendee = null;
+      continue;
     }
 
-    if (existingId) {
+    if (candidateMatch.status === 'single') {
+      resolvedExistingId = candidateMatch.row?.id ?? null;
+    }
+
+    if (resolvedExistingId) {
+      const { data: existingRow, error: existingRowError } = await supabaseAdmin
+        .from('responders')
+        .select('*')
+        .eq('id', resolvedExistingId)
+        .maybeSingle();
+
+      if (existingRowError || !existingRow) {
+        skipped += 1;
+        currentAttendee = null;
+        continue;
+      }
+
+      const nextUpdate: Record<string, any> = {
+        ...upsertRecord,
+        phone: phone ?? existingRow.phone ?? null,
+        email: email ?? existingRow.email ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
       const { error: updateError } = await supabaseAdmin
         .from('responders')
-        .update(upsertRecord)
-        .eq('id', existingId);
+        .update(nextUpdate)
+        .eq('id', existingRow.id);
 
       if (updateError) {
         skipped += 1;
@@ -551,8 +740,8 @@ export default async function handler(req: any, res: any) {
 
       updated += 1;
       currentAttendee = {
-        index: i,
-        id: existingId,
+        index,
+        id: existingRow.id,
         timestamp,
         firstName,
         lastName,
@@ -578,12 +767,107 @@ export default async function handler(req: any, res: any) {
 
       inserted += 1;
       currentAttendee = {
-        index: i,
+        index,
         id: insertedRow?.id ?? null,
         timestamp,
         firstName,
         lastName,
       };
+    }
+
+    if (attendeeRelationship.attendeeId && currentAttendee?.id) {
+      apiPrimaryDbIdByAttendeeId.set(attendeeRelationship.attendeeId, currentAttendee.id);
+    }
+  }
+
+  for (const { index, record, primaryRecord, primaryApiId } of guestRecords) {
+    const agMarker = getAgMarker(record);
+    const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname') || null;
+    const lastName = getField(record, 'LastName', 'Last_Name', 'LName', 'lastname') || null;
+    const phone = normalizePhone(getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum'));
+    const email = getField(record, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').toLowerCase() || null;
+    const guestFullName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+    const relationship = getAttendeeRelationship(record);
+
+    let primaryDbId: string | null = currentAttendee?.id ?? null;
+
+    if (primaryApiId && apiPrimaryDbIdByAttendeeId.has(primaryApiId)) {
+      primaryDbId = apiPrimaryDbIdByAttendeeId.get(primaryApiId) ?? null;
+    } else if (primaryRecord) {
+      const primaryFirstName = getField(primaryRecord, 'FirstName', 'First_Name', 'FName', 'firstname') || null;
+      const primaryLastName = getField(primaryRecord, 'LastName', 'Last_Name', 'LName', 'lastname') || null;
+      const primaryPhone = normalizePhone(getField(primaryRecord, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum'));
+      const primaryEmail = getField(primaryRecord, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').toLowerCase() || null;
+      const primaryLookup = await findExistingResponderMatches(supabaseAdmin, jobId, eventId, {
+        phone: primaryPhone,
+        email: primaryEmail,
+        firstName: primaryFirstName,
+        lastName: primaryLastName,
+      });
+
+      if (primaryLookup.status === 'error') {
+        skipped += 1;
+        continue;
+      }
+
+      if (primaryLookup.status === 'multiple') {
+        skipped += 1;
+        continue;
+      }
+
+      primaryDbId = primaryLookup.status === 'single' ? primaryLookup.row?.id ?? null : null;
+    }
+
+    if (!primaryDbId) {
+      orphanGuestRows += 1;
+      skipped += 1;
+      continue;
+    }
+
+    const { data: existingGuestData, error: existingGuestErr } = await supabaseAdmin
+      .from('responders')
+      .select('guests,guest_name')
+      .eq('id', primaryDbId)
+      .maybeSingle();
+
+    if (existingGuestErr || !existingGuestData) {
+      skipped += 1;
+      continue;
+    }
+
+    const guestKey = `${primaryDbId}|${normalizeGuestName(guestFullName) ?? 'unnamed-guest'}`;
+    const primaryGuestSet = seenGuestKeysByPrimary.get(primaryDbId) ?? new Set<string>();
+    if (primaryGuestSet.has(guestKey)) {
+      continue;
+    }
+    primaryGuestSet.add(guestKey);
+    seenGuestKeysByPrimary.set(primaryDbId, primaryGuestSet);
+
+    const guestCount = Number(existingGuestData.guests ?? 0);
+    const currentGuestName = existingGuestData.guest_name ?? null;
+    const shouldIncreaseGuestCount = !guestNameAlreadyIncluded(currentGuestName, guestFullName);
+    const nextGuests = shouldIncreaseGuestCount ? guestCount + 1 : guestCount;
+    const nextGuestName = currentGuestName && currentGuestName.trim() ? currentGuestName : guestFullName;
+
+    const { error: bumpErr } = await supabaseAdmin
+      .from('responders')
+      .update({
+        guests: nextGuests,
+        guest_name: nextGuestName,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', primaryDbId);
+
+    if (bumpErr) {
+      skipped += 1;
+      continue;
+    }
+
+    totalG += 1;
+    if (pairingSamples.length < 8) {
+      const lhs = [primaryRecord ? getField(primaryRecord, 'FirstName', 'First_Name', 'FName', 'firstname') : null, primaryRecord ? getField(primaryRecord, 'LastName', 'Last_Name', 'LName', 'lastname') : null].filter(Boolean).join(' ').trim() || 'Unknown A';
+      const rhs = guestFullName || 'Unnamed G';
+      pairingSamples.push(`A(${lhs}) <- G(${rhs})`);
     }
   }
 
@@ -600,7 +884,7 @@ export default async function handler(req: any, res: any) {
     totalG,
     fieldNames,
     pairingDiagnostics: {
-      strategy: 'Sequential row-order pairing (A row owns following G rows until next A row)',
+      strategy: 'Primary records first; explicit MainAttendeeID/AttendeeID relationship overrides row order; no-contact fallbacks require a single name match within the meeting',
       orphanGuestRows,
       samplePairs: pairingSamples,
     },

@@ -521,9 +521,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
   };
 
-  const updateTeleDirectRegistrantsForMeeting = async (meeting: any) => {
+  const updateTeleDirectRegistrantsForMeeting = async (meeting: any, forceDryRun = false) => {
     const eventId = String(meeting?.id ?? '').trim();
     const meetingId = String(meeting?.teledirect_meeting_id ?? '').trim();
+    const isTargetDryRunMeeting = forceDryRun && (
+      String(campaign.id ?? '').toLowerCase() === 'a37ee672-358a-4c38-9b7b-7a3f98bb98ac' &&
+      eventId === '05cd651c-e005-42a1-a7de-fc1dee6fb624' &&
+      meetingId === '601425'
+    );
+    const isKevinMay26DryRun = (
+      String(campaign.id ?? '').toLowerCase() === 'a76876f0-a5b4-4975-85bd-8f6f69bc9da8' &&
+      eventId === '5d1feff4-adfa-44a2-af05-6e44afeb07a9' &&
+      meetingId === '595037'
+    );
+    const shouldRunDryRun = isTargetDryRunMeeting || isKevinMay26DryRun;
 
     if (!eventId) {
       setTeleDirectSyncMessage('No meeting selected for update.');
@@ -535,8 +546,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     }
 
     setSyncingMeetingId(eventId);
-    setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: 'Updating TeleDirect confirmations…' }));
-    setTeleDirectSyncMessage('Updating TeleDirect confirmations…');
+    setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: shouldRunDryRun ? 'Testing TeleDirect dry run…' : 'Updating TeleDirect confirmations…' }));
+    setTeleDirectSyncMessage(shouldRunDryRun ? 'Testing TeleDirect dry run…' : 'Updating TeleDirect confirmations…');
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -548,24 +559,64 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         return;
       }
 
+      const payload = {
+        jobId: campaign.id,
+        eventId,
+        meetingId,
+        replaceExisting: false,
+        dryRun: shouldRunDryRun,
+      };
+
       const resp = await fetch('/api/integrations/seminaredge/update-responses', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          jobId: campaign.id,
-          eventId,
-          meetingId,
-          replaceExisting: false,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok) {
         const msg = `TeleDirect sync failed: ${data?.error || 'Unknown TeleDirect error.'}`;
+        setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: msg }));
+        setTeleDirectSyncMessage(msg);
+        return;
+      }
+
+      if (shouldRunDryRun) {
+        const totalReceived = Number(data?.totalReceived ?? 0);
+        const primaryCount = Number(data?.primaryCount ?? 0);
+        const guestCount = Number(data?.guestCount ?? 0);
+        const registeredPrimaryCount = Number(data?.registeredPrimaryCount ?? 0);
+        const waitlistPrimaryCount = Number(data?.waitlistPrimaryCount ?? 0);
+        const cancelledPrimaryCount = Number(data?.cancelledPrimaryCount ?? 0);
+        const nonCancelledPrimaryCount = Number(data?.nonCancelledPrimaryCount ?? 0);
+        const guestsOnNonCancelledPrimaries = Number(data?.guestsOnNonCancelledPrimaries ?? 0);
+        const attendeeEquivalentTotal = Number(data?.attendeeEquivalentTotal ?? 0);
+        const rowsWithMainAttendeeZero = Number(data?.rowsWithMainAttendeeZero ?? 0);
+        const rowsWithMainAttendeeNonZero = Number(data?.rowsWithMainAttendeeNonZero ?? 0);
+        const guestReferencesResolved = Number(data?.guestReferencesResolved ?? 0);
+        const unresolvedGuestReferences = Number(data?.unresolvedGuestReferences ?? 0);
+
+        const msg = [
+          'READ-ONLY TeleDirect dry run',
+          `totalReceived=${totalReceived}`,
+          `primaryCount=${primaryCount}`,
+          `guestCount=${guestCount}`,
+          `rowsWithMainAttendeeZero=${rowsWithMainAttendeeZero}`,
+          `rowsWithMainAttendeeNonZero=${rowsWithMainAttendeeNonZero}`,
+          `guestReferencesResolved=${guestReferencesResolved}`,
+          `unresolvedGuestReferences=${unresolvedGuestReferences}`,
+          `registeredPrimaryCount=${registeredPrimaryCount}`,
+          `waitlistPrimaryCount=${waitlistPrimaryCount}`,
+          `cancelledPrimaryCount=${cancelledPrimaryCount}`,
+          `nonCancelledPrimaryCount=${nonCancelledPrimaryCount}`,
+          `guestsOnNonCancelledPrimaries=${guestsOnNonCancelledPrimaries}`,
+          `attendeeEquivalentTotal=${attendeeEquivalentTotal}`,
+        ].join(' | ');
+
         setMeetingSyncMessages((prev) => ({ ...prev, [eventId]: msg }));
         setTeleDirectSyncMessage(msg);
         return;
@@ -1657,17 +1708,30 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               </div>
                               {user?.is_master_admin && (
                                 <div className="mt-2 flex flex-col gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => updateTeleDirectRegistrantsForMeeting(ev)}
-                                    disabled={syncingMeetingId === ev.id || !String(ev?.teledirect_meeting_id ?? '').trim()}
-                                    title={String(ev?.teledirect_meeting_id ?? '').trim()
-                                      ? 'Update this meeting’s confirmations from TeleDirect'
-                                      : 'No TeleDirect Meeting ID is configured for this meeting.'}
-                                    className="text-[11px] px-2 py-1 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white"
-                                  >
-                                    {syncingMeetingId === ev.id ? 'Updating…' : 'Update Confirmations'}
-                                  </button>
+                                  <div className="flex flex-col gap-1.5 sm:flex-row">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateTeleDirectRegistrantsForMeeting(ev)}
+                                      disabled={syncingMeetingId === ev.id || !String(ev?.teledirect_meeting_id ?? '').trim()}
+                                      title={String(ev?.teledirect_meeting_id ?? '').trim()
+                                        ? 'Update this meeting’s confirmations from TeleDirect'
+                                        : 'No TeleDirect Meeting ID is configured for this meeting.'}
+                                      className="text-[11px] px-2 py-1 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white"
+                                    >
+                                      {syncingMeetingId === ev.id ? 'Updating…' : 'Update Confirmations'}
+                                    </button>
+                                    {campaign.id === 'a37ee672-358a-4c38-9b7b-7a3f98bb98ac' && ev.id === '05cd651c-e005-42a1-a7de-fc1dee6fb624' && String(ev?.teledirect_meeting_id ?? '').trim() === '601425' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateTeleDirectRegistrantsForMeeting(ev, true)}
+                                        disabled={syncingMeetingId === ev.id || !String(ev?.teledirect_meeting_id ?? '').trim()}
+                                        title="Read-only TeleDirect validation for the October 13 job. No responder rows are written."
+                                        className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                                      >
+                                        {syncingMeetingId === ev.id ? 'Dry run…' : 'Dry-run TeleDirect'}
+                                      </button>
+                                    )}
+                                  </div>
                                   {meetingSyncMessages[ev.id] && (
                                     <div className="text-[10px] leading-snug text-slate-700 bg-white border border-slate-200 rounded px-2 py-1">
                                       {meetingSyncMessages[ev.id]}
