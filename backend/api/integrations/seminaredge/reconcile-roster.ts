@@ -85,23 +85,26 @@ function isCancelledStatus(value: string | null | undefined): boolean {
 }
 
 type PrimaryMatch = {
-  matchedResponderIds: Set<string>;
+  matchedPrimaryResponderIds: Set<string>;
+  matchedPrimaryResponderIdByRosterIndex: Map<number, string>;
   matchedPrimaryCount: number;
   newPrimaryCount: number;
   updateNeededCount: number;
   cancelledNeedsUpdateCount: number;
-  ambiguousCount: number;
+  ambiguousPrimaryCount: number;
 };
 
 function evaluatePrimaryMatches(primaries: RosterRow[], responders: ExistingResponder[]): PrimaryMatch {
-  const matchedResponderIds = new Set<string>();
+  const matchedPrimaryResponderIds = new Set<string>();
+  const matchedPrimaryResponderIdByRosterIndex = new Map<number, string>();
   let matchedPrimaryCount = 0;
   let newPrimaryCount = 0;
   let updateNeededCount = 0;
   let cancelledNeedsUpdateCount = 0;
-  let ambiguousCount = 0;
+  let ambiguousPrimaryCount = 0;
 
   for (const primary of primaries) {
+    const primaryRosterIndex = typeof primary.primaryRosterIndex === 'number' ? primary.primaryRosterIndex : null;
     const rosterName = normalizeFullName(primary.firstName, primary.lastName);
     const rosterPhone = normalizePhone(primary.phone);
     const rosterEmail = normalizeEmail(primary.email);
@@ -117,14 +120,14 @@ function evaluatePrimaryMatches(primaries: RosterRow[], responders: ExistingResp
     });
 
     if (strongMatches.length > 1) {
-      ambiguousCount += 1;
+      ambiguousPrimaryCount += 1;
       continue;
     }
 
     if (strongMatches.length === 0) {
       const weakNameMatches = responders.filter((existing) => rosterName && normalizeFullName(existing.first_name, existing.last_name) === rosterName);
       if (weakNameMatches.length > 0) {
-        ambiguousCount += 1;
+        ambiguousPrimaryCount += 1;
       } else {
         newPrimaryCount += 1;
       }
@@ -133,7 +136,10 @@ function evaluatePrimaryMatches(primaries: RosterRow[], responders: ExistingResp
 
     const existing = strongMatches[0];
     matchedPrimaryCount += 1;
-    matchedResponderIds.add(existing.id);
+    matchedPrimaryResponderIds.add(existing.id);
+    if (primaryRosterIndex != null) {
+      matchedPrimaryResponderIdByRosterIndex.set(primaryRosterIndex, existing.id);
+    }
 
     const existingStatusCancelled = isCancelledStatus(existing.status);
     if (primary.isCancelled && !existingStatusCancelled) {
@@ -152,75 +158,165 @@ function evaluatePrimaryMatches(primaries: RosterRow[], responders: ExistingResp
   }
 
   return {
-    matchedResponderIds,
+    matchedPrimaryResponderIds,
+    matchedPrimaryResponderIdByRosterIndex,
     matchedPrimaryCount,
     newPrimaryCount,
     updateNeededCount,
     cancelledNeedsUpdateCount,
-    ambiguousCount,
+    ambiguousPrimaryCount,
   };
 }
 
 type GuestMatch = {
   representedGuestCount: number;
+  correctlyAttachedGuestCount: number;
+  newGuestIdentityCount: number;
+  guestRelationshipRepairCount: number;
   guestAttachmentsNeededCount: number;
-  guestAsPrimaryResponderIds: Set<string>;
-  ambiguousCount: number;
+  existingStandaloneGuestResponderIds: Set<string>;
+  ambiguousGuestCount: number;
+  cancelledGuestCount: number;
 };
 
-function evaluateGuestMatches(guests: RosterRow[], responders: ExistingResponder[], matchedPrimaryResponderIds: Set<string>): GuestMatch {
-  const representedGuestCount = 0;
-  let represented = 0;
+function getResponderIdentityKey(responder: ExistingResponder): string {
+  const nameKey = normalizeFullName(responder.first_name, responder.last_name) ?? 'name:unknown';
+  const phoneKey = normalizePhone(responder.phone);
+  const emailKey = normalizeEmail(responder.email);
+  if (phoneKey) return `${nameKey}|phone:${phoneKey}`;
+  if (emailKey) return `${nameKey}|email:${emailKey}`;
+  return `${nameKey}|contact:none`;
+}
+
+function evaluateGuestMatches(args: {
+  guests: RosterRow[];
+  responders: ExistingResponder[];
+  matchedPrimaryResponderIds: Set<string>;
+  matchedPrimaryResponderIdByRosterIndex: Map<number, string>;
+}): GuestMatch {
+  let representedGuestCount = 0;
+  let correctlyAttachedGuestCount = 0;
+  let newGuestIdentityCount = 0;
+  let guestRelationshipRepairCount = 0;
   let guestAttachmentsNeededCount = 0;
-  const guestAsPrimaryResponderIds = new Set<string>();
-  let ambiguousCount = 0;
+  const existingStandaloneGuestResponderIds = new Set<string>();
+  let ambiguousGuestCount = 0;
+  let cancelledGuestCount = 0;
+  const respondersById = new Map<string, ExistingResponder>();
+  for (const responder of args.responders) {
+    respondersById.set(responder.id, responder);
+  }
 
   const responderGuestNameIndex = new Map<string, Set<string>>();
-  for (const responder of responders) {
+  const responderNameIndex = new Map<string, ExistingResponder[]>();
+  for (const responder of args.responders) {
     const guestNames = splitGuestNames(responder.guest_name);
     for (const guestName of guestNames) {
       const set = responderGuestNameIndex.get(guestName) ?? new Set<string>();
       set.add(responder.id);
       responderGuestNameIndex.set(guestName, set);
     }
+    const responderName = normalizeFullName(responder.first_name, responder.last_name);
+    if (responderName) {
+      const rows = responderNameIndex.get(responderName) ?? [];
+      rows.push(responder);
+      responderNameIndex.set(responderName, rows);
+    }
   }
 
-  for (const guest of guests) {
+  for (const guest of args.guests) {
+    if (guest.isCancelled) {
+      cancelledGuestCount += 1;
+    }
+
     const guestName = normalizeFullName(guest.firstName, guest.lastName);
     if (!guestName) {
-      ambiguousCount += 1;
+      ambiguousGuestCount += 1;
       continue;
     }
 
-    const nameMatches = responders.filter((existing) => normalizeFullName(existing.first_name, existing.last_name) === guestName);
-    const guestMetaMatches = responderGuestNameIndex.get(guestName) ?? new Set<string>();
+    const primaryRosterIndex = typeof guest.primaryRosterIndex === 'number' ? guest.primaryRosterIndex : null;
+    const matchedPrimaryResponderId = primaryRosterIndex == null ? null : (args.matchedPrimaryResponderIdByRosterIndex.get(primaryRosterIndex) ?? null);
+    const attachmentResponderIds = responderGuestNameIndex.get(guestName) ?? new Set<string>();
+    const isAttachedToMatchedPrimary = Boolean(matchedPrimaryResponderId && attachmentResponderIds.has(matchedPrimaryResponderId));
+    const nameCandidates = responderNameIndex.get(guestName) ?? [];
 
-    const nameMatchIds = new Set(nameMatches.map((row) => row.id));
-    const combinedIds = new Set<string>([...nameMatchIds, ...Array.from(guestMetaMatches)]);
+    const guestPhone = normalizePhone(guest.phone);
+    const guestEmail = normalizeEmail(guest.email);
+    const contactStrongMatches = nameCandidates.filter((candidate) => {
+      const emailStrong = Boolean(guestEmail && normalizeEmail(candidate.email) === guestEmail);
+      const phoneStrong = Boolean(guestPhone && normalizePhone(candidate.phone) === guestPhone);
+      return emailStrong || phoneStrong;
+    });
+    const candidateRows = contactStrongMatches.length > 0 ? contactStrongMatches : nameCandidates;
 
-    if (combinedIds.size > 1 && guestMetaMatches.size === 0) {
-      ambiguousCount += 1;
+    const standaloneRows = candidateRows.filter((candidate) => !args.matchedPrimaryResponderIds.has(candidate.id));
+    const standaloneByIdentity = new Map<string, ExistingResponder[]>();
+    for (const standalone of standaloneRows) {
+      const key = getResponderIdentityKey(standalone);
+      const rows = standaloneByIdentity.get(key) ?? [];
+      rows.push(standalone);
+      standaloneByIdentity.set(key, rows);
+    }
+    const standaloneIdentityCount = standaloneByIdentity.size;
+    if (standaloneIdentityCount === 1) {
+      for (const rows of standaloneByIdentity.values()) {
+        for (const row of rows) {
+          existingStandaloneGuestResponderIds.add(row.id);
+        }
+      }
+    }
+
+    if (isAttachedToMatchedPrimary) {
+      representedGuestCount += 1;
+      correctlyAttachedGuestCount += 1;
+      if (standaloneIdentityCount === 1 && standaloneRows.length > 0) {
+        guestRelationshipRepairCount += 1;
+      }
       continue;
     }
 
-    if (combinedIds.size === 0) {
+    if (attachmentResponderIds.size > 0) {
+      representedGuestCount += 1;
+      if (matchedPrimaryResponderId) {
+        guestRelationshipRepairCount += 1;
+      } else {
+        ambiguousGuestCount += 1;
+      }
+      continue;
+    }
+
+    if (standaloneIdentityCount > 1) {
+      ambiguousGuestCount += 1;
+      continue;
+    }
+
+    if (standaloneIdentityCount === 1 && standaloneRows.length > 0) {
+      representedGuestCount += 1;
+      guestRelationshipRepairCount += 1;
       guestAttachmentsNeededCount += 1;
       continue;
     }
 
-    represented += 1;
-    for (const responderId of nameMatchIds) {
-      if (!matchedPrimaryResponderIds.has(responderId)) {
-        guestAsPrimaryResponderIds.add(responderId);
-      }
+    const matchedPrimaryResponder = matchedPrimaryResponderId ? respondersById.get(matchedPrimaryResponderId) : null;
+    if (matchedPrimaryResponder) {
+      guestAttachmentsNeededCount += 1;
+      continue;
     }
+
+    newGuestIdentityCount += 1;
+    guestAttachmentsNeededCount += 1;
   }
 
   return {
-    representedGuestCount: representedGuestCount + represented,
+    representedGuestCount,
+    correctlyAttachedGuestCount,
+    newGuestIdentityCount,
+    guestRelationshipRepairCount,
     guestAttachmentsNeededCount,
-    guestAsPrimaryResponderIds,
-    ambiguousCount,
+    existingStandaloneGuestResponderIds,
+    ambiguousGuestCount,
+    cancelledGuestCount,
   };
 }
 
@@ -266,9 +362,14 @@ export function reconcileRosterReadOnly(args: { rosterRows: RosterRow[]; respond
 
   const duplicateSummary = buildDuplicateSummary(args.responders);
   const primaryMatch = evaluatePrimaryMatches(primaries, args.responders);
-  const guestMatch = evaluateGuestMatches(guests, args.responders, primaryMatch.matchedResponderIds);
+  const guestMatch = evaluateGuestMatches({
+    guests,
+    responders: args.responders,
+    matchedPrimaryResponderIds: primaryMatch.matchedPrimaryResponderIds,
+    matchedPrimaryResponderIdByRosterIndex: primaryMatch.matchedPrimaryResponderIdByRosterIndex,
+  });
 
-  const ambiguousCount = primaryMatch.ambiguousCount + guestMatch.ambiguousCount;
+  const ambiguousCount = primaryMatch.ambiguousPrimaryCount + guestMatch.ambiguousGuestCount;
 
   return {
     readOnly: true,
@@ -284,16 +385,23 @@ export function reconcileRosterReadOnly(args: { rosterRows: RosterRow[]; respond
       distinctIdentities: duplicateSummary.distinctIdentities,
       rowsInDuplicateGroups: duplicateSummary.rowsInDuplicateGroups,
       excessDuplicateRows: duplicateSummary.excessDuplicateRows,
-      guestAsPrimaryRecords: guestMatch.guestAsPrimaryResponderIds.size,
+      guestAsPrimaryRecords: guestMatch.existingStandaloneGuestResponderIds.size,
+      existingStandaloneGuestRecords: guestMatch.existingStandaloneGuestResponderIds.size,
     },
     proposedReconciliation: {
       primaryAlreadyRepresented: primaryMatch.matchedPrimaryCount,
       newPrimaryRecordsNeeded: primaryMatch.newPrimaryCount,
       existingPrimaryNeedingUpdates: primaryMatch.updateNeededCount,
       guestRecordsToAttach: guestMatch.guestAttachmentsNeededCount,
-      guestAsPrimaryRowsRequiringCleanup: guestMatch.guestAsPrimaryResponderIds.size,
+      guestAlreadyCorrectlyAttached: guestMatch.correctlyAttachedGuestCount,
+      newGuestIdentitiesNeedingAttachment: guestMatch.newGuestIdentityCount,
+      guestRelationshipsNeedingRepair: guestMatch.guestRelationshipRepairCount,
+      guestAsPrimaryRowsRequiringCleanup: guestMatch.existingStandaloneGuestResponderIds.size,
       duplicateRowsRequiringCleanup: duplicateSummary.excessDuplicateRows,
       cancelledRecordsRequiringStatusUpdates: primaryMatch.cancelledNeedsUpdateCount,
+      cancelledGuestRecords: guestMatch.cancelledGuestCount,
+      ambiguousPrimaryMatchesRequiringManualReview: primaryMatch.ambiguousPrimaryCount,
+      ambiguousGuestMatchesRequiringManualReview: guestMatch.ambiguousGuestCount,
       ambiguousMatchesRequiringManualReview: ambiguousCount,
       representedGuestRecords: guestMatch.representedGuestCount,
       expectedCanonicalPrimaryCount: primaries.length,

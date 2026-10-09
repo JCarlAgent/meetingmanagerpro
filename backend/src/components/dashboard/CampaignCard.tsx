@@ -111,15 +111,22 @@ type TeleDirectReconciliationResult = {
     rowsInDuplicateGroups: number;
     excessDuplicateRows: number;
     guestAsPrimaryRecords: number;
+    existingStandaloneGuestRecords?: number;
   };
   proposedReconciliation?: {
     primaryAlreadyRepresented: number;
     newPrimaryRecordsNeeded: number;
     existingPrimaryNeedingUpdates: number;
     guestRecordsToAttach: number;
+    guestAlreadyCorrectlyAttached?: number;
+    newGuestIdentitiesNeedingAttachment?: number;
+    guestRelationshipsNeedingRepair?: number;
     guestAsPrimaryRowsRequiringCleanup: number;
     duplicateRowsRequiringCleanup: number;
     cancelledRecordsRequiringStatusUpdates: number;
+    cancelledGuestRecords?: number;
+    ambiguousPrimaryMatchesRequiringManualReview?: number;
+    ambiguousGuestMatchesRequiringManualReview?: number;
     ambiguousMatchesRequiringManualReview: number;
     representedGuestRecords: number;
     expectedCanonicalPrimaryCount: number;
@@ -2045,6 +2052,10 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                                     <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.guestAsPrimaryRecords ?? 0}</div>
                                                   </div>
                                                   <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Existing standalone guest records</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.existingStandaloneGuestRecords ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
                                                     <div className="text-slate-500">Primary already represented</div>
                                                     <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.primaryAlreadyRepresented ?? 0}</div>
                                                   </div>
@@ -2061,12 +2072,40 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                                     <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.guestRecordsToAttach ?? 0}</div>
                                                   </div>
                                                   <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Guest already correctly attached</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.guestAlreadyCorrectlyAttached ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">New guest identities needing attachment</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.newGuestIdentitiesNeedingAttachment ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Guest relationships needing repair</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.guestRelationshipsNeedingRepair ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Guest-as-primary rows requiring cleanup</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.guestAsPrimaryRowsRequiringCleanup ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
                                                     <div className="text-slate-500">Duplicate rows requiring cleanup</div>
                                                     <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.duplicateRowsRequiringCleanup ?? 0}</div>
                                                   </div>
                                                   <div className="rounded bg-white p-1.5">
                                                     <div className="text-slate-500">Cancelled records requiring status updates</div>
                                                     <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.cancelledRecordsRequiringStatusUpdates ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Cancelled guest records</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.cancelledGuestRecords ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Ambiguous primary matches</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.ambiguousPrimaryMatchesRequiringManualReview ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Ambiguous guest matches</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.ambiguousGuestMatchesRequiringManualReview ?? 0}</div>
                                                   </div>
                                                   <div className="rounded bg-white p-1.5">
                                                     <div className="text-slate-500">Ambiguous matches requiring review</div>
