@@ -132,7 +132,7 @@ export async function canAccessJobEvent(args: { userId: string; email: string | 
 
   const { data: event, error: eventErr } = await supabaseAdmin
     .from('job_meetings')
-    .select('id, job_id, teledirect_meeting_id, event_date')
+    .select('id, job_id, teledirect_meeting_id')
     .eq('id', args.eventId)
     .eq('job_id', args.jobId)
     .maybeSingle();
