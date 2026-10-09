@@ -108,8 +108,8 @@ function validatePayload(payload: any): { ok: true; value: ReplacePayload } | { 
   };
 }
 
-async function canAccessJobEvent(args: { userId: string; email: string | null; jobId: string; eventId: string }) {
-  const supabaseAdmin = getSupabaseAdmin();
+export async function canAccessJobEvent(args: { userId: string; email: string | null; jobId: string; eventId: string; supabaseAdmin?: any }) {
+  const supabaseAdmin = args.supabaseAdmin ?? getSupabaseAdmin();
 
   const { data: job, error: jobErr } = await supabaseAdmin
     .from('jobs')
@@ -142,6 +142,8 @@ async function canAccessJobEvent(args: { userId: string; email: string | null; j
     if (adminEmail?.email) return { ok: true as const, reason: 'legacy_admin_email', event };
   }
 
+  if (job.created_by_user_id === args.userId) return { ok: true as const, reason: 'job_owner', event };
+
   const { data: member } = await supabaseAdmin
     .from('org_members')
     .select('role')
@@ -150,8 +152,9 @@ async function canAccessJobEvent(args: { userId: string; email: string | null; j
     .maybeSingle();
 
   if (!member?.role) return { ok: false as const, reason: 'not_org_member' };
-  if (member.role === 'fmo_admin') return { ok: true as const, reason: 'fmo_admin', event };
-  if (job.created_by_user_id === args.userId) return { ok: true as const, reason: 'job_owner', event };
+
+  const isAdminRole = ['fmo_admin', 'org_admin', 'enterprise_admin'].includes(member.role);
+  if (isAdminRole) return { ok: true as const, reason: member.role, event };
   return { ok: false as const, reason: 'advisor_not_owner' };
 }
 

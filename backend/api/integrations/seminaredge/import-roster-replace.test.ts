@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   buildReplacementRecords,
+  canAccessJobEvent,
   executeRosterReplacement,
   validateExpectedCounts,
   default as handler,
@@ -152,5 +153,186 @@ const unauthorizedRes: any = {
 };
 await handler(unauthorizedReq, unauthorizedRes);
 assert.equal(unauthorizedRes.statusCode, 401, 'handler should reject unauthorized requests');
+
+const mockAllowedAdmin = {
+  from(table: string) {
+    const ops: any = {
+      jobs: {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }),
+          }),
+        }),
+      },
+      job_meetings: {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425', event_date: '2026-10-13' }, error: null }),
+            }),
+          }),
+        }),
+      },
+      master_admins: {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+        }),
+      },
+      admins: {
+        select: () => ({
+          ilike: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+        }),
+      },
+      org_members: {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { role: 'org_admin' }, error: null }),
+            }),
+          }),
+        }),
+      },
+    };
+    return ops[table];
+  },
+};
+
+const adminAccess = await canAccessJobEvent({
+  userId: 'user-2',
+  email: 'admin@example.com',
+  jobId: 'job-1',
+  eventId: 'event-1',
+  supabaseAdmin: mockAllowedAdmin,
+});
+assert.equal(adminAccess.ok, true, 'org admin should be allowed');
+assert.equal(adminAccess.reason, 'org_admin', 'org admin role should be preserved');
+
+const ownerAccess = await canAccessJobEvent({
+  userId: 'owner-1',
+  email: null,
+  jobId: 'job-1',
+  eventId: 'event-1',
+  supabaseAdmin: {
+    from(table: string) {
+      const ops: any = {
+        jobs: {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }),
+            }),
+          }),
+        },
+        job_meetings: {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425', event_date: '2026-10-13' }, error: null }),
+              }),
+            }),
+          }),
+        },
+        master_admins: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
+        admins: { select: () => ({ ilike: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
+        org_members: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) },
+      };
+      return ops[table];
+    },
+  },
+});
+assert.equal(ownerAccess.ok, true, 'job owner should be allowed');
+assert.equal(ownerAccess.reason, 'job_owner', 'job owner should pass the owner check');
+
+const unauthorizedAccess = await canAccessJobEvent({
+  userId: 'user-3',
+  email: null,
+  jobId: 'job-1',
+  eventId: 'event-1',
+  supabaseAdmin: {
+    from(table: string) {
+      const ops: any = {
+        jobs: {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }),
+            }),
+          }),
+        },
+        job_meetings: {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425', event_date: '2026-10-13' }, error: null }),
+              }),
+            }),
+          }),
+        },
+        master_admins: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
+        admins: { select: () => ({ ilike: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
+        org_members: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'member' }, error: null }) }) }) }) },
+      };
+      return ops[table];
+    },
+  },
+});
+assert.equal(unauthorizedAccess.ok, false, 'unrelated user should be rejected');
+
+const wrongEventAccess = await canAccessJobEvent({
+  userId: 'user-2',
+  email: 'admin@example.com',
+  jobId: 'job-1',
+  eventId: 'event-2',
+  supabaseAdmin: {
+    from(table: string) {
+      const ops: any = {
+        jobs: {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }),
+            }),
+          }),
+        },
+        job_meetings: {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+          }),
+        },
+        master_admins: {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        },
+        admins: {
+          select: () => ({
+            ilike: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        },
+        org_members: {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { role: 'org_admin' }, error: null }),
+              }),
+            }),
+          }),
+        },
+      };
+      return ops[table];
+    },
+  },
+});
+assert.equal(wrongEventAccess.ok, false, 'wrong event/job relation should be rejected');
+assert.equal(wrongEventAccess.reason, 'event_not_found_for_job', 'wrong event validation should fail cleanly');
 
 console.log('import-roster-replace regressions: ok');
