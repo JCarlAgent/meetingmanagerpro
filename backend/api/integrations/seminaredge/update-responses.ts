@@ -176,6 +176,50 @@ function getAttendeeRelationship(record: Record<string, string>) {
   };
 }
 
+export function validateGuestRelationshipData(records: Record<string, string>[]) {
+  if (!records.length) {
+    return {
+      ok: true,
+      reason: 'no-records',
+      details: 'No TeleDirect records to validate.',
+    };
+  }
+
+  const relationships = records.map((record) => getAttendeeRelationship(record));
+  const hasGuestMarker = records.some((record) => isLikelyGuestRow(record, getAgMarker(record)));
+  const hasExplicitGuest = relationships.some((relationship) => relationship.explicitGuest);
+  const hasNonZeroMainAttendeeId = relationships.some(
+    (relationship) => Boolean(relationship.mainAttendeeId) && relationship.mainAttendeeId !== '0'
+  );
+  const allMainAttendeeIdsZero = relationships.length > 0 && relationships.every(
+    (relationship) => !relationship.mainAttendeeId || relationship.mainAttendeeId === '0'
+  );
+
+  if (allMainAttendeeIdsZero && !hasGuestMarker && !hasExplicitGuest) {
+    return {
+      ok: false,
+      reason: 'all-ma-in-attendee-zero',
+      details:
+        'TeleDirect API does not provide sufficient guest relationship information for this meeting. MainAttendeeID is zero for every attendee. Use the A/G roster export instead of Update Confirmations.',
+    };
+  }
+
+  if (!hasNonZeroMainAttendeeId && !hasGuestMarker && !hasExplicitGuest) {
+    return {
+      ok: false,
+      reason: 'no-primary-guest-relationships',
+      details:
+        'TeleDirect API did not provide reliable primary/guest relationship information. Use the A/G roster export instead of Update Confirmations.',
+    };
+  }
+
+  return {
+    ok: true,
+    reason: 'relationship-data-present',
+    details: 'Guest relationship data is present and safe to process.',
+  };
+}
+
 function normalizeGuestName(value: string | null): string | null {
   const cleaned = (value ?? '').replace(/\s+/g, ' ').trim();
   return cleaned ? cleaned.toLowerCase() : null;
@@ -458,6 +502,20 @@ export default async function handler(req: any, res: any) {
     Object.keys(rec).forEach(k => fieldNameSet.add(k));
   }
   const fieldNames = Array.from(fieldNameSet);
+
+  if (!dryRun) {
+    const relationshipValidation = validateGuestRelationshipData(records);
+    if (!relationshipValidation.ok) {
+      send(res, 400, {
+        error: 'TeleDirect API does not provide sufficient guest relationship information for this meeting.',
+        message: relationshipValidation.details,
+        reason: relationshipValidation.reason,
+        recordsParsed: records.length,
+        requiresRosterAorG: true,
+      });
+      return;
+    }
+  }
 
   if (dryRun) {
     const primaryStatuses: Array<string> = [];
