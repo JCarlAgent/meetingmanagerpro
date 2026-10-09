@@ -2,7 +2,7 @@ import {
   groupTeleDirectRosterByPrimary,
   parseTeleDirectRosterDetailed,
   TeleDirectRosterPrimary,
-} from '../../../src/lib/teleDirectRoster';
+} from '../../../src/lib/teleDirectRoster.js';
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin.js';
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' } } };
@@ -57,6 +57,16 @@ function send(res: any, status: number, body: any) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
+}
+
+function sanitizeErrorMessage(error: any, fallback: string): string {
+  const raw = typeof error?.message === 'string' ? error.message : '';
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+  if (lower.includes('password') || lower.includes('secret') || lower.includes('token') || lower.includes('apikey') || lower.includes('connection') || lower.includes('uri')) {
+    return fallback;
+  }
+  return raw;
 }
 
 function normalizeNamePart(value: string | null | undefined): string | null {
@@ -284,7 +294,7 @@ export default async function handler(req: any, res: any) {
   try {
     parsed = parseTeleDirectRosterDetailed(rosterText);
   } catch (error: any) {
-    send(res, 400, { error: error?.message || 'Unable to parse TeleDirect roster text.' });
+    send(res, 400, { error: sanitizeErrorMessage(error, 'Unable to parse TeleDirect roster text.') });
     return;
   }
 
@@ -297,7 +307,7 @@ export default async function handler(req: any, res: any) {
   try {
     groups = groupTeleDirectRosterByPrimary(parsed.attendees);
   } catch (error: any) {
-    send(res, 400, { error: error?.message || 'Roster contains malformed attendee/guest relationships.' });
+    send(res, 400, { error: sanitizeErrorMessage(error, 'Roster contains malformed attendee/guest relationships.') });
     return;
   }
 
@@ -308,7 +318,7 @@ export default async function handler(req: any, res: any) {
       preview: parsed.preview,
     });
   } catch (error: any) {
-    send(res, 400, { error: error?.message || 'Roster count validation failed.' });
+    send(res, 400, { error: sanitizeErrorMessage(error, 'Roster count validation failed.') });
     return;
   }
 
@@ -316,7 +326,7 @@ export default async function handler(req: any, res: any) {
   try {
     records = buildReplacementRecords(groups, eventDate);
   } catch (error: any) {
-    send(res, 400, { error: error?.message || 'Unable to build roster replacement records.' });
+    send(res, 400, { error: sanitizeErrorMessage(error, 'Unable to build roster replacement records.') });
     return;
   }
 
@@ -333,7 +343,7 @@ export default async function handler(req: any, res: any) {
       requestId,
     });
   } catch (error: any) {
-    send(res, 500, { error: error?.message || 'Roster replacement failed.' });
+    send(res, 500, { error: sanitizeErrorMessage(error, 'Roster replacement failed. Please contact support.') });
     return;
   }
 
