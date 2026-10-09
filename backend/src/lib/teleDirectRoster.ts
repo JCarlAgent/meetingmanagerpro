@@ -32,6 +32,30 @@ export type TeleDirectRosterDetailed = {
   attendees: TeleDirectRosterAttendee[];
 };
 
+export type TeleDirectRosterGuest = {
+  rowIndex: number;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+  phone: string | null;
+  email: string | null;
+  status: string;
+  isCancelled: boolean;
+};
+
+export type TeleDirectRosterPrimary = {
+  primaryRosterIndex: number;
+  rowIndex: number;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+  phone: string | null;
+  email: string | null;
+  status: string;
+  isCancelled: boolean;
+  guests: TeleDirectRosterGuest[];
+};
+
 function normalizeStatus(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
@@ -189,4 +213,52 @@ export function parseTeleDirectRosterDetailed(text: string): TeleDirectRosterDet
 
 export function parseTeleDirectRosterText(text: string): TeleDirectRosterPreview {
   return parseTeleDirectRosterDetailed(text).preview;
+}
+
+export function groupTeleDirectRosterByPrimary(attendees: TeleDirectRosterAttendee[]): TeleDirectRosterPrimary[] {
+  const primaries = attendees.filter((row) => row.attendeeType === 'A');
+  const guests = attendees.filter((row) => row.attendeeType === 'G');
+
+  const primaryByIndex = new Map<number, TeleDirectRosterPrimary>();
+  for (const primary of primaries) {
+    const primaryRosterIndex = typeof primary.primaryRosterIndex === 'number' ? primary.primaryRosterIndex : null;
+    if (primaryRosterIndex == null) {
+      throw new Error('Roster primary row is missing primaryRosterIndex.');
+    }
+    primaryByIndex.set(primaryRosterIndex, {
+      primaryRosterIndex,
+      rowIndex: primary.rowIndex,
+      firstName: primary.firstName,
+      lastName: primary.lastName,
+      fullName: primary.fullName,
+      phone: primary.phone,
+      email: primary.email,
+      status: primary.status,
+      isCancelled: primary.isCancelled,
+      guests: [],
+    });
+  }
+
+  for (const guest of guests) {
+    const primaryRosterIndex = typeof guest.primaryRosterIndex === 'number' ? guest.primaryRosterIndex : null;
+    if (primaryRosterIndex == null) {
+      throw new Error(`Guest row ${guest.rowIndex + 1} is orphaned (no preceding primary Attendee row).`);
+    }
+    const parent = primaryByIndex.get(primaryRosterIndex);
+    if (!parent) {
+      throw new Error(`Guest row ${guest.rowIndex + 1} references a missing primary attendee.`);
+    }
+    parent.guests.push({
+      rowIndex: guest.rowIndex,
+      firstName: guest.firstName,
+      lastName: guest.lastName,
+      fullName: guest.fullName,
+      phone: guest.phone,
+      email: guest.email,
+      status: guest.status,
+      isCancelled: guest.isCancelled,
+    });
+  }
+
+  return Array.from(primaryByIndex.values()).sort((a, b) => a.primaryRosterIndex - b.primaryRosterIndex);
 }

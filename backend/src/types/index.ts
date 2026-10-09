@@ -69,6 +69,14 @@ export interface Responder {
   zip: string;
   guests: number;
   guest_name?: string | null;
+  guest_details?: Array<{
+    first_name: string | null;
+    last_name: string | null;
+    full_name: string | null;
+    status: string;
+    is_cancelled: boolean;
+  }> | null;
+  cancelled_guest_count?: number;
   response_source: 'qr_code' | 'call_center' | 'manual';
   confirmed: boolean;
   attended: boolean;

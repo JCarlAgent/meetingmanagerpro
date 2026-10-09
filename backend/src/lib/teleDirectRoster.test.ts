@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseTeleDirectRosterDetailed, parseTeleDirectRosterText } from './teleDirectRoster';
+import { groupTeleDirectRosterByPrimary, parseTeleDirectRosterDetailed, parseTeleDirectRosterText } from './teleDirectRoster';
 
 const meeting601425 = parseTeleDirectRosterText(fs.readFileSync('/Users/jack/Downloads/meeting601425-2.xls', 'utf8'));
 assert.equal(meeting601425.primaryCount, 13, 'Meeting 601425 primary count should be 13');
@@ -21,6 +21,38 @@ assert.equal(
   detailed601425.attendees.filter((row) => row.attendeeType === 'G' && row.primaryRosterIndex !== null).length,
   11,
   'Every guest row should remain attached to a preceding primary row'
+);
+const grouped601425 = groupTeleDirectRosterByPrimary(detailed601425.attendees);
+assert.equal(grouped601425.length, 13, 'Grouped roster should keep 13 primary records');
+assert.equal(grouped601425.reduce((sum, primary) => sum + primary.guests.length, 0), 11, 'Grouped roster should retain all 11 guests');
+assert.equal(
+  grouped601425.reduce((sum, primary) => sum + primary.guests.filter((guest) => guest.isCancelled).length, 0),
+  1,
+  'Grouped roster should preserve cancelled guest status'
+);
+
+const detailed601426 = parseTeleDirectRosterDetailed(fs.readFileSync('/Users/jack/Downloads/meeting601426.xls', 'utf8'));
+const grouped601426 = groupTeleDirectRosterByPrimary(detailed601426.attendees);
+assert.equal(grouped601426.length, 6, 'Grouped roster should keep 6 primaries for meeting 601426');
+assert.equal(grouped601426.filter((primary) => primary.isCancelled).length, 1, 'Grouped roster should preserve cancelled primary status');
+
+assert.throws(
+  () => groupTeleDirectRosterByPrimary([
+    {
+      rowIndex: 0,
+      attendeeType: 'G',
+      firstName: 'Orphan',
+      lastName: 'Guest',
+      fullName: 'Orphan Guest',
+      phone: null,
+      email: null,
+      status: 'registered',
+      isCancelled: false,
+      primaryRosterIndex: null,
+    },
+  ]),
+  /orphaned/i,
+  'Grouping should reject orphan guest rows'
 );
 
 console.log('teleDirectRoster parser checks: ok');
