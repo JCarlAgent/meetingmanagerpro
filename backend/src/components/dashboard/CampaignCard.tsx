@@ -117,11 +117,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [syncingMeetingId, setSyncingMeetingId] = useState<string | null>(null);
   const [meetingSyncMessages, setMeetingSyncMessages] = useState<Record<string, string>>({});
   const [showTsvImport, setShowTsvImport] = useState(false);
-  const [showRosterUpload, setShowRosterUpload] = useState(false);
+  const [rosterUploadOpenByEventId, setRosterUploadOpenByEventId] = useState<Record<string, boolean>>({});
   const [tsvText, setTsvText] = useState('');
-  const [rosterFileName, setRosterFileName] = useState<string | null>(null);
-  const [rosterPreview, setRosterPreview] = useState<TeleDirectRosterPreview | null>(null);
-  const [rosterPreviewError, setRosterPreviewError] = useState<string | null>(null);
+  const [rosterUploadStateByEventId, setRosterUploadStateByEventId] = useState<Record<string, {
+    fileName: string | null;
+    preview: TeleDirectRosterPreview | null;
+    error: string | null;
+  }>>({});
   const [importEventId, setImportEventId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
@@ -166,25 +168,36 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       .then(({ data }) => { setLocalResponders(data ?? []); });
   };
 
-  const handleRosterFileSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRosterFileSelection = async (event: React.ChangeEvent<HTMLInputElement>, meetingEventId: string) => {
     const file = event.target.files?.[0];
     if (!file) {
-      setRosterPreview(null);
-      setRosterFileName(null);
-      setRosterPreviewError(null);
+      setRosterUploadStateByEventId((prev) => ({
+        ...prev,
+        [meetingEventId]: { fileName: null, preview: null, error: null },
+      }));
       return;
     }
 
     try {
       const text = await file.text();
       const preview = parseTeleDirectRosterText(text);
-      setRosterFileName(file.name);
-      setRosterPreview(preview);
-      setRosterPreviewError(null);
+      setRosterUploadStateByEventId((prev) => ({
+        ...prev,
+        [meetingEventId]: {
+          fileName: file.name,
+          preview,
+          error: null,
+        },
+      }));
     } catch (error: any) {
-      setRosterPreview(null);
-      setRosterFileName(file.name);
-      setRosterPreviewError(error?.message || 'Unable to parse the selected TeleDirect roster file.');
+      setRosterUploadStateByEventId((prev) => ({
+        ...prev,
+        [meetingEventId]: {
+          fileName: file.name,
+          preview: null,
+          error: error?.message || 'Unable to parse the selected TeleDirect roster file.',
+        },
+      }));
     }
   };
 
@@ -1750,14 +1763,14 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setShowRosterUpload((prev) => !prev);
-                                        if (!showRosterUpload) {
-                                          setRosterPreviewError(null);
-                                        }
+                                        setRosterUploadOpenByEventId((prev) => ({
+                                          ...prev,
+                                          [eventId]: !Boolean(prev[eventId]),
+                                        }));
                                       }}
                                       className="text-[11px] px-2 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                                     >
-                                      {showRosterUpload ? 'Close Roster Preview' : 'Import TeleDirect Roster'}
+                                      {rosterUploadOpenByEventId[eventId] ? 'Close Roster Preview' : 'Import TeleDirect Roster'}
                                     </button>
                                     {campaign.id === 'a37ee672-358a-4c38-9b7b-7a3f98bb98ac' && ev.id === '05cd651c-e005-42a1-a7de-fc1dee6fb624' && String(ev?.teledirect_meeting_id ?? '').trim() === '601425' && (
                                       <button
@@ -1771,65 +1784,80 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                       </button>
                                     )}
                                   </div>
-                                  {showRosterUpload && (
-                                    <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-slate-700">
-                                      <div className="mb-1 font-semibold text-emerald-800">TeleDirect roster preview (read-only)</div>
-                                      <div className="mb-2 text-slate-600">Select a local TeleDirect roster export (.xls/.txt/.tsv). This preview does not write to Supabase.</div>
-                                      <input
-                                        type="file"
-                                        accept=".xls,.txt,.tsv,.csv"
-                                        onChange={handleRosterFileSelection}
-                                        className="block w-full text-[11px] text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-emerald-600 file:px-2 file:py-1 file:text-white"
-                                      />
-                                      {rosterFileName && <div className="mt-2 text-slate-500">File: {rosterFileName}</div>}
-                                      {rosterPreviewError && (
-                                        <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">{rosterPreviewError}</div>
-                                      )}
-                                      {rosterPreview && (
-                                        <div className="mt-3 rounded border border-emerald-200 bg-white p-2">
-                                          <div className="mb-2 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">Preview summary</div>
-                                          <div className="grid grid-cols-2 gap-2 text-xs">
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Meeting / date</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.meetingId || 'Not available'} • {rosterPreview.meetingDate || 'Not available'}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Rows read</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.rowsRead}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Primary registrants</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.primaryCount}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Guest count</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.guestCount}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Cancelled primary</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.cancelledPrimaryCount}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Cancelled guest</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.cancelledGuestCount}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Active primary</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.activePrimaryCount}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5">
-                                              <div className="text-slate-500">Active guest</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.activeGuestCount}</div>
-                                            </div>
-                                            <div className="rounded bg-slate-50 p-1.5 col-span-2">
-                                              <div className="text-slate-500">Total active attendees</div>
-                                              <div className="font-medium text-slate-800">{rosterPreview.totalActiveAttendees}</div>
+                                  {rosterUploadOpenByEventId[eventId] && (() => {
+                                    const rosterState = rosterUploadStateByEventId[eventId] ?? { fileName: null, preview: null, error: null };
+                                    const targetMeetingDate = ev.event_date ? new Date(`${ev.event_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Target meeting date not set';
+                                    const hasVerifiedRosterMeetingId = Boolean(rosterState.preview?.meetingId && String(rosterState.preview.meetingId).trim());
+                                    return (
+                                      <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-slate-700">
+                                        <div className="mb-1 font-semibold text-emerald-800">TeleDirect roster preview (read-only)</div>
+                                        <div className="mb-2 text-slate-600">Select a local TeleDirect roster export (.xls/.txt/.tsv) for {ev.venue_name || 'this meeting'}.</div>
+                                        <div className="mb-2 rounded border border-emerald-200 bg-white px-2 py-1 text-slate-700">
+                                          <span className="font-medium text-slate-700">Target meeting:</span> {ev.venue_name || 'Meeting'} • {targetMeetingDate}
+                                          {!hasVerifiedRosterMeetingId && (
+                                            <span className="ml-2 text-amber-700">Roster file has not verified the meeting ID.</span>
+                                          )}
+                                        </div>
+                                        <input
+                                          type="file"
+                                          accept=".xls,.txt,.tsv,.csv"
+                                          onChange={(fileEvent) => handleRosterFileSelection(fileEvent, eventId)}
+                                          className="block w-full text-[11px] text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-emerald-600 file:px-2 file:py-1 file:text-white"
+                                        />
+                                        {rosterState.fileName && <div className="mt-2 text-slate-500">File: {rosterState.fileName}</div>}
+                                        {rosterState.error && (
+                                          <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">{rosterState.error}</div>
+                                        )}
+                                        {rosterState.preview && (
+                                          <div className="mt-3 rounded border border-emerald-200 bg-white p-2">
+                                            <div className="mb-2 text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">Preview summary</div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Target meeting</div>
+                                                <div className="font-medium text-slate-800">{ev.venue_name || 'Meeting'} • {targetMeetingDate}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Roster meeting ID</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.meetingId || 'Not available'}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Rows read</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.rowsRead}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Primary registrants</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.primaryCount}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Guest count</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.guestCount}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Cancelled primary</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.cancelledPrimaryCount}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Cancelled guest</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.cancelledGuestCount}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Active primary</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.activePrimaryCount}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5">
+                                                <div className="text-slate-500">Active guest</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.activeGuestCount}</div>
+                                              </div>
+                                              <div className="rounded bg-slate-50 p-1.5 col-span-2">
+                                                <div className="text-slate-500">Total active attendees</div>
+                                                <div className="font-medium text-slate-800">{rosterState.preview.totalActiveAttendees}</div>
+                                              </div>
                                             </div>
                                           </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                   {meetingSyncMessages[ev.id] && (
                                     <div className="text-[10px] leading-snug text-slate-700 bg-white border border-slate-200 rounded px-2 py-1">
                                       {meetingSyncMessages[ev.id]}
