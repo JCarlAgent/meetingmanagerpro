@@ -1,7 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { parseTeleDirectRosterText, TeleDirectRosterPreview } from '@/lib/teleDirectRoster';
+import {
+  parseTeleDirectRosterDetailed,
+  TeleDirectRosterAttendee,
+  TeleDirectRosterPreview,
+} from '@/lib/teleDirectRoster';
 import { formatPhoneDisplay } from '@/lib/utils';
 import { Campaign, Event, Responder } from '@/types';
 import {
@@ -87,6 +91,41 @@ type MeetingSaleRow = {
   created_at?: string;
 };
 
+type TeleDirectReconciliationResult = {
+  ok: boolean;
+  readOnly: boolean;
+  eventId: string;
+  jobId: string;
+  rosterMeetingIdProvided: string | null;
+  rosterMeetingIdVerified: boolean;
+  rosterSummary?: {
+    primaryRegistrants: number;
+    guestRecords: number;
+    cancelledPrimaryCount: number;
+    cancelledGuestCount: number;
+    activeAttendees: number;
+  };
+  databaseSummary?: {
+    responderRows: number;
+    distinctIdentities: number;
+    rowsInDuplicateGroups: number;
+    excessDuplicateRows: number;
+    guestAsPrimaryRecords: number;
+  };
+  proposedReconciliation?: {
+    primaryAlreadyRepresented: number;
+    newPrimaryRecordsNeeded: number;
+    existingPrimaryNeedingUpdates: number;
+    guestRecordsToAttach: number;
+    guestAsPrimaryRowsRequiringCleanup: number;
+    duplicateRowsRequiringCleanup: number;
+    cancelledRecordsRequiringStatusUpdates: number;
+    ambiguousMatchesRequiringManualReview: number;
+    representedGuestRecords: number;
+    expectedCanonicalPrimaryCount: number;
+  };
+};
+
 const CampaignCard: React.FC<CampaignCardProps> = ({ 
   campaign, 
   events, 
@@ -122,7 +161,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [rosterUploadStateByEventId, setRosterUploadStateByEventId] = useState<Record<string, {
     fileName: string | null;
     preview: TeleDirectRosterPreview | null;
+    attendees: TeleDirectRosterAttendee[];
     error: string | null;
+    reconciling: boolean;
+    reconciliationError: string | null;
+    reconciliation: TeleDirectReconciliationResult | null;
   }>>({});
   const [importEventId, setImportEventId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
@@ -173,20 +216,33 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     if (!file) {
       setRosterUploadStateByEventId((prev) => ({
         ...prev,
-        [meetingEventId]: { fileName: null, preview: null, error: null },
+        [meetingEventId]: {
+          fileName: null,
+          preview: null,
+          attendees: [],
+          error: null,
+          reconciling: false,
+          reconciliationError: null,
+          reconciliation: null,
+        },
       }));
       return;
     }
 
     try {
       const text = await file.text();
-      const preview = parseTeleDirectRosterText(text);
+      const parsed = parseTeleDirectRosterDetailed(text);
+      const preview = parsed.preview;
       setRosterUploadStateByEventId((prev) => ({
         ...prev,
         [meetingEventId]: {
           fileName: file.name,
           preview,
+          attendees: parsed.attendees,
           error: null,
+          reconciling: false,
+          reconciliationError: null,
+          reconciliation: null,
         },
       }));
     } catch (error: any) {
@@ -195,7 +251,96 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         [meetingEventId]: {
           fileName: file.name,
           preview: null,
+          attendees: [],
           error: error?.message || 'Unable to parse the selected TeleDirect roster file.',
+          reconciling: false,
+          reconciliationError: null,
+          reconciliation: null,
+        },
+      }));
+    }
+  };
+
+  const handleCompareRosterWithExisting = async (meetingEventId: string) => {
+    const rosterState = rosterUploadStateByEventId[meetingEventId];
+    if (!rosterState?.preview || !rosterState.attendees.length) {
+      setRosterUploadStateByEventId((prev) => ({
+        ...prev,
+        [meetingEventId]: {
+          fileName: prev[meetingEventId]?.fileName ?? null,
+          preview: prev[meetingEventId]?.preview ?? null,
+          attendees: prev[meetingEventId]?.attendees ?? [],
+          error: prev[meetingEventId]?.error ?? null,
+          reconciling: false,
+          reconciliationError: 'Select and parse a TeleDirect roster file before reconciliation.',
+          reconciliation: prev[meetingEventId]?.reconciliation ?? null,
+        },
+      }));
+      return;
+    }
+
+    setRosterUploadStateByEventId((prev) => ({
+      ...prev,
+      [meetingEventId]: {
+        fileName: prev[meetingEventId]?.fileName ?? null,
+        preview: prev[meetingEventId]?.preview ?? null,
+        attendees: prev[meetingEventId]?.attendees ?? [],
+        error: prev[meetingEventId]?.error ?? null,
+        reconciling: true,
+        reconciliationError: null,
+        reconciliation: prev[meetingEventId]?.reconciliation ?? null,
+      },
+    }));
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? null;
+      if (!token) throw new Error('Not logged in.');
+
+      const response = await fetch('/api/integrations/seminaredge/reconcile-roster', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          jobId: campaign.id,
+          eventId: meetingEventId,
+          roster: {
+            meetingId: rosterState.preview.meetingId,
+            rows: rosterState.attendees,
+          },
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Unable to reconcile roster with existing responders.');
+      }
+
+      setRosterUploadStateByEventId((prev) => ({
+        ...prev,
+        [meetingEventId]: {
+          fileName: prev[meetingEventId]?.fileName ?? null,
+          preview: prev[meetingEventId]?.preview ?? null,
+          attendees: prev[meetingEventId]?.attendees ?? [],
+          error: prev[meetingEventId]?.error ?? null,
+          reconciling: false,
+          reconciliationError: null,
+          reconciliation: data,
+        },
+      }));
+    } catch (error: any) {
+      setRosterUploadStateByEventId((prev) => ({
+        ...prev,
+        [meetingEventId]: {
+          fileName: prev[meetingEventId]?.fileName ?? null,
+          preview: prev[meetingEventId]?.preview ?? null,
+          attendees: prev[meetingEventId]?.attendees ?? [],
+          error: prev[meetingEventId]?.error ?? null,
+          reconciling: false,
+          reconciliationError: error?.message || 'Unable to reconcile roster with existing responders.',
+          reconciliation: prev[meetingEventId]?.reconciliation ?? null,
         },
       }));
     }
@@ -1785,7 +1930,15 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                     )}
                                   </div>
                                   {rosterUploadOpenByEventId[eventId] && (() => {
-                                    const rosterState = rosterUploadStateByEventId[eventId] ?? { fileName: null, preview: null, error: null };
+                                    const rosterState = rosterUploadStateByEventId[eventId] ?? {
+                                      fileName: null,
+                                      preview: null,
+                                      attendees: [],
+                                      error: null,
+                                      reconciling: false,
+                                      reconciliationError: null,
+                                      reconciliation: null,
+                                    };
                                     const targetMeetingDate = ev.event_date ? new Date(`${ev.event_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Target meeting date not set';
                                     const hasVerifiedRosterMeetingId = Boolean(rosterState.preview?.meetingId && String(rosterState.preview.meetingId).trim());
                                     return (
@@ -1853,6 +2006,82 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                                 <div className="font-medium text-slate-800">{rosterState.preview.totalActiveAttendees}</div>
                                               </div>
                                             </div>
+                                            <div className="mt-3 border-t border-emerald-100 pt-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleCompareRosterWithExisting(eventId)}
+                                                disabled={rosterState.reconciling}
+                                                className="text-[11px] px-2 py-1 rounded border border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                                              >
+                                                {rosterState.reconciling ? 'Comparing…' : 'Compare with Existing Responders'}
+                                              </button>
+                                              <div className="mt-1 text-[10px] text-violet-700">READ-ONLY reconciliation preview. No database writes are performed.</div>
+                                            </div>
+                                            {rosterState.reconciliationError && (
+                                              <div className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">{rosterState.reconciliationError}</div>
+                                            )}
+                                            {rosterState.reconciliation?.ok && (
+                                              <div className="mt-3 rounded border border-violet-200 bg-violet-50 p-2">
+                                                <div className="mb-2 text-[10px] uppercase tracking-wide text-violet-700 font-semibold">Existing responder reconciliation (read-only)</div>
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Existing responder rows</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.responderRows ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Distinct identities</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.distinctIdentities ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Rows in duplicate groups</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.rowsInDuplicateGroups ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Excess duplicate rows</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.excessDuplicateRows ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Guest-as-primary records</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.databaseSummary?.guestAsPrimaryRecords ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Primary already represented</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.primaryAlreadyRepresented ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">New primary records needed</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.newPrimaryRecordsNeeded ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Existing primary needing updates</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.existingPrimaryNeedingUpdates ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Guest records requiring attachment</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.guestRecordsToAttach ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Duplicate rows requiring cleanup</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.duplicateRowsRequiringCleanup ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Cancelled records requiring status updates</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.cancelledRecordsRequiringStatusUpdates ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5">
+                                                    <div className="text-slate-500">Ambiguous matches requiring review</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.ambiguousMatchesRequiringManualReview ?? 0}</div>
+                                                  </div>
+                                                  <div className="rounded bg-white p-1.5 col-span-2">
+                                                    <div className="text-slate-500">Expected canonical primary responder count (including cancelled history)</div>
+                                                    <div className="font-medium text-slate-800">{rosterState.reconciliation.proposedReconciliation?.expectedCanonicalPrimaryCount ?? 0}</div>
+                                                  </div>
+                                                </div>
+                                                <div className="mt-2 text-[10px] text-amber-700">
+                                                  Meeting identity is based on your selected target meeting. The roster file itself may not independently verify meeting identity.
+                                                </div>
+                                              </div>
+                                            )}
                                           </div>
                                         )}
                                       </div>
