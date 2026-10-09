@@ -108,15 +108,27 @@ function validatePayload(payload: any): { ok: true; value: ReplacePayload } | { 
   };
 }
 
-export async function canAccessJobEvent(args: { userId: string; email: string | null; jobId: string; eventId: string; supabaseAdmin?: any }) {
+export async function canAccessJobEvent(args: { userId: string; email: string | null; jobId: string; eventId: string; supabaseAdmin?: any; requestId?: string }) {
   const supabaseAdmin = args.supabaseAdmin ?? getSupabaseAdmin();
+  const requestId = args.requestId ?? 'unknown';
 
   const { data: job, error: jobErr } = await supabaseAdmin
     .from('jobs')
     .select('id, org_id, created_by_user_id')
     .eq('id', args.jobId)
     .maybeSingle();
-  if (jobErr || !job?.id) return { ok: false as const, reason: 'job_not_found' };
+  if (jobErr || !job?.id) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'job_lookup',
+      jobId: args.jobId,
+      eventId: args.eventId,
+      ok: false,
+      reason: 'job_not_found',
+      jobQueryError: jobErr?.message ? String(jobErr.message).slice(0, 180) : null,
+    });
+    return { ok: false as const, reason: 'job_not_found' };
+  }
 
   const { data: event, error: eventErr } = await supabaseAdmin
     .from('job_meetings')
@@ -124,14 +136,36 @@ export async function canAccessJobEvent(args: { userId: string; email: string | 
     .eq('id', args.eventId)
     .eq('job_id', args.jobId)
     .maybeSingle();
-  if (eventErr || !event?.id) return { ok: false as const, reason: 'event_not_found_for_job' };
+  if (eventErr || !event?.id) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'event_lookup',
+      jobId: args.jobId,
+      eventId: args.eventId,
+      ok: false,
+      reason: 'event_not_found_for_job',
+      eventQueryError: eventErr?.message ? String(eventErr.message).slice(0, 180) : null,
+    });
+    return { ok: false as const, reason: 'event_not_found_for_job' };
+  }
 
   const { data: ma } = await supabaseAdmin
     .from('master_admins')
     .select('user_id')
     .eq('user_id', args.userId)
     .maybeSingle();
-  if (ma?.user_id) return { ok: true as const, reason: 'master_admin', event };
+  if (ma?.user_id) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'role_check',
+      jobId: args.jobId,
+      eventId: args.eventId,
+      ok: true,
+      reason: 'master_admin',
+      userIdPresent: !!args.userId,
+    });
+    return { ok: true as const, reason: 'master_admin', event };
+  }
 
   if (args.email) {
     const { data: adminEmail } = await supabaseAdmin
@@ -139,10 +173,30 @@ export async function canAccessJobEvent(args: { userId: string; email: string | 
       .select('email')
       .ilike('email', args.email)
       .maybeSingle();
-    if (adminEmail?.email) return { ok: true as const, reason: 'legacy_admin_email', event };
+    if (adminEmail?.email) {
+      console.warn('[import-roster-replace auth]', {
+        requestId,
+        phase: 'role_check',
+        jobId: args.jobId,
+        eventId: args.eventId,
+        ok: true,
+        reason: 'legacy_admin_email',
+      });
+      return { ok: true as const, reason: 'legacy_admin_email', event };
+    }
   }
 
-  if (job.created_by_user_id === args.userId) return { ok: true as const, reason: 'job_owner', event };
+  if (job.created_by_user_id === args.userId) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'role_check',
+      jobId: args.jobId,
+      eventId: args.eventId,
+      ok: true,
+      reason: 'job_owner',
+    });
+    return { ok: true as const, reason: 'job_owner', event };
+  }
 
   const { data: member } = await supabaseAdmin
     .from('org_members')
@@ -151,10 +205,42 @@ export async function canAccessJobEvent(args: { userId: string; email: string | 
     .eq('user_id', args.userId)
     .maybeSingle();
 
-  if (!member?.role) return { ok: false as const, reason: 'not_org_member' };
+  if (!member?.role) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'role_check',
+      jobId: args.jobId,
+      eventId: args.eventId,
+      ok: false,
+      reason: 'not_org_member',
+      orgId: job.org_id,
+      userIdPresent: !!args.userId,
+    });
+    return { ok: false as const, reason: 'not_org_member' };
+  }
 
   const isAdminRole = ['fmo_admin', 'org_admin', 'enterprise_admin'].includes(member.role);
-  if (isAdminRole) return { ok: true as const, reason: member.role, event };
+  if (isAdminRole) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'role_check',
+      jobId: args.jobId,
+      eventId: args.eventId,
+      ok: true,
+      reason: member.role,
+    });
+    return { ok: true as const, reason: member.role, event };
+  }
+
+  console.warn('[import-roster-replace auth]', {
+    requestId,
+    phase: 'role_check',
+    jobId: args.jobId,
+    eventId: args.eventId,
+    ok: false,
+    reason: 'advisor_not_owner',
+    orgMemberRole: member.role,
+  });
   return { ok: false as const, reason: 'advisor_not_owner' };
 }
 
@@ -280,8 +366,16 @@ export default async function handler(req: any, res: any) {
   }
 
   const { jobId, eventId, targetMeetingId, rosterText } = validated.value;
-  const access = await canAccessJobEvent({ userId: user.id, email: user.email, jobId, eventId });
+  const requestId = `${eventId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+  const access = await canAccessJobEvent({ userId: user.id, email: user.email, jobId, eventId, requestId });
   if (!access.ok) {
+    console.warn('[import-roster-replace auth]', {
+      requestId,
+      phase: 'request_denied',
+      jobId,
+      eventId,
+      reason: access.reason,
+    });
     send(res, 403, { error: 'Not authorized for this event', reason: access.reason });
     return;
   }
@@ -333,7 +427,6 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const requestId = `${eventId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
   const supabaseAdmin = getSupabaseAdmin();
   let result: any;
   try {
