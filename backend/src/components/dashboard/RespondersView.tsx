@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Responder, Campaign, Event } from '@/types';
 import { formatPhoneDisplay } from '@/lib/utils';
+import { demographicSourceLabel } from '@/lib/demographicSource';
 import { 
   Users, 
   Search, 
@@ -814,6 +815,7 @@ const RespondersView: React.FC<RespondersViewProps> = ({
                                 <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Match</div>
                                 <div className="space-y-0.5 text-xs text-slate-700">
                                   <div><span className="font-medium text-slate-500">Matched to mailed list:</span> {responder.matched_to_mail_list === true ? 'Yes' : responder.matched_to_mail_list === false ? 'No' : '—'}</div>
+                                  <div><span className="font-medium text-slate-500">Demographic source:</span> {demographicSourceLabel(responder.match_confidence, hasMatchedDemographics(responder))}</div>
                                   <div><span className="font-medium text-slate-500">Match confidence:</span> {valueOrDash(responder.match_confidence)}</div>
                                   <div><span className="font-medium text-slate-500">Mail record ID:</span> {valueOrDash(responder.mail_record_id)}</div>
                                 </div>

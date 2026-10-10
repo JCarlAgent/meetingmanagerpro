@@ -4,8 +4,11 @@ import {
   TeleDirectRosterPrimary,
 } from '../../../src/lib/teleDirectRoster.js';
 import { getSupabaseAdmin, requireUserFromAuthHeader } from '../../_lib/supabaseAdmin.js';
+import { runDemographicEnrichment } from '../../_lib/demographicEnrichment.js';
 
 export const config = { api: { bodyParser: { sizeLimit: '2mb' } } };
+
+const POST_IMPORT_ENRICH_VERSION = 'roster-import-post-enrich-v1';
 
 type ReplacePayload = {
   jobId: string;
@@ -149,87 +152,26 @@ export async function canAccessJobEvent(args: { userId: string; email: string | 
     return { ok: false as const, reason: 'event_not_found_for_job' };
   }
 
-  const { data: ma } = await supabaseAdmin
+  // Roster replacement is restricted to master admins. Job and event lookups above
+  // still scope the request to a real event on the requested job.
+  const { data: ma, error: maErr } = await supabaseAdmin
     .from('master_admins')
     .select('user_id')
     .eq('user_id', args.userId)
     .maybeSingle();
-  if (ma?.user_id) {
-    console.warn('[import-roster-replace auth]', {
-      requestId,
-      phase: 'role_check',
-      jobId: args.jobId,
-      eventId: args.eventId,
-      ok: true,
-      reason: 'master_admin',
-      userIdPresent: !!args.userId,
-    });
-    return { ok: true as const, reason: 'master_admin', event };
-  }
-
-  if (args.email) {
-    const { data: adminEmail } = await supabaseAdmin
-      .from('admins')
-      .select('email')
-      .ilike('email', args.email)
-      .maybeSingle();
-    if (adminEmail?.email) {
-      console.warn('[import-roster-replace auth]', {
-        requestId,
-        phase: 'role_check',
-        jobId: args.jobId,
-        eventId: args.eventId,
-        ok: true,
-        reason: 'legacy_admin_email',
-      });
-      return { ok: true as const, reason: 'legacy_admin_email', event };
-    }
-  }
-
-  if (job.created_by_user_id === args.userId) {
-    console.warn('[import-roster-replace auth]', {
-      requestId,
-      phase: 'role_check',
-      jobId: args.jobId,
-      eventId: args.eventId,
-      ok: true,
-      reason: 'job_owner',
-    });
-    return { ok: true as const, reason: 'job_owner', event };
-  }
-
-  const { data: member } = await supabaseAdmin
-    .from('org_members')
-    .select('role')
-    .eq('org_id', job.org_id)
-    .eq('user_id', args.userId)
-    .maybeSingle();
-
-  if (!member?.role) {
+  if (maErr || !ma?.user_id) {
+    const reason = maErr ? 'master_admin_lookup_failed' : 'master_admin_required';
     console.warn('[import-roster-replace auth]', {
       requestId,
       phase: 'role_check',
       jobId: args.jobId,
       eventId: args.eventId,
       ok: false,
-      reason: 'not_org_member',
-      orgId: job.org_id,
+      reason,
       userIdPresent: !!args.userId,
+      masterQueryError: maErr?.message ? String(maErr.message).slice(0, 180) : null,
     });
-    return { ok: false as const, reason: 'not_org_member' };
-  }
-
-  const isAdminRole = ['fmo_admin', 'org_admin', 'enterprise_admin'].includes(member.role);
-  if (isAdminRole) {
-    console.warn('[import-roster-replace auth]', {
-      requestId,
-      phase: 'role_check',
-      jobId: args.jobId,
-      eventId: args.eventId,
-      ok: true,
-      reason: member.role,
-    });
-    return { ok: true as const, reason: member.role, event };
+    return { ok: false as const, reason };
   }
 
   console.warn('[import-roster-replace auth]', {
@@ -237,11 +179,11 @@ export async function canAccessJobEvent(args: { userId: string; email: string | 
     phase: 'role_check',
     jobId: args.jobId,
     eventId: args.eventId,
-    ok: false,
-    reason: 'advisor_not_owner',
-    orgMemberRole: member.role,
+    ok: true,
+    reason: 'master_admin',
+    userIdPresent: !!args.userId,
   });
-  return { ok: false as const, reason: 'advisor_not_owner' };
+  return { ok: true as const, reason: 'master_admin', event };
 }
 
 export function buildReplacementRecords(groups: TeleDirectRosterPrimary[], meetingDate: string | null): ReplaceRecord[] {
@@ -332,6 +274,28 @@ export async function executeRosterReplacement(args: {
   return result ?? null;
 }
 
+// Post-import demographic enrichment runs server-side only after the roster
+// replacement has committed. It is best-effort: it never throws, and its
+// outcome cannot change the import status or roll back the replacement.
+export async function runPostImportEnrichment(args: { supabaseAdmin: any; jobId: string; eventId: string; requestId?: string }): Promise<Record<string, unknown>> {
+  try {
+    const outcome = await runDemographicEnrichment({
+      supabaseAdmin: args.supabaseAdmin,
+      targetJobId: args.jobId,
+      matcherVersion: POST_IMPORT_ENRICH_VERSION,
+    });
+    return outcome.body;
+  } catch (error: any) {
+    console.error('[import-roster-replace] post-import demographic enrichment failed', {
+      requestId: args.requestId,
+      jobId: args.jobId,
+      eventId: args.eventId,
+      message: error?.message,
+    });
+    return { status: 'error', written: 0 };
+  }
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -381,7 +345,8 @@ export default async function handler(req: any, res: any) {
   }
 
   const eventMeetingId = normalizeContact(access.event.teledirect_meeting_id);
-  const eventDate = normalizeContact(access.event.event_date);
+  // job_meetings has no event_date column, so the meeting date note is always unknown here.
+  const eventDate: string | null = null;
   if (targetMeetingId && eventMeetingId && targetMeetingId !== eventMeetingId) {
     send(res, 400, { error: `Selected meeting mismatch. Expected TeleDirect meeting ID ${eventMeetingId}.` });
     return;
@@ -443,10 +408,16 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  // Post-import demographic enrichment runs server-side only after the roster
+  // replacement has committed. It is best-effort: its outcome is reported but
+  // can never change the import status or roll back the replacement.
+  const demographicEnrichment = await runPostImportEnrichment({ supabaseAdmin, jobId, eventId, requestId });
+
   send(res, 200, {
     ok: true,
     eventId,
     jobId,
+    demographicEnrichment,
     targetMeetingId: eventMeetingId,
     targetMeetingDate: eventDate,
     rosterMeetingIdProvided: parsed.preview.meetingId ?? null,

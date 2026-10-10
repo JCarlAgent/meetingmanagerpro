@@ -55,4 +55,26 @@ assert.throws(
   'Grouping should reject orphan guest rows'
 );
 
+// Postal fields: the October exports leave these empty, so use an inline fixture with values.
+const postalHeader = ['TimeStamp','Attendee/Guest','FirstName','LastName','PhoneNumber','Email','Address','City','State','ZipCode','MealSelected','Source','PromptedToCall','Question1','Question2','Question3','Status','ConfirmationCall','Notes','AdditionalNotes','CreatedBy'];
+const postalRow = (type, first, last, addr, city, state, zip, status) => [
+  '2025-10-01 10:00', type, first, last, '5550001111', '', addr, city, state, zip, '', '', '', '', '', '', status, '', '', '', 'test',
+].join('\t');
+const postalText = [
+  postalHeader.join('\t'),
+  postalRow('A', 'Ann', 'Smith', '12 Oak St', 'Springfield', 'IL', '62701', 'registered'),
+  postalRow('G', 'Ben', 'Smith', '', '', '', '', 'registered'),
+  postalRow('A', 'Carl', 'Jones', '', '', '', '', 'registered'),
+].join('\r\n');
+const postalDetailed = parseTeleDirectRosterDetailed(postalText);
+const ann = postalDetailed.attendees.find((row) => row.firstName === 'Ann');
+assert.equal(ann?.address, '12 Oak St', 'Attendee address should be extracted');
+assert.equal(ann?.city, 'Springfield', 'Attendee city should be extracted');
+assert.equal(ann?.state, 'IL', 'Attendee state should be extracted');
+assert.equal(ann?.zip, '62701', 'Attendee zip should be extracted');
+const postalGrouped = groupTeleDirectRosterByPrimary(postalDetailed.attendees);
+assert.equal(postalGrouped[0].zip, '62701', 'Primary zip should carry onto the grouped primary');
+assert.equal(postalGrouped[0].guests.length, 1, 'Guest should stay attached to the Ann primary');
+assert.equal(postalGrouped[1].zip, null, 'Empty postal columns should yield null, not an empty string');
+
 console.log('teleDirectRoster parser checks: ok');

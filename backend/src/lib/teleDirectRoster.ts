@@ -25,6 +25,10 @@ export type TeleDirectRosterAttendee = {
   status: string;
   isCancelled: boolean;
   primaryRosterIndex: number | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
 };
 
 export type TeleDirectRosterDetailed = {
@@ -41,6 +45,10 @@ export type TeleDirectRosterGuest = {
   email: string | null;
   status: string;
   isCancelled: boolean;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
 };
 
 export type TeleDirectRosterPrimary = {
@@ -53,6 +61,10 @@ export type TeleDirectRosterPrimary = {
   email: string | null;
   status: string;
   isCancelled: boolean;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
   guests: TeleDirectRosterGuest[];
 };
 
@@ -73,6 +85,20 @@ function getField(row: Record<string, string>, ...keys: string[]): string {
     }
   }
   return '';
+}
+
+function extractPostal(row: Record<string, string>): {
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+} {
+  return {
+    address: getField(row, 'Address', 'Address1', 'StreetAddress') || null,
+    city: getField(row, 'City') || null,
+    state: getField(row, 'State', 'ST') || null,
+    zip: getField(row, 'ZipCode', 'Zip', 'Zip Code', 'PostalCode') || null,
+  };
 }
 
 function extractMeetingDate(row: Record<string, string>): string | null {
@@ -164,6 +190,7 @@ export function parseTeleDirectRosterDetailed(text: string): TeleDirectRosterDet
         status: status || 'registered',
         isCancelled,
         primaryRosterIndex: currentPrimaryRosterIndex,
+        ...extractPostal(row),
       });
     } else if (marker === 'G') {
       guestCount += 1;
@@ -184,6 +211,7 @@ export function parseTeleDirectRosterDetailed(text: string): TeleDirectRosterDet
         status: status || 'registered',
         isCancelled,
         primaryRosterIndex: currentPrimaryRosterIndex,
+        ...extractPostal(row),
       });
     } else if (row && Object.keys(row).length > 0) {
       unknownRows += 1;
@@ -235,6 +263,10 @@ export function groupTeleDirectRosterByPrimary(attendees: TeleDirectRosterAttend
       email: primary.email,
       status: primary.status,
       isCancelled: primary.isCancelled,
+      address: primary.address ?? null,
+      city: primary.city ?? null,
+      state: primary.state ?? null,
+      zip: primary.zip ?? null,
       guests: [],
     });
   }
@@ -257,6 +289,10 @@ export function groupTeleDirectRosterByPrimary(attendees: TeleDirectRosterAttend
       email: guest.email,
       status: guest.status,
       isCancelled: guest.isCancelled,
+      address: guest.address ?? null,
+      city: guest.city ?? null,
+      state: guest.state ?? null,
+      zip: guest.zip ?? null,
     });
   }
 

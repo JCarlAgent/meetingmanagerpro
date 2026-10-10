@@ -174,6 +174,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [mailedImportMessage, setMailedImportMessage] = useState<string | null>(null);
   const [isMatchingMail, setIsMatchingMail] = useState(false);
   const [matchMailMessage, setMatchMailMessage] = useState<string | null>(null);
+  const [isPreviewingMatch, setIsPreviewingMatch] = useState(false);
+  const [matchPreview, setMatchPreview] = useState<{ counts: Record<string, number>; sourceJobId: string } | null>(null);
+  const [matchPreviewError, setMatchPreviewError] = useState<string | null>(null);
   const [matchNameResults, setMatchNameResults] = useState<any[] | null>(null);
   const [matcherVersion, setMatcherVersion] = useState<string | null>(null);
   const [isDebuggingMatch, setIsDebuggingMatch] = useState(false);
@@ -1194,6 +1197,29 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       setMatchMailMessage('Error: ' + (err?.message ?? String(err)));
     } finally {
       setIsMatchingMail(false);
+    }
+  };
+
+  // Read-only demographic match preview (master admins). Server performs zero writes.
+  const runMatchPreview = async () => {
+    setIsPreviewingMatch(true);
+    setMatchPreviewError(null);
+    setMatchPreview(null);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('/api/integrations/workthelead/match-responders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, mode: 'preview' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Preview failed');
+      setMatchPreview({ counts: json.counts, sourceJobId: json.sourceJobId });
+    } catch (err: any) {
+      setMatchPreviewError(err?.message ?? String(err));
+    } finally {
+      setIsPreviewingMatch(false);
     }
   };
 
@@ -2503,11 +2529,31 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 >{isMatchingMail ? 'Matching…' : 'Match Responders to Purchased List'}</button>
                                 <button
                                   type="button"
+                                  onClick={runMatchPreview}
+                                  disabled={isPreviewingMatch}
+                                  className="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 disabled:opacity-50 text-white rounded text-xs"
+                                >{isPreviewingMatch ? 'Previewing…' : 'Preview Demographic Match (read-only)'}</button>
+                                <button
+                                  type="button"
                                   onClick={runDebugMatches}
                                   disabled={isDebuggingMatch}
                                   className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded text-xs"
                                 >{isDebuggingMatch ? 'Diagnosing…' : 'Debug Purchased Matches'}</button>
                               </div>
+                              {matchPreviewError && (
+                                <div className="mt-2 text-xs text-red-600">Preview error: {matchPreviewError}</div>
+                              )}
+                              {matchPreview && (
+                                <div className="mt-2 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded p-2">
+                                  <div className="font-medium mb-1">Demographic match preview (no writes) — source job {matchPreview.sourceJobId}</div>
+                                  <div>Total primary responders: {matchPreview.counts.totalPrimaries}</div>
+                                  <div>Already enriched: {matchPreview.counts.alreadyEnriched}</div>
+                                  <div>High-confidence unique matches: {matchPreview.counts.strong}</div>
+                                  <div>Name-only candidates (verify): {matchPreview.counts.nameOnlyCandidates}</div>
+                                  <div>Ambiguous: {matchPreview.counts.ambiguous}</div>
+                                  <div>Unmatched: {matchPreview.counts.unmatched}</div>
+                                </div>
+                              )}
                               {debugMatchOutput && (
                                 <div className="mt-2">
                                   <div className="flex items-center justify-between mb-1">

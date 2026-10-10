@@ -5,6 +5,9 @@
     },
     "api/integrations/workthelead/match-responders.ts": {
       "maxDuration": 60
+    },
+    "api/integrations/seminaredge/import-roster-replace.ts": {
+      "maxDuration": 60
     }
   }
 }

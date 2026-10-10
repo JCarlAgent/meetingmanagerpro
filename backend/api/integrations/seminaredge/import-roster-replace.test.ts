@@ -4,6 +4,7 @@ import {
   buildReplacementRecords,
   canAccessJobEvent,
   executeRosterReplacement,
+  runPostImportEnrichment,
   validateExpectedCounts,
   default as handler,
 } from './import-roster-replace.ts';
@@ -201,84 +202,54 @@ const mockAllowedAdmin = {
   },
 };
 
-const adminAccess = await canAccessJobEvent({
-  userId: 'user-2',
-  email: 'admin@example.com',
-  jobId: 'job-1',
-  eventId: 'event-1',
-  supabaseAdmin: mockAllowedAdmin,
-});
-assert.equal(adminAccess.ok, true, 'org admin should be allowed');
-assert.equal(adminAccess.reason, 'org_admin', 'org admin role should be preserved');
-
-const ownerAccess = await canAccessJobEvent({
-  userId: 'owner-1',
-  email: null,
+const masterAdminAccess = await canAccessJobEvent({
+  userId: 'master-1',
+  email: 'master@example.com',
   jobId: 'job-1',
   eventId: 'event-1',
   supabaseAdmin: {
     from(table: string) {
       const ops: any = {
-        jobs: {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }),
-            }),
-          }),
-        },
-        job_meetings: {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425', event_date: '2026-10-13' }, error: null }),
-              }),
-            }),
-          }),
-        },
-        master_admins: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
-        admins: { select: () => ({ ilike: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
-        org_members: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) },
+        jobs: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }) }) }) },
+        job_meetings: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425' }, error: null }) }) }) }) },
+        master_admins: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { user_id: 'master-1' }, error: null }) }) }) },
       };
       return ops[table];
     },
   },
 });
-assert.equal(ownerAccess.ok, true, 'job owner should be allowed');
-assert.equal(ownerAccess.reason, 'job_owner', 'job owner should pass the owner check');
+assert.equal(masterAdminAccess.ok, true, 'master admin should be allowed');
+assert.equal(masterAdminAccess.reason, 'master_admin', 'master admin reason should be reported');
 
-const unauthorizedAccess = await canAccessJobEvent({
-  userId: 'user-3',
-  email: null,
-  jobId: 'job-1',
-  eventId: 'event-1',
-  supabaseAdmin: {
-    from(table: string) {
-      const ops: any = {
-        jobs: {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }),
-            }),
-          }),
-        },
-        job_meetings: {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425', event_date: '2026-10-13' }, error: null }),
-              }),
-            }),
-          }),
-        },
-        master_admins: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
-        admins: { select: () => ({ ilike: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
-        org_members: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'member' }, error: null }) }) }) }) },
-      };
-      return ops[table];
+// Org admins, job owners, and legacy email admins are no longer permitted.
+const denyCases: Array<{ name: string; userId: string; email: string | null; ownerRows?: any; orgRole?: string | null; legacyAdmin?: boolean }> = [
+  { name: 'org admin', userId: 'user-2', email: 'admin@example.com', orgRole: 'org_admin' },
+  { name: 'job owner', userId: 'owner-1', email: null, orgRole: null },
+  { name: 'legacy email admin', userId: 'user-9', email: 'legacy@example.com', orgRole: null, legacyAdmin: true },
+  { name: 'unrelated member', userId: 'user-3', email: null, orgRole: 'member' },
+];
+for (const c of denyCases) {
+  const result = await canAccessJobEvent({
+    userId: c.userId,
+    email: c.email,
+    jobId: 'job-1',
+    eventId: 'event-1',
+    supabaseAdmin: {
+      from(table: string) {
+        const ops: any = {
+          jobs: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: 'job-1', org_id: 'org-1', created_by_user_id: 'owner-1' }, error: null }) }) }) },
+          job_meetings: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: 'event-1', job_id: 'job-1', teledirect_meeting_id: '601425' }, error: null }) }) }) }) },
+          master_admins: { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) },
+          admins: { select: () => ({ ilike: () => ({ maybeSingle: async () => ({ data: c.legacyAdmin ? { id: 'a1' } : null, error: null }) }) }) },
+          org_members: { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: c.orgRole ? { role: c.orgRole } : null, error: null }) }) }) }) },
+        };
+        return ops[table];
+      },
     },
-  },
-});
-assert.equal(unauthorizedAccess.ok, false, 'unrelated user should be rejected');
+  });
+  assert.equal(result.ok, false, `${c.name} should be rejected`);
+  assert.equal(result.reason, 'master_admin_required', `${c.name} should report master_admin_required`);
+}
 
 const wrongEventAccess = await canAccessJobEvent({
   userId: 'user-2',
@@ -369,7 +340,7 @@ const schemaCompatAccess = await canAccessJobEvent({
         master_admins: {
           select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: null, error: null }),
+              maybeSingle: async () => ({ data: { user_id: 'user-2' }, error: null }),
             }),
           }),
         },
@@ -395,6 +366,44 @@ const schemaCompatAccess = await canAccessJobEvent({
   },
 });
 assert.equal(schemaCompatAccess.ok, true, 'authorization should pass without event_date column');
-assert.equal(schemaCompatAccess.reason, 'org_admin', 'role authorization should remain unchanged');
+assert.equal(schemaCompatAccess.reason, 'master_admin', 'role authorization should be master-only');
+
+// Post-import enrichment is best-effort: an enrich failure must never throw
+// back into the import path, and must report status "error" with no writes.
+const throwingEnrichAdmin = {
+  from() {
+    throw new Error('simulated enrich outage');
+  },
+};
+const enrichFailure = await runPostImportEnrichment({
+  supabaseAdmin: throwingEnrichAdmin,
+  jobId: 'job-x',
+  eventId: 'event-x',
+  requestId: 'req-x',
+});
+assert.deepEqual(enrichFailure, { status: 'error', written: 0 }, 'enrich failure must be reported without throwing');
+
+const noLinkAdmin = {
+  from(table: string) {
+    const q: any = {
+      select() { return q; },
+      eq() { return q; },
+      in() { return q; },
+      is() { return q; },
+      range() { return q; },
+      then(resolve: any) {
+        resolve({ data: table === 'job_demographic_sources' ? [] : [], error: null });
+      },
+    };
+    return q;
+  },
+};
+const noLinkOutcome = await runPostImportEnrichment({
+  supabaseAdmin: noLinkAdmin,
+  jobId: 'job-x',
+  eventId: 'event-x',
+});
+assert.equal(noLinkOutcome.written, 0, 'no source link must write nothing');
+assert.equal(noLinkOutcome.status, 'no_source_link', 'missing link must be reported, not silently ok');
 
 console.log('import-roster-replace regressions: ok');

@@ -98,7 +98,7 @@ export interface Responder {
   mail_record_id?: string | null;
   status?: string | null;
   matched_to_mail_list?: boolean | null;
-  match_confidence?: 'exact' | 'fuzzy' | 'none' | null;
+  match_confidence?: 'exact' | 'fuzzy' | 'probable' | 'none' | null;
   lat?: number | null;
   lng?: number | null;
   created_at: string;

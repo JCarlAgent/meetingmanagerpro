@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Responder, Event } from '@/types';
 import { decodeIPA, decodeIncome } from '@/lib/acxiomDecoders';
+import { demographicSourceLabel } from '@/lib/demographicSource';
 import { formatPhoneDisplay } from '@/lib/utils';
 import { 
   CheckCircle2, 
@@ -820,7 +821,7 @@ const ResponderList: React.FC<ResponderListProps> = ({
                           {responder.matched_to_mail_list === true && (
                             <span
                               className={`inline-flex items-center gap-0.5 ${responder.match_confidence === 'fuzzy' ? 'text-amber-500' : 'text-green-600'}`}
-                              title={`On purchased list${responder.match_confidence === 'fuzzy' ? ' (possible match)' : ''}`}
+                              title={demographicSourceLabel(responder.match_confidence, true)}
                             >
                               <CheckCircle2 className="w-3 h-3" />
                             </span>

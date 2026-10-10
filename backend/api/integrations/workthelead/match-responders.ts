@@ -25,6 +25,12 @@
 
 import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
 import { decodeIPA, decodeIncome } from '../../_lib/acxiomDecoders.js';
+import { summarizePreview } from '../../_lib/responderDemographicPlanner.js';
+import {
+  fetchAllMailRecords,
+  planForJob,
+  runDemographicEnrichment,
+} from '../../_lib/demographicEnrichment.js';
 
 /** Normalize first name — takes first word only (strips middle initial/name). */
 function normFirst(s: string | null | undefined): string {
@@ -266,36 +272,6 @@ function findMatch(
   return { mr: undefined, confidence: 'none', tier: 'none', failReason };
 }
 
-/**
- * Paginated fetch of all rows from campaign_mailed_list_records for a campaign.
- * Supabase PostgREST has a project-level max_rows cap (default 1000).
- * Without explicit pagination, queries on 11k+ row campaigns silently return
- * only the first 1000 rows, causing ~90% of purchased records to be invisible
- * to the matcher index.
- */
-async function fetchAllMailRecords(
-  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
-  campaignId: string,
-  selectCols: string,
-): Promise<{ data: any[]; error: any }> {
-  const PAGE_SIZE = 1000;
-  const all: any[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabaseAdmin
-      .from('campaign_mailed_list_records')
-      .select(selectCols)
-      .eq('campaign_id', campaignId)
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) return { data: all, error };
-    if (!data?.length) break;
-    all.push(...data);
-    if (data.length < PAGE_SIZE) break; // last page
-    from += PAGE_SIZE;
-  }
-  return { data: all, error: null };
-}
-
 const MATCHER_VERSION = 'match-debug-live-2026-05-18';
 
 export default async function handler(req: any, res: any) {
@@ -303,7 +279,12 @@ export default async function handler(req: any, res: any) {
 
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const userId = await requireUserIdFromAuthHeader(req);
+    let userId: string;
+    try {
+      userId = await requireUserIdFromAuthHeader(req);
+    } catch {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const { data: adminRow } = await supabaseAdmin
       .from('master_admins')
@@ -312,13 +293,54 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
     if (!adminRow) return res.status(403).json({ error: 'Master admin required' });
 
-    const { jobId, responderId, debug, debugNames } = req.body as {
+    const { jobId, responderId, debug, debugNames, mode, sourceJobId } = req.body as {
       jobId?: string;
       responderId?: string;
       debug?: boolean;
       debugNames?: boolean;
+      mode?: string;
+      sourceJobId?: string;
     };
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
+
+    // ── preview mode: read-only demographic match plan. ZERO writes. ──
+    // Responders on jobId are matched against purchased records of sourceJobId
+    // (defaults to jobId). The source must belong to the same org as the target.
+    // Returns counts and responder IDs only, never names or demographics.
+    if (mode === 'preview') {
+      const effectiveSourceId = sourceJobId || jobId;
+      const plan = await planForJob(supabaseAdmin, jobId, effectiveSourceId);
+      if (!plan.ok) return res.status(plan.status).json({ error: plan.error });
+
+      const counts = summarizePreview(plan.results);
+      const idsBy = (cls: string) => plan.results.filter((r) => r.classification === cls).map((r) => r.responderId);
+
+      return res.status(200).json({
+        mode: 'preview',
+        matcherVersion: MATCHER_VERSION,
+        targetJobId: jobId,
+        sourceJobId: effectiveSourceId,
+        counts,
+        responderIds: {
+          strong: idsBy('strong'),
+          probable: idsBy('probable'),
+          nameOnly: idsBy('name_only'),
+          ambiguous: idsBy('ambiguous'),
+          unmatched: idsBy('unmatched'),
+        },
+      });
+    }
+
+    // ── enrich mode: shared server-side core (see _lib/demographicEnrichment.ts). ──
+    if (mode === 'enrich') {
+      const outcome = await runDemographicEnrichment({
+        supabaseAdmin,
+        targetJobId: jobId,
+        matcherVersion: MATCHER_VERSION,
+        sourceJobId,
+      });
+      return res.status(outcome.httpStatus).json(outcome.body);
+    }
 
     // ── debugNames mode: raw data inspection + actual findMatch(), NO writes ──
     // Fetches ALL purchased records, builds real indices, runs the same findMatch()
