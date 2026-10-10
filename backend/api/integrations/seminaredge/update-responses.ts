@@ -1,6 +1,7 @@
 import https from 'node:https';
 import { decryptString } from '../../_lib/crypto.js';
 import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
+import { canAccessJobEvent } from './import-roster-replace.js';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
@@ -176,6 +177,141 @@ function getAttendeeRelationship(record: Record<string, string>) {
   };
 }
 
+export function checkStoredMeetingId(
+  storedValue: unknown,
+  requestedMeetingId: string
+): { ok: boolean; reason?: string; error?: string } {
+  const stored = String(storedValue ?? '').trim();
+  if (!stored) {
+    return {
+      ok: false,
+      reason: 'stored_meeting_id_missing',
+      error: 'This event has no stored TeleDirect meeting ID. Update Confirmations is blocked.',
+    };
+  }
+  if (stored !== requestedMeetingId.trim()) {
+    return {
+      ok: false,
+      reason: 'meeting_id_mismatch',
+      error: 'meetingId does not match the TeleDirect meeting ID stored for this event.',
+    };
+  }
+  return { ok: true };
+}
+
+const DIAGNOSTIC_RELATIONSHIP_FIELDS = [
+  'AttendeeID', 'MainAttendeeID', 'Attendee/Guest', 'AttendeeGuest', 'A/G', 'AG', 'Type', 'RecordType', 'EntryType',
+  'Role', 'PersonType', 'ParticipantType', 'Status', 'AttendeeStatus', 'ReservationStatus',
+];
+const EXPECTED_MEETING_601425 = { primary: 15, guest: 13, cancelledGuest: 1, activeAttendees: 27 };
+
+function isGuestRecord(record: Record<string, string>): boolean {
+  const relationship = getAttendeeRelationship(record);
+  return isLikelyGuestRow(record, getAgMarker(record)) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
+}
+
+function bucketAttendeeStatus(raw: string): 'registered' | 'cancelled' | 'waitlist' | 'other' {
+  const status = raw.trim().toLowerCase();
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  if (status === 'waitlist' || status === 'waiting list' || status === 'waitlisted') return 'waitlist';
+  if (status === '' || status === 'registered') return 'registered';
+  return 'other';
+}
+
+// Read-only diagnostic summary. Returns aggregate counts and XML field names only;
+// names, contact details, and raw rows are never included.
+export function buildTeleDirectFeedDiagnostic(records: Record<string, string>[], meetingId: string) {
+  const fieldSet = new Set<string>();
+  records.forEach((record) => Object.keys(record).forEach((key) => fieldSet.add(key)));
+  const relevantFieldNames = Array.from(fieldSet)
+    .filter((key) => DIAGNOSTIC_RELATIONSHIP_FIELDS.some((field) => field.toLowerCase() === key.toLowerCase()))
+    .sort();
+
+  const primaryAttendeeIds = new Set<string>();
+  for (const record of records) {
+    const relationship = getAttendeeRelationship(record);
+    if (!isGuestRecord(record) && relationship.attendeeId) primaryAttendeeIds.add(relationship.attendeeId);
+  }
+
+  let mainAttendeeIdGreaterThanZero = 0;
+  let agA = 0;
+  let agG = 0;
+  let agMissingOrOther = 0;
+  const statusCounts = { registered: 0, cancelled: 0, waitlist: 0, other: 0 };
+  let primaryRows = 0;
+  let guestRows = 0;
+  let cancelledPrimaryRows = 0;
+  let cancelledGuestRows = 0;
+  let identifiablePrimaryRows = 0;
+  let identifiableGuestRows = 0;
+  let unresolvedRelationshipRows = 0;
+  let activeAttendees = 0;
+
+  for (const record of records) {
+    const relationship = getAttendeeRelationship(record);
+    const agMarker = getAgMarker(record);
+    if (/^\d+$/.test(relationship.mainAttendeeId ?? '') && Number(relationship.mainAttendeeId) > 0) {
+      mainAttendeeIdGreaterThanZero += 1;
+    }
+    if (agMarker === 'A') agA += 1;
+    else if (agMarker === 'G' || agMarker === 'GUEST') agG += 1;
+    else agMissingOrOther += 1;
+
+    const status = bucketAttendeeStatus(getField(record, 'Status', 'AttendeeStatus', 'ReservationStatus'));
+    statusCounts[status] += 1;
+    const cancelled = status === 'cancelled';
+    if (!cancelled) activeAttendees += 1;
+
+    if (isGuestRecord(record)) {
+      guestRows += 1;
+      if (cancelled) cancelledGuestRows += 1;
+      const mainResolved = !!relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && primaryAttendeeIds.has(relationship.mainAttendeeId);
+      if (mainResolved) identifiableGuestRows += 1;
+      else unresolvedRelationshipRows += 1;
+    } else {
+      primaryRows += 1;
+      if (cancelled) cancelledPrimaryRows += 1;
+      if (relationship.attendeeId) identifiablePrimaryRows += 1;
+    }
+  }
+
+  const isTarget = meetingId.trim() === '601425';
+  const mismatches: string[] = [];
+  if (isTarget) {
+    if (primaryRows !== EXPECTED_MEETING_601425.primary) mismatches.push('primary');
+    if (guestRows !== EXPECTED_MEETING_601425.guest) mismatches.push('guest');
+    if (cancelledGuestRows !== EXPECTED_MEETING_601425.cancelledGuest) mismatches.push('cancelledGuest');
+    if (activeAttendees !== EXPECTED_MEETING_601425.activeAttendees) mismatches.push('activeAttendees');
+    if (unresolvedRelationshipRows > 0) mismatches.push('unresolvedRelationships');
+  }
+
+  return {
+    diagnostic: true,
+    meetingId,
+    totalRecords: records.length,
+    relevantFieldNames,
+    mainAttendeeIdGreaterThanZero,
+    agMarkers: { A: agA, G: agG, missingOrOther: agMissingOrOther },
+    statusCounts,
+    classification: {
+      primaryRows,
+      guestRows,
+      cancelledPrimaryRows,
+      cancelledGuestRows,
+      identifiablePrimaryRows,
+      identifiableGuestRows,
+      unresolvedRelationshipRows,
+      activeAttendees,
+    },
+    expectation: {
+      applicable: isTarget,
+      expected: isTarget ? EXPECTED_MEETING_601425 : null,
+      reproduces: isTarget ? mismatches.length === 0 : null,
+      mismatches,
+    },
+  };
+}
+
 export function validateGuestRelationshipData(records: Record<string, string>[]) {
   if (!records.length) {
     return {
@@ -338,6 +474,21 @@ export default async function handler(req: any, res: any) {
   }
 
   const supabaseAdmin = getSupabaseAdmin();
+
+  // Server-side authorization: master admin only, and the event must belong to the job.
+  const access = await canAccessJobEvent({ userId, email: null, jobId, eventId, supabaseAdmin });
+  if (!access.ok) {
+    const status = access.reason === 'master_admin_lookup_failed' ? 500 : 403;
+    send(res, status, { error: 'Not authorized to update confirmations for this event.', reason: access.reason });
+    return;
+  }
+
+  // The TeleDirect meeting must match the one stored on this event before any TeleDirect call or write.
+  const meetingCheck = checkStoredMeetingId(access.event?.teledirect_meeting_id, meetingId);
+  if (!meetingCheck.ok) {
+    send(res, 409, { error: meetingCheck.error, reason: meetingCheck.reason });
+    return;
+  }
 
   const { data: credsData, error: credsError } = await supabaseAdmin
     .from('user_seminaredge_credentials')
@@ -502,6 +653,12 @@ export default async function handler(req: any, res: any) {
     Object.keys(rec).forEach(k => fieldNameSet.add(k));
   }
   const fieldNames = Array.from(fieldNameSet);
+
+  // Read-only diagnostic: aggregate counts only. Returns before any write path.
+  if (payload?.diagnostic === true) {
+    send(res, 200, buildTeleDirectFeedDiagnostic(records, meetingId));
+    return;
+  }
 
   if (!dryRun) {
     const relationshipValidation = validateGuestRelationshipData(records);
