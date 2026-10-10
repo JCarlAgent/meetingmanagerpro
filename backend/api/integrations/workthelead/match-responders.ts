@@ -25,10 +25,11 @@
 
 import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
 import { decodeIPA, decodeIncome } from '../../_lib/acxiomDecoders.js';
-import { summarizePreview } from '../../_lib/responderDemographicPlanner.js';
+import { summarizePreview, validateSourceLink } from '../../_lib/responderDemographicPlanner.js';
 import {
   fetchAllMailRecords,
   planForJob,
+  resolveLinkedSource,
   runDemographicEnrichment,
 } from '../../_lib/demographicEnrichment.js';
 
@@ -304,13 +305,18 @@ export default async function handler(req: any, res: any) {
     if (!jobId) return res.status(400).json({ error: 'jobId is required' });
 
     // ── preview mode: read-only demographic match plan. ZERO writes. ──
-    // Responders on jobId are matched against purchased records of sourceJobId
-    // (defaults to jobId). The source must belong to the same org as the target.
-    // Returns counts and responder IDs only, never names or demographics.
+    // Responders on jobId are matched against purchased records of the source
+    // job named by an explicit job_demographic_sources link. The target job is
+    // never used as its own source. Returns counts and responder IDs only.
     if (mode === 'preview') {
-      const effectiveSourceId = sourceJobId || jobId;
-      const plan = await planForJob(supabaseAdmin, jobId, effectiveSourceId);
+      const linked = await resolveLinkedSource(supabaseAdmin, jobId, sourceJobId);
+      if (!linked.ok) return res.status(linked.status).json({ error: linked.error, reason: linked.reason });
+
+      const plan = await planForJob(supabaseAdmin, jobId, linked.link.source_job_id);
       if (!plan.ok) return res.status(plan.status).json({ error: plan.error });
+
+      const linkReason = validateSourceLink(plan.targetJob, plan.sourceJob, linked.link);
+      if (linkReason) return res.status(400).json({ error: 'Invalid source link', reason: linkReason });
 
       const counts = summarizePreview(plan.results);
       const idsBy = (cls: string) => plan.results.filter((r) => r.classification === cls).map((r) => r.responderId);
@@ -319,7 +325,7 @@ export default async function handler(req: any, res: any) {
         mode: 'preview',
         matcherVersion: MATCHER_VERSION,
         targetJobId: jobId,
-        sourceJobId: effectiveSourceId,
+        sourceJobId: linked.link.source_job_id,
         counts,
         responderIds: {
           strong: idsBy('strong'),

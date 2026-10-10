@@ -115,6 +115,46 @@ export async function planForJob(
   return { ok: true, targetJob, sourceJob, responders, results, sourceRecords: sourceRows as any[] };
 }
 
+export type LinkedSourceOutcome =
+  | { ok: true; link: DemographicSourceLink }
+  | { ok: false; status: number; error: string; reason: string };
+
+/**
+ * Resolves the demographic source for targetJobId strictly from
+ * job_demographic_sources. Never falls back to the target job itself.
+ */
+export async function resolveLinkedSource(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  targetJobId: string,
+  requestedSourceJobId?: string,
+): Promise<LinkedSourceOutcome> {
+  const { data: linkRows, error: linkErr } = await supabaseAdmin
+    .from('job_demographic_sources')
+    .select('target_job_id, source_job_id, org_id')
+    .eq('target_job_id', targetJobId);
+  if (linkErr) throw linkErr;
+
+  if (!linkRows?.length) {
+    return { ok: false, status: 400, error: 'No demographic source is linked to this job.', reason: 'no_source_link' };
+  }
+  if (requestedSourceJobId) {
+    const match = linkRows.find((l: any) => l.source_job_id === requestedSourceJobId);
+    if (!match) {
+      return { ok: false, status: 403, error: 'Source job is not linked to this job', reason: 'source_not_linked' };
+    }
+    return { ok: true, link: match as DemographicSourceLink };
+  }
+  if (linkRows.length > 1) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'sourceJobId is required when multiple sources are linked',
+      reason: 'source_ambiguous',
+    };
+  }
+  return { ok: true, link: linkRows[0] as DemographicSourceLink };
+}
+
 export type EnrichmentOutcome = {
   httpStatus: number;
   body: Record<string, unknown>;

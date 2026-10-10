@@ -9,6 +9,8 @@ import type { AddressInfo } from 'node:net';
 
 type Call = { method: string; path: string; body: string };
 const calls: Call[] = [];
+// Campaign IDs queried against campaign_mailed_list_records (proves which job was read).
+const sourceQueries: string[] = [];
 
 const JOB_TARGET = 'job-target';
 const JOB_SOURCE = 'job-source';
@@ -27,6 +29,7 @@ const state = {
   links: [] as Array<{ target_job_id: string; source_job_id: string; org_id: string }>,
   responders: [] as any[],
   source: [] as any[],
+  failSourceRead: false,
 };
 
 const server = http.createServer((req, res) => {
@@ -65,11 +68,20 @@ const server = http.createServer((req, res) => {
     }
 
     if (path === '/rest/v1/responders') {
-      return json(200, state.responders);
+      const campaign = url.searchParams.get('campaign_id')?.replace('eq.', '');
+      return json(200, state.responders.filter((r) => !campaign || r.campaign_id === campaign));
     }
 
     if (path === '/rest/v1/campaign_mailed_list_records') {
-      return json(200, state.source);
+      const campaign = url.searchParams.get('campaign_id')?.replace('eq.', '');
+      sourceQueries.push(campaign ?? '');
+      if (state.failSourceRead) return json(500, { message: 'simulated database failure' });
+      const range = url.searchParams.get('offset') ?? '0';
+      const limit = url.searchParams.get('limit');
+      const from = Number(range);
+      const rows = state.source.filter((r) => r.campaign_id === campaign);
+      const page = limit ? rows.slice(from, from + Number(limit)) : rows.slice(from);
+      return json(200, page);
     }
 
     // Anything else (including any write) is recorded above and treated as empty.
@@ -151,12 +163,91 @@ function invoke(opts: { method?: string; token?: string; body?: unknown }) {
     },
   ];
   state.links = [{ target_job_id: JOB_TARGET, source_job_id: JOB_SOURCE, org_id: ORG }];
+  sourceQueries.length = 0;
   const r = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
   assert.equal(r.status, 200, 'preview should succeed for master');
   assert.equal(r.json.mode, 'preview');
   assert.equal(r.json.counts.totalPrimaries, 1);
+  assert.equal(r.json.sourceJobId, JOB_SOURCE, 'source must be the linked job, not the target');
+  assert.ok(sourceQueries.length > 0 && sourceQueries.every((c) => c === JOB_SOURCE),
+    'purchased records must be read only from the linked source job');
   assert.equal(calls.length, 0, 'preview must perform ZERO writes');
 }
+
+// 6b) Preview with NO link must not fall back to the target job
+{
+  calls.length = 0;
+  sourceQueries.length = 0;
+  state.links = [];
+  const r = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
+  assert.equal(r.status, 400, 'preview without a link must be a clear 4xx');
+  assert.equal(r.json.reason, 'no_source_link');
+  assert.equal(sourceQueries.length, 0, 'preview without a link must never query purchased records');
+  assert.equal(calls.length, 0, 'preview without a link must not write');
+}
+
+// 6c) Preview with an unlinked explicit sourceJobId -> 403, no purchased-record read
+{
+  calls.length = 0;
+  sourceQueries.length = 0;
+  state.links = [{ target_job_id: JOB_TARGET, source_job_id: JOB_SOURCE, org_id: ORG }];
+  const r = await invoke({
+    token: MASTER_TOKEN,
+    body: { jobId: JOB_TARGET, mode: 'preview', sourceJobId: JOB_TARGET },
+  });
+  assert.equal(r.status, 403, 'preview must reject a sourceJobId that is not the linked source');
+  assert.equal(sourceQueries.length, 0, 'unlinked source must never be read');
+  assert.equal(calls.length, 0, 'preview must perform ZERO writes');
+}
+
+// 6d) Preview cross-org link -> rejected before reading purchased records
+{
+  calls.length = 0;
+  sourceQueries.length = 0;
+  state.jobs = [
+    { id: JOB_TARGET, org_id: ORG },
+    { id: JOB_SOURCE, org_id: 'org-OTHER' },
+  ];
+  state.links = [{ target_job_id: JOB_TARGET, source_job_id: JOB_SOURCE, org_id: ORG }];
+  const r = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
+  assert.equal(r.status, 400, 'cross-org preview must be rejected');
+  assert.equal(sourceQueries.length, 0, 'cross-org source must not be read');
+  assert.equal(calls.length, 0, 'preview must perform ZERO writes');
+  state.jobs = [
+    { id: JOB_TARGET, org_id: ORG },
+    { id: JOB_SOURCE, org_id: ORG },
+  ];
+}
+
+// 6e) Pagination: source list larger than one page is read completely
+{
+  calls.length = 0;
+  sourceQueries.length = 0;
+  state.links = [{ target_job_id: JOB_TARGET, source_job_id: JOB_SOURCE, org_id: ORG }];
+  state.source = Array.from({ length: 2500 }, (_, i) => ({
+    id: `m-${i}`, campaign_id: JOB_SOURCE, first_name: `F${i}`, last_name: `L${i}`,
+    address: null, zip: null, claritas_ipa: null, age_band: null,
+  }));
+  const r = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
+  assert.equal(r.status, 200, 'multi-page source must preview');
+  assert.ok(sourceQueries.length >= 3, 'source must be read across all pages (2500 rows -> 3 pages)');
+  assert.equal(calls.length, 0, 'preview must perform ZERO writes');
+  state.source = [];
+}
+
+// 6f) Database error on the purchased-record read is an error, not an empty source
+{
+  calls.length = 0;
+  state.links = [{ target_job_id: JOB_TARGET, source_job_id: JOB_SOURCE, org_id: ORG }];
+  state.failSourceRead = true;
+  const r = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
+  state.failSourceRead = false;
+  assert.equal(r.status, 500, 'a database error must surface as 500, not an empty-source 400');
+  assert.notEqual(r.json.error, 'No purchased records found for the source job.',
+    'a database error must not be disguised as an empty source');
+  assert.equal(calls.length, 0, 'preview must perform ZERO writes');
+}
+
 
 // 7) Enrich with no source link -> reported, nothing written
 {
