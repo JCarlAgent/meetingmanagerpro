@@ -228,6 +228,36 @@ resetCounters();
   assert.ok(!out.raw.includes('<Attendee'), 'diagnostic response must not contain raw XML');
 }
 
+// 3b. Ordered preview requires BOTH diagnostic and orderPreview; source order preserved, no writes.
+resetCounters();
+{
+  const out = await invoke({ token: MASTER_TOKEN, body: { ...baseBody, dryRun: true, orderPreview: true } });
+  assert.equal(out.status, 200, `expected 200, got ${out.status}: ${out.raw.slice(0, 200)}`);
+  assert.equal(out.json.orderPreview, undefined, 'orderPreview alone must not enable the preview');
+  assert.equal(out.json.expectation, undefined, 'orderPreview alone must not return diagnostic output');
+  assert.equal(calls.length, 0, 'orderPreview with dryRun performs zero Supabase writes');
+}
+resetCounters();
+{
+  const out = await invoke({ token: MASTER_TOKEN, body: { ...baseBody, diagnostic: true, orderPreview: true } });
+  assert.equal(out.status, 200, `expected 200, got ${out.status}: ${out.raw.slice(0, 200)}`);
+  assert.equal(teleDirectCalls, 1, 'order preview makes exactly one TeleDirect request');
+  assert.equal(calls.length, 0, 'order preview performs zero Supabase writes');
+  assert.equal(out.json.orderPreview.length, 28);
+  assert.deepEqual(
+    out.json.orderPreview.map((row: { sourceIndex: number }) => row.sourceIndex),
+    Array.from({ length: 28 }, (_, i) => i + 1),
+    'preview is one-based and in API source order'
+  );
+  assert.equal(out.json.orderPreview[27].status, 'cancelled', 'cancelled row stays at its source position');
+  assert.equal(out.json.orderPreview.every((row: { hasPhone: boolean }) => row.hasPhone === true), true);
+  assert.equal(out.json.orderPreview.every((row: { hasEmail: boolean }) => row.hasEmail === true), true);
+  for (const token of ['zz@example.test', '555-0199']) {
+    assert.ok(!out.raw.includes(token), `order preview must not contain contact data (${token})`);
+  }
+  assert.ok(!out.raw.includes('<Attendee'), 'order preview must not contain raw XML');
+}
+
 // 4. Normal path (dryRun, no diagnostic flag) still runs and does not return diagnostic output.
 resetCounters();
 {

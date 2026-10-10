@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { buildTeleDirectFeedDiagnostic, checkStoredMeetingId, validateGuestRelationshipData } from './update-responses.ts';
+import { buildOrderPreview, buildTeleDirectFeedDiagnostic, checkStoredMeetingId, validateGuestRelationshipData } from './update-responses.ts';
 
 const blockedRecords = [
   { AttendeeID: '11', MainAttendeeID: '0' },
@@ -138,6 +138,48 @@ assert.equal(pairDiag.orderEvidence.conclusion, 'none');
 const orderJson = JSON.stringify({ orderDiag, reversedDiag, pairDiag });
 for (const secret of ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Smith', 'Jones', 'Doe', 'c@y.test', 'j@y.test', '555-0201', '10/13/2025', '2025-10-13']) {
   assert.equal(orderJson.includes(secret), false, `order diagnostic leaked ${secret}`);
+}
+
+// Order preview: source order preserved, cancelled rows kept, contact reduced to booleans.
+const previewRecords = [
+  { FirstName: ' Kim ', LastName: 'Alston', Phone: '555-0301', Email: '', Status: 'Registered' },
+  { FirstName: 'Alvin', LastName: 'Williams', Phone: '', Email: '  ', Status: 'Registered' },
+  { FirstName: 'Pat', LastName: 'Ortiz', Phone: '', Email: 'pat@y.test', Status: 'Cancelled' },
+  { FirstName: 'Quinn', LastName: 'Moss', Phone: '   ', Email: '', Status: 'Registered' },
+];
+const preview = buildOrderPreview(previewRecords);
+assert.deepEqual(
+  preview.map((row) => row.sourceIndex),
+  [1, 2, 3, 4],
+  'preview keeps one-based source order'
+);
+assert.deepEqual(
+  preview.map((row) => row.lastName),
+  ['Alston', 'Williams', 'Ortiz', 'Moss'],
+  'preview is not sorted or filtered'
+);
+assert.equal(preview[0].firstName, 'Kim', 'names are trimmed');
+assert.deepEqual(
+  preview.map((row) => [row.hasPhone, row.hasEmail]),
+  [
+    [true, false],
+    [false, false],
+    [false, true],
+    [false, false],
+  ],
+  'contact booleans use trimmed nonempty values'
+);
+assert.equal(preview[2].status, 'cancelled', 'cancelled rows stay in the preview');
+
+const previewDiag = buildTeleDirectFeedDiagnostic(previewRecords, '601425', { includeOrderPreview: true });
+assert.equal(previewDiag.orderPreview.length, 4);
+assert.equal(buildTeleDirectFeedDiagnostic(previewRecords, '601425').orderPreview, undefined, 'preview is opt-in');
+const previewJson = JSON.stringify(previewDiag);
+for (const secret of ['555-0301', 'pat@y.test']) {
+  assert.equal(previewJson.includes(secret), false, `order preview leaked ${secret}`);
+}
+for (const row of previewDiag.orderPreview) {
+  assert.deepEqual(Object.keys(row).sort(), ['firstName', 'hasEmail', 'hasPhone', 'lastName', 'sourceIndex', 'status']);
 }
 
 console.log('update-responses regressions: ok');

@@ -408,9 +408,30 @@ function analyzeContactPairing(records: Record<string, string>[], fieldNames: st
   };
 }
 
+// Ordered preview in API source order. Only the fields listed here are returned;
+// contact values are reduced to booleans and nothing is sorted or filtered.
+export function buildOrderPreview(records: Record<string, string>[]) {
+  return records.map((record, index) => {
+    const status = bucketAttendeeStatus(getField(record, 'Status', 'AttendeeStatus', 'ReservationStatus'));
+    return {
+      sourceIndex: index + 1,
+      firstName: getField(record, 'FirstName', 'First_Name', 'FName', 'firstname') || null,
+      lastName: getField(record, 'LastName', 'Last_Name', 'LName', 'lastname') || null,
+      hasPhone: getField(record, ...PHONE_FIELD_NAMES) !== '',
+      hasEmail: getField(record, ...EMAIL_FIELD_NAMES) !== '',
+      status,
+    };
+  });
+}
+
 // Read-only diagnostic summary. Returns aggregate counts and XML field names only;
-// names, contact details, and raw rows are never included.
-export function buildTeleDirectFeedDiagnostic(records: Record<string, string>[], meetingId: string) {
+// names, contact details, and raw rows are never included unless the caller opts into
+// the ordered preview, which carries names and contact booleans only.
+export function buildTeleDirectFeedDiagnostic(
+  records: Record<string, string>[],
+  meetingId: string,
+  options: { includeOrderPreview?: boolean } = {}
+) {
   const fieldSet = new Set<string>();
   records.forEach((record) => Object.keys(record).forEach((key) => fieldSet.add(key)));
   const relevantFieldNames = Array.from(fieldSet)
@@ -487,6 +508,7 @@ export function buildTeleDirectFeedDiagnostic(records: Record<string, string>[],
   return {
     diagnostic: true,
     meetingId,
+    ...(options.includeOrderPreview ? { orderPreview: buildOrderPreview(records) } : {}),
     totalRecords: records.length,
     relevantFieldNames,
     mainAttendeeIdGreaterThanZero,
@@ -860,8 +882,13 @@ export default async function handler(req: any, res: any) {
   const fieldNames = Array.from(fieldNameSet);
 
   // Read-only diagnostic: aggregate counts only. Returns before any write path.
+  // The ordered preview is included only when diagnostic and orderPreview are both true.
   if (payload?.diagnostic === true) {
-    send(res, 200, buildTeleDirectFeedDiagnostic(records, meetingId));
+    send(
+      res,
+      200,
+      buildTeleDirectFeedDiagnostic(records, meetingId, { includeOrderPreview: payload?.orderPreview === true })
+    );
     return;
   }
 
