@@ -217,6 +217,10 @@ resetCounters();
   assert.equal(out.json.classification.cancelledGuestRows, 1);
   assert.equal(out.json.classification.activeAttendees, 27);
   assert.equal(out.json.expectation.reproduces, true);
+  assert.equal(out.json.orderEvidence.conclusion, 'sequence_ascending_in_record_order');
+  assert.equal(out.json.orderEvidence.sequenceFields[0].field, 'AttendeeID');
+  assert.equal(out.json.contactPairing.rowsMissingBothPhoneAndEmail, 0);
+  assert.equal(out.json.contactPairing.unresolvedRows, 28);
 
   for (const token of PII_TOKENS) {
     assert.ok(!out.raw.includes(token), `diagnostic response must not contain personal data (${token})`);

@@ -218,6 +218,196 @@ function bucketAttendeeStatus(raw: string): 'registered' | 'cancelled' | 'waitli
   return 'other';
 }
 
+const DATE_FIELD_PATTERN = /date|time|created|registered|registration|timestamp|submitted|entered|added|signup|purchas|modified|updated/i;
+const DATE_FIELD_EXCLUDE_PATTERN = /status|type/i;
+const SEQUENCE_FIELD_PATTERN = /^(attendee_?id|id|record_?id|seq|sequence(_?(no|num|number|id))?|order(_?(no|num|number))?|reg(istration)?_?(no|num|number|id)|confirmation_?(no|num|number|id)|row_?(no|num|number))$/i;
+const PHONE_FIELD_NAMES = ['Phone', 'Phone1', 'PhoneNumber', 'Phone Number', 'Mobile', 'MobilePhone', 'Cell', 'CellPhone', 'Telephone'];
+const EMAIL_FIELD_NAMES = ['Email', 'EmailAddress', 'Email Address', 'E-mail'];
+const SURNAME_FIELD_NAMES = ['LastName', 'Last Name', 'Surname', 'LName'];
+
+type TimePrecision = 'date' | 'minute' | 'second' | 'unparsed';
+
+function buildDateTime(
+  year: number,
+  month: number,
+  day: number,
+  hourRaw: string | undefined,
+  minuteRaw: string | undefined,
+  secondRaw: string | undefined,
+  meridiem: string | undefined
+): { precision: TimePrecision; ms: number | null } {
+  const unparsed = { precision: 'unparsed' as const, ms: null };
+  const hasTime = hourRaw !== undefined && minuteRaw !== undefined;
+  let hour = hasTime ? Number(hourRaw) : 0;
+  const minute = hasTime ? Number(minuteRaw) : 0;
+  const second = hasTime && secondRaw !== undefined ? Number(secondRaw) : 0;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return unparsed;
+    const pm = meridiem.toLowerCase() === 'pm';
+    if (pm && hour < 12) hour += 12;
+    if (!pm && hour === 12) hour = 0;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const valid =
+    month >= 1 && month <= 12 && day >= 1 && day <= 31 &&
+    hour < 24 && minute < 60 && second < 60 &&
+    !Number.isNaN(date.getTime()) && date.getUTCDate() === day;
+  if (!valid) return unparsed;
+  const precision: TimePrecision = !hasTime ? 'date' : secondRaw === undefined ? 'minute' : 'second';
+  return { precision, ms: date.getTime() };
+}
+
+// Parses a value only to classify its precision and order. The value itself is never returned.
+function parseDateTimeValue(raw: string): { precision: TimePrecision; ms: number | null } {
+  const value = raw.trim();
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(value);
+  if (iso) {
+    return buildDateTime(Number(iso[1]), Number(iso[2]), Number(iso[3]), iso[4], iso[5], iso[6], undefined);
+  }
+  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/.exec(value);
+  if (us) {
+    const year = us[3].length === 2 ? Number(us[3]) + 2000 : Number(us[3]);
+    return buildDateTime(year, Number(us[1]), Number(us[2]), us[4], us[5], us[6], us[7]);
+  }
+  return { precision: 'unparsed', ms: null };
+}
+
+// Compares consecutive rows in record order. Null values are skipped.
+function compareAdjacent(values: Array<number | null>) {
+  let comparablePairs = 0;
+  let ascendingPairs = 0;
+  let descendingPairs = 0;
+  let tiedPairs = 0;
+  for (let i = 0; i < values.length - 1; i++) {
+    const a = values[i];
+    const b = values[i + 1];
+    if (a === null || b === null) continue;
+    comparablePairs += 1;
+    if (b > a) ascendingPairs += 1;
+    else if (b < a) descendingPairs += 1;
+    else tiedPairs += 1;
+  }
+  return { comparablePairs, ascendingPairs, descendingPairs, tiedPairs };
+}
+
+function analyzeDateTimeField(records: Record<string, string>[], field: string) {
+  const precision = { date: 0, minute: 0, second: 0, unparsed: 0 };
+  const values: Array<number | null> = [];
+  let nonEmpty = 0;
+  for (const record of records) {
+    const raw = getField(record, field);
+    if (!raw) {
+      values.push(null);
+      continue;
+    }
+    nonEmpty += 1;
+    const parsed = parseDateTimeValue(raw);
+    precision[parsed.precision] += 1;
+    values.push(parsed.ms);
+  }
+  return { field, nonEmpty, precision, ...compareAdjacent(values) };
+}
+
+function analyzeSequenceField(records: Record<string, string>[], field: string) {
+  const values: Array<number | null> = [];
+  const unique = new Set<string>();
+  let nonEmpty = 0;
+  let numeric = 0;
+  for (const record of records) {
+    const raw = getField(record, field);
+    if (!raw) {
+      values.push(null);
+      continue;
+    }
+    nonEmpty += 1;
+    unique.add(raw);
+    if (/^\d+$/.test(raw)) {
+      numeric += 1;
+      values.push(Number(raw));
+    } else {
+      values.push(null);
+    }
+  }
+  return { field, nonEmpty, numeric, unique: unique.size, ...compareAdjacent(values) };
+}
+
+function summarizeOrderEvidence(
+  sequenceFields: ReturnType<typeof analyzeSequenceField>[],
+  dateTimeFields: ReturnType<typeof analyzeDateTimeField>[]
+): string {
+  const sequence = sequenceFields.find(
+    (f) => f.comparablePairs > 0 && f.numeric === f.nonEmpty && f.unique === f.nonEmpty
+  );
+  if (sequence) {
+    if (sequence.ascendingPairs === sequence.comparablePairs) return 'sequence_ascending_in_record_order';
+    if (sequence.descendingPairs === sequence.comparablePairs) return 'sequence_descending_in_record_order';
+    return 'sequence_not_monotonic_in_record_order';
+  }
+  const timestamp = dateTimeFields.find((f) => f.comparablePairs > 0);
+  if (timestamp) {
+    if (timestamp.descendingPairs === 0) return 'timestamp_nondecreasing_in_record_order';
+    if (timestamp.ascendingPairs === 0) return 'timestamp_nonincreasing_in_record_order';
+    return 'timestamp_not_monotonic_in_record_order';
+  }
+  return 'none';
+}
+
+// Heuristic only: pairs each row with the next row when surnames match and the second row has no phone or email.
+function analyzeContactPairing(records: Record<string, string>[], fieldNames: string[]) {
+  const rows = records.map((record) => ({
+    hasContact: getField(record, ...PHONE_FIELD_NAMES) !== '' || getField(record, ...EMAIL_FIELD_NAMES) !== '',
+    surname: normalizeLookupToken(getField(record, ...SURNAME_FIELD_NAMES)),
+  }));
+  const present = (names: string[]) =>
+    names.filter((name) => fieldNames.some((field) => field.toLowerCase() === name.toLowerCase()));
+
+  const pairMatch = (i: number) => {
+    const first = rows[i];
+    const second = rows[i + 1];
+    const sameSurname = !!first.surname && first.surname === second.surname;
+    const secondLacksContact = !second.hasContact;
+    return { sameSurname, secondLacksContact, both: sameSurname && secondLacksContact };
+  };
+
+  let rowsMissingBothPhoneAndEmail = 0;
+  for (const row of rows) {
+    if (!row.hasContact) rowsMissingBothPhoneAndEmail += 1;
+  }
+
+  let consecutivePairsSameSurname = 0;
+  let consecutivePairsSecondLacksContact = 0;
+  let consecutivePairsSameSurnameAndSecondLacksContact = 0;
+  for (let i = 0; i < rows.length - 1; i++) {
+    const match = pairMatch(i);
+    if (match.sameSurname) consecutivePairsSameSurname += 1;
+    if (match.secondLacksContact) consecutivePairsSecondLacksContact += 1;
+    if (match.both) consecutivePairsSameSurnameAndSecondLacksContact += 1;
+  }
+
+  // Non-overlapping greedy pairing from the top of the feed.
+  let inferredPairs = 0;
+  for (let i = 0; i < rows.length - 1; ) {
+    if (pairMatch(i).both) {
+      inferredPairs += 1;
+      i += 2;
+    } else {
+      i += 1;
+    }
+  }
+
+  return {
+    phoneFieldsPresent: present(PHONE_FIELD_NAMES),
+    emailFieldsPresent: present(EMAIL_FIELD_NAMES),
+    surnameFieldsPresent: present(SURNAME_FIELD_NAMES),
+    rowsMissingBothPhoneAndEmail,
+    consecutivePairsSameSurname,
+    consecutivePairsSecondLacksContact,
+    consecutivePairsSameSurnameAndSecondLacksContact,
+    inferredPairs,
+    unresolvedRows: rows.length - 2 * inferredPairs,
+  };
+}
+
 // Read-only diagnostic summary. Returns aggregate counts and XML field names only;
 // names, contact details, and raw rows are never included.
 export function buildTeleDirectFeedDiagnostic(records: Record<string, string>[], meetingId: string) {
@@ -275,6 +465,15 @@ export function buildTeleDirectFeedDiagnostic(records: Record<string, string>[],
     }
   }
 
+  const allFieldNames = Array.from(fieldSet).sort();
+  const dateTimeFieldNames = allFieldNames.filter(
+    (key) => DATE_FIELD_PATTERN.test(key) && !DATE_FIELD_EXCLUDE_PATTERN.test(key)
+  );
+  const sequenceFieldNames = allFieldNames.filter((key) => SEQUENCE_FIELD_PATTERN.test(key));
+  const dateTimeFields = dateTimeFieldNames.map((field) => analyzeDateTimeField(records, field));
+  const sequenceFields = sequenceFieldNames.map((field) => analyzeSequenceField(records, field));
+  const contactPairing = analyzeContactPairing(records, allFieldNames);
+
   const isTarget = meetingId.trim() === '601425';
   const mismatches: string[] = [];
   if (isTarget) {
@@ -303,6 +502,12 @@ export function buildTeleDirectFeedDiagnostic(records: Record<string, string>[],
       unresolvedRelationshipRows,
       activeAttendees,
     },
+    orderEvidence: {
+      dateTimeFields,
+      sequenceFields,
+      conclusion: summarizeOrderEvidence(sequenceFields, dateTimeFields),
+    },
+    contactPairing,
     expectation: {
       applicable: isTarget,
       expected: isTarget ? EXPECTED_MEETING_601425 : null,
