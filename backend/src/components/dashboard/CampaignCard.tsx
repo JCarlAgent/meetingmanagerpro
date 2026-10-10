@@ -175,8 +175,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
   const [isMatchingMail, setIsMatchingMail] = useState(false);
   const [matchMailMessage, setMatchMailMessage] = useState<string | null>(null);
   const [isPreviewingMatch, setIsPreviewingMatch] = useState(false);
-  const [matchPreview, setMatchPreview] = useState<{ counts: Record<string, number>; sourceJobId: string } | null>(null);
+  const [matchPreview, setMatchPreview] = useState<{ counts: Record<string, number>; sourceJobId: string; enrichableCount: number } | null>(null);
   const [matchPreviewError, setMatchPreviewError] = useState<string | null>(null);
+  const [isApplyingMatch, setIsApplyingMatch] = useState(false);
+  const [applyMatchResult, setApplyMatchResult] = useState<{ written: number; skipped: number; failed: number; status: string } | null>(null);
+  const [applyMatchError, setApplyMatchError] = useState<string | null>(null);
   const [matchNameResults, setMatchNameResults] = useState<any[] | null>(null);
   const [matcherVersion, setMatcherVersion] = useState<string | null>(null);
   const [isDebuggingMatch, setIsDebuggingMatch] = useState(false);
@@ -1215,11 +1218,49 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Preview failed');
-      setMatchPreview({ counts: json.counts, sourceJobId: json.sourceJobId });
+      setMatchPreview({ counts: json.counts, sourceJobId: json.sourceJobId, enrichableCount: json.enrichableCount ?? 0 });
     } catch (err: any) {
       setMatchPreviewError(err?.message ?? String(err));
     } finally {
       setIsPreviewingMatch(false);
+    }
+  };
+
+  // Master-admin apply: server-side enrich (fills only empty demographic fields, idempotent).
+  // Confirmation shows the server-computed eligible count from the preview.
+  const runApplyDemographicMatches = async () => {
+    const eligible = matchPreview?.enrichableCount ?? 0;
+    if (!eligible) return;
+    const confirmed = window.confirm(
+      `Apply demographic matches to ${eligible} responder(s)?\n\n` +
+      'Only empty demographic fields are filled. Existing values, names, contact data, guests, attendance, and mailing history are not changed.'
+    );
+    if (!confirmed) return;
+    setIsApplyingMatch(true);
+    setApplyMatchError(null);
+    setApplyMatchResult(null);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('/api/integrations/workthelead/match-responders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jobId: campaign.id, mode: 'enrich' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Apply failed');
+      setApplyMatchResult({
+        written: json.written ?? 0,
+        skipped: json.skippedConcurrent ?? 0,
+        failed: json.failed ?? 0,
+        status: json.status ?? 'ok',
+      });
+      reloadResponders();
+      await runMatchPreview();
+    } catch (err: any) {
+      setApplyMatchError(err?.message ?? String(err));
+    } finally {
+      setIsApplyingMatch(false);
     }
   };
 
@@ -2535,6 +2576,12 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                                 >{isPreviewingMatch ? 'Previewing…' : 'Preview Demographic Match (read-only)'}</button>
                                 <button
                                   type="button"
+                                  onClick={runApplyDemographicMatches}
+                                  disabled={isApplyingMatch || isPreviewingMatch || !matchPreview || !matchPreview.enrichableCount}
+                                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded text-xs"
+                                >{isApplyingMatch ? 'Applying…' : 'Apply Demographic Matches'}</button>
+                                <button
+                                  type="button"
                                   onClick={runDebugMatches}
                                   disabled={isDebuggingMatch}
                                   className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded text-xs"
@@ -2543,15 +2590,25 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                               {matchPreviewError && (
                                 <div className="mt-2 text-xs text-red-600">Preview error: {matchPreviewError}</div>
                               )}
+                              {applyMatchError && (
+                                <div className="mt-2 text-xs text-red-600">Apply error: {applyMatchError}</div>
+                              )}
+                              {applyMatchResult && (
+                                <div className="mt-2 text-xs text-slate-700">
+                                  Demographic apply ({applyMatchResult.status}): {applyMatchResult.written} enriched, {applyMatchResult.skipped} skipped, {applyMatchResult.failed} failed.
+                                </div>
+                              )}
                               {matchPreview && (
                                 <div className="mt-2 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded p-2">
                                   <div className="font-medium mb-1">Demographic match preview (no writes) — source job {matchPreview.sourceJobId}</div>
                                   <div>Total primary responders: {matchPreview.counts.totalPrimaries}</div>
                                   <div>Already enriched: {matchPreview.counts.alreadyEnriched}</div>
                                   <div>High-confidence unique matches: {matchPreview.counts.strong}</div>
+                                  <div>Probable unique full-name matches: {matchPreview.counts.probable}</div>
                                   <div>Name-only candidates (verify): {matchPreview.counts.nameOnlyCandidates}</div>
                                   <div>Ambiguous: {matchPreview.counts.ambiguous}</div>
                                   <div>Unmatched: {matchPreview.counts.unmatched}</div>
+                                  <div>Eligible to apply: {matchPreview.enrichableCount}</div>
                                 </div>
                               )}
                               {debugMatchOutput && (

@@ -25,7 +25,7 @@
 
 import { requireUserIdFromAuthHeader, getSupabaseAdmin } from '../../_lib/supabaseAdmin.js';
 import { decodeIPA, decodeIncome } from '../../_lib/acxiomDecoders.js';
-import { summarizePreview, validateSourceLink } from '../../_lib/responderDemographicPlanner.js';
+import { planEnrichmentWrites, summarizePreview, validateSourceLink } from '../../_lib/responderDemographicPlanner.js';
 import {
   fetchAllMailRecords,
   planForJob,
@@ -319,6 +319,8 @@ export default async function handler(req: any, res: any) {
       if (linkReason) return res.status(400).json({ error: 'Invalid source link', reason: linkReason });
 
       const counts = summarizePreview(plan.results);
+      // Exactly the writes the enrich mode would attempt (already-enriched rows excluded).
+      const enrichableCount = planEnrichmentWrites(plan.responders as any[], plan.results, plan.sourceRecords as any[]).length;
       const idsBy = (cls: string) => plan.results.filter((r) => r.classification === cls).map((r) => r.responderId);
 
       return res.status(200).json({
@@ -327,6 +329,7 @@ export default async function handler(req: any, res: any) {
         targetJobId: jobId,
         sourceJobId: linked.link.source_job_id,
         counts,
+        enrichableCount,
         responderIds: {
           strong: idsBy('strong'),
           probable: idsBy('probable'),

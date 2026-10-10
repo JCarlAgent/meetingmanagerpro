@@ -69,6 +69,20 @@ const server = http.createServer((req, res) => {
 
     if (path === '/rest/v1/responders') {
       const campaign = url.searchParams.get('campaign_id')?.replace('eq.', '');
+      if (req.method === 'PATCH') {
+        // Apply the write to the in-memory responders so later previews observe it.
+        // Like PostgREST with select(), return the rows that were actually updated.
+        const id = url.searchParams.get('id')?.replace('eq.', '');
+        const patch = JSON.parse(body || '{}');
+        const updated: any[] = [];
+        for (const r of state.responders) {
+          if (r.id === id && (!campaign || r.campaign_id === campaign)) {
+            Object.assign(r, patch);
+            updated.push({ id: r.id });
+          }
+        }
+        return json(200, updated);
+      }
       return json(200, state.responders.filter((r) => !campaign || r.campaign_id === campaign));
     }
 
@@ -287,6 +301,52 @@ function invoke(opts: { method?: string; token?: string; body?: unknown }) {
     { id: JOB_TARGET, org_id: ORG },
     { id: JOB_SOURCE, org_id: ORG },
   ];
+}
+
+// 6g) enrichableCount equals the writes enrich will actually attempt, and drops to 0 after apply
+{
+  calls.length = 0;
+  sourceQueries.length = 0;
+  state.jobs = [
+    { id: JOB_TARGET, org_id: ORG },
+    { id: JOB_SOURCE, org_id: ORG },
+  ];
+  state.links = [{ target_job_id: JOB_TARGET, source_job_id: JOB_SOURCE, org_id: ORG }];
+  state.responders = [
+    {
+      id: 'r-1', campaign_id: JOB_TARGET, first_name: 'Ann', last_name: 'Smith',
+      address: null, zip: null, mail_record_id: null, matched_to_mail_list: false,
+      age: null, ipa: null, income: null, est_income_code: null, est_income_range: null,
+    },
+    {
+      id: 'r-2', campaign_id: JOB_TARGET, first_name: 'Bob', last_name: 'Jones',
+      address: null, zip: null, mail_record_id: null, matched_to_mail_list: false,
+      age: null, ipa: null, income: null, est_income_code: null, est_income_range: null,
+    },
+  ];
+  state.source = [
+    {
+      id: 'm-1', campaign_id: JOB_SOURCE, first_name: 'Ann', last_name: 'Smith',
+      address: null, zip: null, claritas_ipa: null, age_band: null,
+    },
+  ];
+  const preview = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.json.counts.probable, 1, 'unique full-name match is probable');
+  assert.equal(preview.json.enrichableCount, 1, 'only the probable match is eligible to apply');
+  assert.equal(calls.length, 0, 'preview must perform ZERO writes');
+
+  calls.length = 0;
+  const enrich = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'enrich' } });
+  assert.equal(enrich.status, 200);
+  assert.equal(enrich.json.written, preview.json.enrichableCount,
+    'enrich must write exactly the enrichableCount the preview reported');
+  assert.equal(enrich.json.failed, 0);
+  assert.ok(calls.every((c) => c.method !== 'DELETE'), 'enrich must never delete');
+
+  const after = await invoke({ token: MASTER_TOKEN, body: { jobId: JOB_TARGET, mode: 'preview' } });
+  assert.equal(after.json.enrichableCount, 0, 'after apply nothing is eligible (idempotent)');
+  assert.equal(after.json.counts.alreadyEnriched, 1, 'applied responder is reported as already enriched');
 }
 
 server.close();
