@@ -798,11 +798,15 @@ export default async function handler(req: any, res: any) {
   const normalizedBody = stripXml(rawText);
   const looksXml = normalizedBody.startsWith('<?xml') || normalizedBody.startsWith('<');
   const bodyLower = normalizedBody.toLowerCase();
-  const bodyHasError =
-    bodyLower.includes('<error>') ||
+  const { records, containerTag, allTagsFound } = parseXmlRecords(rawText);
+  const explicitErrorTag = rawText.match(/<error[^>]*>([\s\S]*?)<\/error>/i);
+  const hasAuthErrorText =
     bodyLower.includes('login failed') ||
     bodyLower.includes('invalid user') ||
     bodyLower.includes('invalid password');
+  // Treat auth/error text as fatal only when the payload has no parsed attendee rows.
+  // Some valid attendee feeds include free-text fields that can contain these words.
+  const bodyHasError = Boolean(explicitErrorTag) || (hasAuthErrorText && records.length === 0);
 
   if (httpStatus >= 400 || bodyHasError) {
     send(res, 502, {
@@ -815,6 +819,8 @@ export default async function handler(req: any, res: any) {
       requestBodyByteLength: bodyByteLength,
       looksXml,
       bodyHasError,
+      parsedRecordCount: records.length,
+      xmlErrorMessage: explicitErrorTag ? String(explicitErrorTag[1]).trim() : null,
       authDiagnostics: {
         usernamePresent: credDiag.usernamePresent,
         passwordPresent: credDiag.passwordPresent,
@@ -830,7 +836,6 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const { records, containerTag, allTagsFound } = parseXmlRecords(rawText);
   const fieldNameSet = new Set<string>();
   for (const rec of records) {
     Object.keys(rec).forEach(k => fieldNameSet.add(k));

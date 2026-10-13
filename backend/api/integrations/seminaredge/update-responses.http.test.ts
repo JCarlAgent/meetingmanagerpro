@@ -478,7 +478,34 @@ reset();
   assert.equal(rpcPayloads.length, 0);
 }
 
-// 7. An unknown status blocks synchronization before any write. Nothing is guessed as registered.
+// 7. A valid attendee feed may contain auth-like words in free-text fields.
+//    This must not be treated as a login failure when attendee rows are present.
+reset();
+{
+  teleDirectXml = DEFAULT_FEED_XML.replace(
+    '</Attendee>',
+    '<Notes>Guest requested invalid password reset help.</Notes></Attendee>'
+  );
+  const out = await invoke({ token: MASTER_TOKEN, body: { ...baseBody, dryRun: true } });
+  assert.equal(out.status, 200, `expected 200, got ${out.status}: ${out.raw.slice(0, 200)}`);
+  assert.equal(out.json.primaryCount, 17);
+  assert.equal(out.json.attendeeEquivalentTotal, 30);
+  assert.equal(rpcPayloads.length, 0, 'dry run remains read-only');
+}
+
+// 8. Explicit XML error payloads remain fatal even on HTTP 200.
+reset();
+{
+  teleDirectXml = '<?xml version=\"1.0\"?><Error>Invalid Password</Error>';
+  const out = await invoke({ token: MASTER_TOKEN, body: { ...baseBody, dryRun: true } });
+  assert.equal(out.status, 502, `expected 502, got ${out.status}: ${out.raw.slice(0, 200)}`);
+  assert.equal(out.json.bodyHasError, true);
+  assert.equal(out.json.parsedRecordCount, 0);
+  assert.equal(rpcPayloads.length, 0, 'failed fetch validation must not reach RPC');
+  assert.equal(nonKnownPaths().length, 0, 'failed fetch validation must not run enrichment');
+}
+
+// 9. An unknown status blocks synchronization before any write. Nothing is guessed as registered.
 reset();
 {
   teleDirectXml = buildFeedXml({ 5: 'Pending' });
@@ -491,7 +518,7 @@ reset();
   assert.deepEqual(state.responders, before, 'blocked sync leaves the roster intact');
 }
 
-// 8. First synchronization: RPC receives the full feed, legacy row is adopted in place,
+// 10. First synchronization: RPC receives the full feed, legacy row is adopted in place,
 //    manual rows and existing demographics survive, enrichment runs after success.
 reset();
 {
@@ -554,7 +581,7 @@ reset();
   }
 }
 
-// 9. Repeated synchronization creates no duplicates and reports every row as updated.
+// 11. Repeated synchronization creates no duplicates and reports every row as updated.
 {
   const out = await invoke({ token: MASTER_TOKEN, body: baseBody });
   assert.equal(out.status, 200, `expected 200, got ${out.status}: ${out.raw.slice(0, 200)}`);
@@ -566,7 +593,7 @@ reset();
   assert.equal(new Set(keys).size, keys.length, 'each identity key is stored once');
 }
 
-// 10. An atomic failure leaves the roster exactly as it was and runs no enrichment.
+// 12. An atomic failure leaves the roster exactly as it was and runs no enrichment.
 reset();
 {
   flags.rpcFailNext = true;
@@ -580,7 +607,7 @@ reset();
   assert.equal(requestLog.slice(rpcIndex + 1).some((p) => !KNOWN_PATHS.has(p)), false, 'no enrichment after failure');
 }
 
-// 11. Enrichment failure is reported separately; the completed sync is kept.
+// 13. Enrichment failure is reported separately; the completed sync is kept.
 reset();
 {
   flags.enrichmentFail = true;
