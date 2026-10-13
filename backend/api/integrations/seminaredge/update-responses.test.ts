@@ -1,25 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { buildOrderPreview, buildTeleDirectFeedDiagnostic, checkStoredMeetingId, validateGuestRelationshipData } from './update-responses.ts';
-
-const blockedRecords = [
-  { AttendeeID: '11', MainAttendeeID: '0' },
-  { AttendeeID: '12', MainAttendeeID: '0' },
-];
-
-const validGuestRecords = [
-  { AttendeeID: '101', MainAttendeeID: '100' },
-  { AttendeeID: '100', MainAttendeeID: '0' },
-];
-
-const validAgMarkerRecords = [
-  { 'A/G': 'A', AttendeeID: '200', FirstName: 'Alice', LastName: 'Primary' },
-  { 'A/G': 'G', AttendeeID: '201', MainAttendeeID: '200', FirstName: 'Guest', LastName: 'One' },
-];
-
-assert.equal(validateGuestRelationshipData(blockedRecords).ok, false);
-assert.equal(validateGuestRelationshipData(validGuestRecords).ok, true);
-assert.equal(validateGuestRelationshipData(validAgMarkerRecords).ok, true);
+import { buildOrderPreview, buildTeleDirectFeedDiagnostic, checkStoredMeetingId } from './update-responses.ts';
 
 // Stored meeting ID must exist and match the request before any TeleDirect call.
 assert.equal(checkStoredMeetingId('601425', '601425').ok, true);
@@ -53,8 +34,8 @@ assert.equal(diag.classification.guestRows, 13);
 assert.equal(diag.classification.cancelledGuestRows, 1);
 assert.equal(diag.classification.activeAttendees, 27);
 assert.equal(diag.classification.unresolvedRelationshipRows, 0);
-assert.equal(diag.expectation.applicable, true);
-assert.equal(diag.expectation.reproduces, true);
+// The obsolete fixed-count expectation is gone; counts are never checked against a historical roster.
+assert.equal('expectation' in diag, false);
 assert.ok(diag.relevantFieldNames.includes('MainAttendeeID'));
 assert.ok(diag.relevantFieldNames.includes('A/G'));
 
@@ -70,11 +51,6 @@ const diagUnresolved = buildTeleDirectFeedDiagnostic(
   '601426'
 );
 assert.equal(diagUnresolved.classification.unresolvedRelationshipRows, 1);
-assert.equal(diagUnresolved.expectation.applicable, false);
-assert.equal(diagUnresolved.expectation.reproduces, null);
-
-// Non-target meeting skips the expectation check entirely.
-assert.equal(buildTeleDirectFeedDiagnostic(diagRecords, '601426').expectation.applicable, false);
 
 // Order evidence: minute-precision registration timestamps and an ascending attendee ID.
 const orderRecords = [

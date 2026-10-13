@@ -1,7 +1,15 @@
 import https from 'node:https';
+import { randomUUID } from 'node:crypto';
 import { decryptString } from '../../_lib/crypto.js';
 import { getSupabaseAdmin, requireUserIdFromAuthHeader } from '../../_lib/supabaseAdmin.js';
-import { canAccessJobEvent } from './import-roster-replace.js';
+import { canAccessJobEvent, runPostImportEnrichment } from './import-roster-replace.js';
+import {
+  buildTeleDirectPlan,
+  type ExistingResponderSnapshot,
+  type TeleDirectPlan,
+  type TeleDirectPlanCounts,
+  type TeleDirectPlanRow,
+} from './teledirect-roster-plan.js';
 
 function send(res: any, status: number, body: any) {
   res.statusCode = status;
@@ -203,7 +211,6 @@ const DIAGNOSTIC_RELATIONSHIP_FIELDS = [
   'AttendeeID', 'MainAttendeeID', 'Attendee/Guest', 'AttendeeGuest', 'A/G', 'AG', 'Type', 'RecordType', 'EntryType',
   'Role', 'PersonType', 'ParticipantType', 'Status', 'AttendeeStatus', 'ReservationStatus',
 ];
-const EXPECTED_MEETING_601425 = { primary: 15, guest: 13, cancelledGuest: 1, activeAttendees: 27 };
 
 function isGuestRecord(record: Record<string, string>): boolean {
   const relationship = getAttendeeRelationship(record);
@@ -495,16 +502,6 @@ export function buildTeleDirectFeedDiagnostic(
   const sequenceFields = sequenceFieldNames.map((field) => analyzeSequenceField(records, field));
   const contactPairing = analyzeContactPairing(records, allFieldNames);
 
-  const isTarget = meetingId.trim() === '601425';
-  const mismatches: string[] = [];
-  if (isTarget) {
-    if (primaryRows !== EXPECTED_MEETING_601425.primary) mismatches.push('primary');
-    if (guestRows !== EXPECTED_MEETING_601425.guest) mismatches.push('guest');
-    if (cancelledGuestRows !== EXPECTED_MEETING_601425.cancelledGuest) mismatches.push('cancelledGuest');
-    if (activeAttendees !== EXPECTED_MEETING_601425.activeAttendees) mismatches.push('activeAttendees');
-    if (unresolvedRelationshipRows > 0) mismatches.push('unresolvedRelationships');
-  }
-
   return {
     diagnostic: true,
     meetingId,
@@ -530,124 +527,76 @@ export function buildTeleDirectFeedDiagnostic(
       conclusion: summarizeOrderEvidence(sequenceFields, dateTimeFields),
     },
     contactPairing,
-    expectation: {
-      applicable: isTarget,
-      expected: isTarget ? EXPECTED_MEETING_601425 : null,
-      reproduces: isTarget ? mismatches.length === 0 : null,
-      mismatches,
-    },
   };
 }
 
-export function validateGuestRelationshipData(records: Record<string, string>[]) {
-  if (!records.length) {
-    return {
-      ok: true,
-      reason: 'no-records',
-      details: 'No TeleDirect records to validate.',
-    };
-  }
-
-  const relationships = records.map((record) => getAttendeeRelationship(record));
-  const hasGuestMarker = records.some((record) => isLikelyGuestRow(record, getAgMarker(record)));
-  const hasExplicitGuest = relationships.some((relationship) => relationship.explicitGuest);
-  const hasNonZeroMainAttendeeId = relationships.some(
-    (relationship) => Boolean(relationship.mainAttendeeId) && relationship.mainAttendeeId !== '0'
-  );
-  const allMainAttendeeIdsZero = relationships.length > 0 && relationships.every(
-    (relationship) => !relationship.mainAttendeeId || relationship.mainAttendeeId === '0'
-  );
-
-  if (allMainAttendeeIdsZero && !hasGuestMarker && !hasExplicitGuest) {
-    return {
-      ok: false,
-      reason: 'all-ma-in-attendee-zero',
-      details:
-        'TeleDirect API does not provide sufficient guest relationship information for this meeting. MainAttendeeID is zero for every attendee. Use the A/G roster export instead of Update Confirmations.',
-    };
-  }
-
-  if (!hasNonZeroMainAttendeeId && !hasGuestMarker && !hasExplicitGuest) {
-    return {
-      ok: false,
-      reason: 'no-primary-guest-relationships',
-      details:
-        'TeleDirect API did not provide reliable primary/guest relationship information. Use the A/G roster export instead of Update Confirmations.',
-    };
-  }
-
-  return {
-    ok: true,
-    reason: 'relationship-data-present',
-    details: 'Guest relationship data is present and safe to process.',
-  };
+function buildPlanRows(records: Record<string, string>[]): TeleDirectPlanRow[] {
+  const rows: TeleDirectPlanRow[] = [];
+  records.forEach((record, sourceIndex) => {
+    const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname').trim();
+    const lastName = getField(record, 'LastName', 'Last_Name', 'LName', 'lastname').trim();
+    const phone = normalizePhone(getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum')) ?? '';
+    const email = getField(record, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').trim().toLowerCase();
+    const rawStatus = getField(record, 'Status', 'AttendeeStatus', 'ReservationStatus').trim();
+    // Fully blank filler rows carry no attendee and are skipped, as before.
+    if (!firstName && !lastName && !phone && !email) return;
+    rows.push({ sourceIndex, firstName, lastName, phone, email, rawStatus });
+  });
+  return rows;
 }
 
-function normalizeGuestName(value: string | null): string | null {
-  const cleaned = (value ?? '').replace(/\s+/g, ' ').trim();
-  return cleaned ? cleaned.toLowerCase() : null;
-}
-
-function guestNameAlreadyIncluded(existingGuestName: string | null, candidate: string | null): boolean {
-  const existingKey = normalizeGuestName(existingGuestName);
-  const candidateKey = normalizeGuestName(candidate);
-  if (!candidateKey) return true;
-  if (!existingKey) return false;
-  return existingKey === candidateKey || existingKey.includes(candidateKey);
-}
-
-async function findExistingResponderMatches(
+async function loadExistingResponderSnapshots(
   supabaseAdmin: any,
   jobId: string,
-  eventId: string,
-  input: {
-    phone: string | null;
-    email: string | null;
-    firstName: string | null;
-    lastName: string | null;
-  }
-) {
-  const { phone, email, firstName, lastName } = input;
-  let query = supabaseAdmin
-    .from('responders')
-    .select('id, first_name, last_name, phone, email, guests, guest_name, mail_record_id, notes')
-    .eq('campaign_id', jobId)
-    .eq('event_id', eventId);
-
-  if (phone && lastName) {
-    query = query.eq('phone', phone).ilike('last_name', lastName);
-  } else if (phone) {
-    query = query.eq('phone', phone);
-  } else if (email) {
-    query = query.eq('email', email);
-  } else {
-    const firstKey = normalizeLookupToken(firstName);
-    const lastKey = normalizeLookupToken(lastName);
-    if (!firstKey || !lastKey) {
-      return { rows: [], error: null, ambiguous: false, status: 'none' as const };
+  eventId: string
+): Promise<{ ok: true; rows: ExistingResponderSnapshot[] } | { ok: false; error: string }> {
+  const rows: ExistingResponderSnapshot[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from('responders')
+      .select('id, first_name, last_name, phone, email, response_source, teledirect_attendee_key')
+      .eq('campaign_id', jobId)
+      .eq('event_id', eventId)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) return { ok: false, error: error.message };
+    for (const r of data ?? []) {
+      rows.push({
+        id: r.id,
+        firstName: r.first_name ?? '',
+        lastName: r.last_name ?? '',
+        phone: r.phone ?? '',
+        email: r.email ?? '',
+        responseSource: r.response_source ?? null,
+        teledirectAttendeeKey: r.teledirect_attendee_key ?? null,
+      });
     }
-    query = query.ilike('first_name', firstKey).ilike('last_name', lastKey);
+    if (!data || data.length < pageSize) break;
   }
+  return { ok: true, rows };
+}
 
-  const { data, error } = await query.limit(2);
-  if (error) {
-    return { rows: [], error, ambiguous: false, status: 'error' as const };
-  }
-
-  const rows = Array.isArray(data) ? data : [];
-  if (rows.length === 0) {
-    return { rows: [], error: null, ambiguous: false, status: 'none' as const };
-  }
-  if (rows.length > 1) {
-    return { rows, error: null, ambiguous: true, status: 'multiple' as const };
-  }
-
+function summarizePlan(plan: TeleDirectPlan) {
   return {
-    rows,
-    error: null,
-    ambiguous: false,
-    status: 'single' as const,
-    row: rows[0],
+    counts: plan.counts,
+    blockers: plan.blockers.map((b) => ({ code: b.code, message: b.message, sourceIndexes: b.sourceIndexes })),
+  };
+}
+
+function dryRunCounts(totalReceived: number, counts: TeleDirectPlanCounts) {
+  return {
+    totalReceived,
+    primaryCount: counts.primaries,
+    guestCount: counts.guests,
+    registeredPrimaryCount: counts.primariesRegistered,
+    waitlistPrimaryCount: counts.primariesWaitlist,
+    cancelledPrimaryCount: counts.primariesCancelled,
+    nonCancelledPrimaryCount: counts.primaries - counts.primariesCancelled,
+    guestsOnNonCancelledPrimaries: counts.guests - counts.cancelledGuests,
+    attendeeEquivalentTotal: counts.confirmedAttendees,
+    confirmedAttendees: counts.confirmedAttendees,
+    activeAttendees: counts.activeRows,
   };
 }
 
@@ -684,6 +633,13 @@ export default async function handler(req: any, res: any) {
   const meetingId = ((payload?.meetingId ?? payload?.MeetingID ?? payload?.meeting_id ?? '').toString()).trim();
   const replaceExisting = Boolean(payload?.replaceExisting);
   const dryRun = Boolean(payload?.dryRun);
+
+  if (replaceExisting) {
+    send(res, 400, {
+      error: 'replaceExisting is not supported by Update Confirmations. Use the roster import for a full replacement.',
+    });
+    return;
+  }
 
   if (!jobId) {
     send(res, 400, { error: 'jobId is required' });
@@ -881,442 +837,72 @@ export default async function handler(req: any, res: any) {
   }
   const fieldNames = Array.from(fieldNameSet);
 
-  // Read-only diagnostic: aggregate counts only. Returns before any write path.
-  // The ordered preview is included only when diagnostic and orderPreview are both true.
-  if (payload?.diagnostic === true) {
-    send(
-      res,
-      200,
-      buildTeleDirectFeedDiagnostic(records, meetingId, { includeOrderPreview: payload?.orderPreview === true })
-    );
+  // Diagnostic, dry run, and sync all build from the same plan. Only the sync branch writes.
+  const planRows = buildPlanRows(records);
+  const existingLoad = await loadExistingResponderSnapshots(supabaseAdmin, jobId, eventId);
+  if (!existingLoad.ok) {
+    send(res, 500, { error: `Failed to read existing responders: ${existingLoad.error}` });
     return;
   }
+  const plan = buildTeleDirectPlan(planRows, existingLoad.rows);
+  const planSummary = summarizePlan(plan);
 
-  if (!dryRun) {
-    const relationshipValidation = validateGuestRelationshipData(records);
-    if (!relationshipValidation.ok) {
-      send(res, 400, {
-        error: 'TeleDirect API does not provide sufficient guest relationship information for this meeting.',
-        message: relationshipValidation.details,
-        reason: relationshipValidation.reason,
-        recordsParsed: records.length,
-        requiresRosterAorG: true,
-      });
-      return;
-    }
-  }
-
-  if (dryRun) {
-    const primaryStatuses: Array<string> = [];
-    const primaryGuestCounts: number[] = [];
-    const primaryByAttendeeId = new Map<string, string>();
-
-    let primaryCount = 0;
-    let guestCount = 0;
-    let registeredPrimaryCount = 0;
-    let waitlistPrimaryCount = 0;
-    let cancelledPrimaryCount = 0;
-    let rowsWithMainAttendeeZero = 0;
-    let rowsWithMainAttendeeNonZero = 0;
-    let guestReferencesResolved = 0;
-    let unresolvedGuestReferences = 0;
-
-    for (const record of records) {
-      const relationship = getAttendeeRelationship(record);
-      const agMarker = getAgMarker(record);
-      const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
-      if (!looksGuest && relationship.attendeeId) {
-        primaryByAttendeeId.set(relationship.attendeeId, relationship.attendeeId);
-      }
-      if (relationship.mainAttendeeId === '0') {
-        rowsWithMainAttendeeZero += 1;
-      } else if (relationship.mainAttendeeId) {
-        rowsWithMainAttendeeNonZero += 1;
-      }
-    }
-
-    for (const record of records) {
-      const agMarker = getAgMarker(record);
-      const relationship = getAttendeeRelationship(record);
-      const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
-      const statusRaw = getField(record, 'Status', 'AttendeeStatus', 'ReservationStatus') || 'registered';
-      const status = statusRaw.toLowerCase();
-
-      if (looksGuest) {
-        guestCount += 1;
-        if (primaryStatuses.length > 0) {
-          primaryGuestCounts[primaryGuestCounts.length - 1] += 1;
-        }
-        if (relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && relationship.mainAttendeeId !== relationship.attendeeId) {
-          if (primaryByAttendeeId.has(relationship.mainAttendeeId)) {
-            guestReferencesResolved += 1;
-          } else {
-            unresolvedGuestReferences += 1;
-          }
-        }
-        continue;
-      }
-
-      primaryStatuses.push(status || 'registered');
-      primaryGuestCounts.push(0);
-      primaryCount += 1;
-
-      if (status === 'cancelled' || status === 'canceled') {
-        cancelledPrimaryCount += 1;
-      } else if (status === 'waitlist' || status === 'waiting list' || status === 'waitlisted') {
-        waitlistPrimaryCount += 1;
-      } else {
-        registeredPrimaryCount += 1;
-      }
-    }
-
-    const nonCancelledPrimaryCount = primaryCount - cancelledPrimaryCount;
-    const guestsOnNonCancelledPrimaries = primaryStatuses
-      .map((status, index) => (status === 'cancelled' || status === 'canceled' ? 0 : primaryGuestCounts[index]))
-      .reduce((sum, count) => sum + count, 0);
-
+  if (payload?.diagnostic === true) {
     send(res, 200, {
-      dryRun: true,
-      totalReceived: records.length,
-      primaryCount,
-      guestCount,
-      registeredPrimaryCount,
-      waitlistPrimaryCount,
-      cancelledPrimaryCount,
-      nonCancelledPrimaryCount,
-      guestsOnNonCancelledPrimaries,
-      attendeeEquivalentTotal: nonCancelledPrimaryCount + guestsOnNonCancelledPrimaries,
-      rowsWithMainAttendeeZero,
-      rowsWithMainAttendeeNonZero,
-      guestReferencesResolved,
-      unresolvedGuestReferences,
-      relationshipFieldsPresent: {
-        attendeeId: records.some(r => !!getAttendeeRelationship(r).attendeeId),
-        mainAttendeeId: records.some(r => !!getAttendeeRelationship(r).mainAttendeeId),
-      },
+      ...buildTeleDirectFeedDiagnostic(records, meetingId, { includeOrderPreview: payload?.orderPreview === true }),
+      plan: planSummary,
     });
     return;
   }
 
-  if (replaceExisting) {
-    const { error: deleteError } = await supabaseAdmin
-      .from('responders')
-      .delete()
-      .eq('campaign_id', jobId)
-      .eq('event_id', eventId);
-
-    if (deleteError) {
-      send(res, 500, {
-        error: `Failed to clear existing responders: ${deleteError.message}`,
-        endpoint,
-        safeUrl,
-      });
-      return;
-    }
+  if (dryRun) {
+    send(res, 200, {
+      dryRun: true,
+      ...dryRunCounts(records.length, plan.counts),
+      plan: planSummary,
+    });
+    return;
   }
 
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
-  let totalA = 0;
-  let totalG = 0;
-
-  const apiPrimaryByAttendeeId = new Map<string, Record<string, string>>();
-  const guestPrimaryAttendeeMap = new Map<string, string>();
-  let lastPrimaryRecord: Record<string, string> | null = null;
-
-  for (const record of records) {
-    const relationship = getAttendeeRelationship(record);
-    const attendeeId = relationship.attendeeId;
-    const agMarker = getAgMarker(record);
-    const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
-
-    if (attendeeId) {
-      apiPrimaryByAttendeeId.set(attendeeId, record);
-    }
-
-    if (attendeeId && relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && relationship.mainAttendeeId !== attendeeId) {
-      guestPrimaryAttendeeMap.set(attendeeId, relationship.mainAttendeeId);
-    }
-
-    if (!looksGuest) {
-      lastPrimaryRecord = record;
-    }
+  if (plan.blockers.length > 0 || plan.payload.length === 0) {
+    send(res, 422, {
+      error: 'Roster cannot be synchronized safely. No changes were written.',
+      blockers: planSummary.blockers,
+      plan: planSummary,
+    });
+    return;
   }
 
-  const primaryRecords: Array<{ index: number; record: Record<string, string> }> = [];
-  const guestRecords: Array<{ index: number; record: Record<string, string>; primaryRecord: Record<string, string> | null; primaryApiId: string | null }> = [];
+  const requestId = randomUUID();
+  const rpcRows = plan.payload.map((row) => {
+    const { sourceIndex: _sourceIndex, ...rest } = row;
+    return rest;
+  });
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
-    const agMarker = getAgMarker(record);
-    const relationship = getAttendeeRelationship(record);
-    const looksGuest = isLikelyGuestRow(record, agMarker) || (relationship.explicitGuest && relationship.mainAttendeeId !== '0');
+  const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('sync_event_responders_from_teledirect', {
+    p_job_id: jobId,
+    p_event_id: eventId,
+    p_rows: rpcRows,
+    p_actor_user_id: userId,
+    p_request_id: requestId,
+  });
 
-    if (looksGuest) {
-      const primaryApiId = relationship.mainAttendeeId && relationship.mainAttendeeId !== '0' && relationship.mainAttendeeId !== relationship.attendeeId
-        ? relationship.mainAttendeeId
-        : null;
-      const resolvedPrimaryRecord = primaryApiId && apiPrimaryByAttendeeId.get(primaryApiId)
-        ? apiPrimaryByAttendeeId.get(primaryApiId) ?? lastPrimaryRecord
-        : lastPrimaryRecord;
-
-      guestRecords.push({
-        index: i,
-        record,
-        primaryRecord: resolvedPrimaryRecord ?? null,
-        primaryApiId: primaryApiId ?? null,
-      });
-      continue;
-    }
-
-    primaryRecords.push({ index: i, record });
+  if (rpcError) {
+    console.error('[update-responses] roster sync failed', { requestId, jobId, eventId, message: rpcError.message });
+    send(res, 500, {
+      error: 'Roster synchronization failed. No responder changes were applied.',
+      message: rpcError.message,
+      requestId,
+    });
+    return;
   }
 
-  const apiPrimaryDbIdByAttendeeId = new Map<string, string>();
-  const seenGuestKeysByPrimary = new Map<string, Set<string>>();
-  let currentAttendee: {
-    index: number;
-    id: string | null;
-    timestamp: string | null;
-    firstName: string | null;
-    lastName: string | null;
-  } | null = null;
-  let orphanGuestRows = 0;
-  const pairingSamples: string[] = [];
+  const result = (rpcData ?? {}) as Record<string, number | null>;
+  const adopted = Number(result.adopted ?? 0);
+  const updated = Number(result.updated ?? 0) + adopted;
 
-  for (const { index, record } of primaryRecords) {
-    const agMarker = getAgMarker(record);
-    const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname') || null;
-    const lastName = getField(record, 'LastName', 'Last_Name', 'LName', 'lastname') || null;
-    const phone = normalizePhone(getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum'));
-    const email = getField(record, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').toLowerCase() || null;
-    const timestamp = getField(record, 'TimeStamp', 'Timestamp', 'CreatedOn', 'CreateDate', 'DateCreated') || null;
-
-    totalA += 1;
-
-    if (!firstName && !lastName && !phone && !email) {
-      skipped += 1;
-      currentAttendee = null;
-      continue;
-    }
-
-    const noteParts = [
-      timestamp ? `Timestamp: ${timestamp}` : '',
-      getField(record, 'CreatedBy') ? `CreatedBy: ${getField(record, 'CreatedBy')}` : '',
-      getField(record, 'ConfirmationCall') ? `Confirmation: ${getField(record, 'ConfirmationCall')}` : '',
-      getField(record, 'Notes') ? `Notes: ${getField(record, 'Notes')}` : '',
-      getField(record, 'AdditionalNotes') ? `AdditionalNotes: ${getField(record, 'AdditionalNotes')}` : '',
-      agMarker ? `AG: ${agMarker}` : '',
-    ]
-      .filter(Boolean)
-      .join(' | ');
-
-    const statusRaw = getField(record, 'Status', 'AttendeeStatus', 'ReservationStatus').toLowerCase();
-
-    const upsertRecord: Record<string, any> = {
-      campaign_id: jobId,
-      event_id: eventId,
-      first_name: firstName,
-      last_name: lastName,
-      phone,
-      email,
-      address: getField(record, 'Address', 'Address1', 'StreetAddress', 'Addr', 'Addr1') || null,
-      city: getField(record, 'City') || null,
-      state: getField(record, 'State', 'St', 'StateCode') || null,
-      zip: getField(record, 'Zip', 'ZipCode', 'PostalCode', 'Zip5', 'ZipCode5') || null,
-      guests: 0,
-      response_source: 'call_center',
-      confirmed: true,
-      status: statusRaw || 'registered',
-      notes: noteParts || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const attendeeRelationship = getAttendeeRelationship(record);
-    const candidateMatch = await findExistingResponderMatches(supabaseAdmin, jobId, eventId, { phone, email, firstName, lastName });
-
-    let resolvedExistingId: string | null = null;
-
-    if (candidateMatch.status === 'error') {
-      skipped += 1;
-      currentAttendee = null;
-      continue;
-    }
-
-    if (candidateMatch.status === 'multiple') {
-      skipped += 1;
-      currentAttendee = null;
-      continue;
-    }
-
-    if (candidateMatch.status === 'single') {
-      resolvedExistingId = candidateMatch.row?.id ?? null;
-    }
-
-    if (resolvedExistingId) {
-      const { data: existingRow, error: existingRowError } = await supabaseAdmin
-        .from('responders')
-        .select('*')
-        .eq('id', resolvedExistingId)
-        .maybeSingle();
-
-      if (existingRowError || !existingRow) {
-        skipped += 1;
-        currentAttendee = null;
-        continue;
-      }
-
-      const nextUpdate: Record<string, any> = {
-        ...upsertRecord,
-        phone: phone ?? existingRow.phone ?? null,
-        email: email ?? existingRow.email ?? null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: updateError } = await supabaseAdmin
-        .from('responders')
-        .update(nextUpdate)
-        .eq('id', existingRow.id);
-
-      if (updateError) {
-        skipped += 1;
-        currentAttendee = null;
-        continue;
-      }
-
-      updated += 1;
-      currentAttendee = {
-        index,
-        id: existingRow.id,
-        timestamp,
-        firstName,
-        lastName,
-      };
-    } else {
-      const insertPayload = {
-        ...upsertRecord,
-        attended: false,
-        created_at: new Date().toISOString(),
-      };
-
-      const { data: insertedRow, error: insertError } = await supabaseAdmin
-        .from('responders')
-        .insert(insertPayload)
-        .select('id')
-        .single();
-
-      if (insertError) {
-        skipped += 1;
-        currentAttendee = null;
-        continue;
-      }
-
-      inserted += 1;
-      currentAttendee = {
-        index,
-        id: insertedRow?.id ?? null,
-        timestamp,
-        firstName,
-        lastName,
-      };
-    }
-
-    if (attendeeRelationship.attendeeId && currentAttendee?.id) {
-      apiPrimaryDbIdByAttendeeId.set(attendeeRelationship.attendeeId, currentAttendee.id);
-    }
-  }
-
-  for (const { index, record, primaryRecord, primaryApiId } of guestRecords) {
-    const agMarker = getAgMarker(record);
-    const firstName = getField(record, 'FirstName', 'First_Name', 'FName', 'firstname') || null;
-    const lastName = getField(record, 'LastName', 'Last_Name', 'LName', 'lastname') || null;
-    const phone = normalizePhone(getField(record, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum'));
-    const email = getField(record, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').toLowerCase() || null;
-    const guestFullName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
-    const relationship = getAttendeeRelationship(record);
-
-    let primaryDbId: string | null = currentAttendee?.id ?? null;
-
-    if (primaryApiId && apiPrimaryDbIdByAttendeeId.has(primaryApiId)) {
-      primaryDbId = apiPrimaryDbIdByAttendeeId.get(primaryApiId) ?? null;
-    } else if (primaryRecord) {
-      const primaryFirstName = getField(primaryRecord, 'FirstName', 'First_Name', 'FName', 'firstname') || null;
-      const primaryLastName = getField(primaryRecord, 'LastName', 'Last_Name', 'LName', 'lastname') || null;
-      const primaryPhone = normalizePhone(getField(primaryRecord, 'Phone', 'PhoneNumber', 'Phone1', 'HomePhone', 'CellPhone', 'PhoneNum'));
-      const primaryEmail = getField(primaryRecord, 'Email', 'EmailAddress', 'EmailAddr', 'email_address').toLowerCase() || null;
-      const primaryLookup = await findExistingResponderMatches(supabaseAdmin, jobId, eventId, {
-        phone: primaryPhone,
-        email: primaryEmail,
-        firstName: primaryFirstName,
-        lastName: primaryLastName,
-      });
-
-      if (primaryLookup.status === 'error') {
-        skipped += 1;
-        continue;
-      }
-
-      if (primaryLookup.status === 'multiple') {
-        skipped += 1;
-        continue;
-      }
-
-      primaryDbId = primaryLookup.status === 'single' ? primaryLookup.row?.id ?? null : null;
-    }
-
-    if (!primaryDbId) {
-      orphanGuestRows += 1;
-      skipped += 1;
-      continue;
-    }
-
-    const { data: existingGuestData, error: existingGuestErr } = await supabaseAdmin
-      .from('responders')
-      .select('guests,guest_name')
-      .eq('id', primaryDbId)
-      .maybeSingle();
-
-    if (existingGuestErr || !existingGuestData) {
-      skipped += 1;
-      continue;
-    }
-
-    const guestKey = `${primaryDbId}|${normalizeGuestName(guestFullName) ?? 'unnamed-guest'}`;
-    const primaryGuestSet = seenGuestKeysByPrimary.get(primaryDbId) ?? new Set<string>();
-    if (primaryGuestSet.has(guestKey)) {
-      continue;
-    }
-    primaryGuestSet.add(guestKey);
-    seenGuestKeysByPrimary.set(primaryDbId, primaryGuestSet);
-
-    const guestCount = Number(existingGuestData.guests ?? 0);
-    const currentGuestName = existingGuestData.guest_name ?? null;
-    const shouldIncreaseGuestCount = !guestNameAlreadyIncluded(currentGuestName, guestFullName);
-    const nextGuests = shouldIncreaseGuestCount ? guestCount + 1 : guestCount;
-    const nextGuestName = currentGuestName && currentGuestName.trim() ? currentGuestName : guestFullName;
-
-    const { error: bumpErr } = await supabaseAdmin
-      .from('responders')
-      .update({
-        guests: nextGuests,
-        guest_name: nextGuestName,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', primaryDbId);
-
-    if (bumpErr) {
-      skipped += 1;
-      continue;
-    }
-
-    totalG += 1;
-    if (pairingSamples.length < 8) {
-      const lhs = [primaryRecord ? getField(primaryRecord, 'FirstName', 'First_Name', 'FName', 'firstname') : null, primaryRecord ? getField(primaryRecord, 'LastName', 'Last_Name', 'LName', 'lastname') : null].filter(Boolean).join(' ').trim() || 'Unknown A';
-      const rhs = guestFullName || 'Unnamed G';
-      pairingSamples.push(`A(${lhs}) <- G(${rhs})`);
-    }
-  }
+  // Enrichment runs only after the atomic sync has committed. Its outcome is reported separately.
+  const demographicEnrichment = await runPostImportEnrichment({ supabaseAdmin, jobId, eventId, requestId });
 
   send(res, 200, {
     ok: true,
@@ -1324,22 +910,26 @@ export default async function handler(req: any, res: any) {
     httpStatus,
     containerTag,
     allTagsFound,
-    inserted,
+    inserted: Number(result.inserted ?? 0),
     updated,
-    skipped,
-    totalA,
-    totalG,
+    adopted,
+    skipped: records.length - planRows.length,
+    total: records.length,
+    totalA: plan.counts.primaries,
+    totalG: plan.counts.guests,
+    retainedAbsent: Number(result.retainedAbsent ?? 0),
+    eventResponderCount: result.eventResponderCount ?? null,
+    confirmedAttendees: plan.counts.confirmedAttendees,
+    activeAttendees: plan.counts.activeRows,
+    plan: planSummary,
+    demographicEnrichment,
     fieldNames,
-    pairingDiagnostics: {
-      strategy: 'Primary records first; explicit MainAttendeeID/AttendeeID relationship overrides row order; no-contact fallbacks require a single name match within the meeting',
-      orphanGuestRows,
-      samplePairs: pairingSamples,
-    },
     source: {
       safeUrl,
       meetingId: meetingId || null,
-      replaceExisting,
+      replaceExisting: false,
       recordsParsed: records.length,
+      requestId,
     },
   });
 }
