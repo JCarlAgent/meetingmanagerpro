@@ -37,23 +37,10 @@ type ReplaceRecord = {
   notes: string;
 };
 
-const EXPECTED_INITIAL_MEETINGS: Record<string, { meetingId: string; primaryCount: number; guestCount: number; cancelledPrimaryCount: number; cancelledGuestCount: number; totalActiveAttendees: number }> = {
-  '05cd651c-e005-42a1-a7de-fc1dee6fb624': {
-    meetingId: '601425',
-    primaryCount: 13,
-    guestCount: 11,
-    cancelledPrimaryCount: 0,
-    cancelledGuestCount: 1,
-    totalActiveAttendees: 23,
-  },
-  'cff031aa-6ec1-46ef-b153-16e35237fef1': {
-    meetingId: '601426',
-    primaryCount: 6,
-    guestCount: 4,
-    cancelledPrimaryCount: 1,
-    cancelledGuestCount: 0,
-    totalActiveAttendees: 9,
-  },
+// Protected events must stay bound to their TeleDirect meeting ID. Registrant counts are not fixed here.
+const PROTECTED_MEETING_IDS: Record<string, string> = {
+  '05cd651c-e005-42a1-a7de-fc1dee6fb624': '601425',
+  'cff031aa-6ec1-46ef-b153-16e35237fef1': '601426',
 };
 
 function send(res: any, status: number, body: any) {
@@ -223,27 +210,55 @@ export function buildReplacementRecords(groups: TeleDirectRosterPrimary[], meeti
   });
 }
 
-export function validateExpectedCounts(args: {
+// Structural and internal-consistency checks only. Registrant counts change as responses arrive,
+// so the roster is validated against itself, never against a fixed historical size.
+export function validateRosterStructure(args: {
   eventId: string;
   eventMeetingId: string | null;
+  groupCount: number;
   preview: {
+    meetingId?: string | null;
     primaryCount: number;
     guestCount: number;
     cancelledPrimaryCount: number;
     cancelledGuestCount: number;
+    activePrimaryCount: number;
+    activeGuestCount: number;
     totalActiveAttendees: number;
+    rowsRead: number;
+    unknownRows: number;
   };
 }) {
-  const expectation = EXPECTED_INITIAL_MEETINGS[args.eventId];
-  if (!expectation) return;
-  if ((args.eventMeetingId ?? '') !== expectation.meetingId) {
+  const eventMeetingId = (args.eventMeetingId ?? '').trim();
+  const protectedMeetingId = PROTECTED_MEETING_IDS[args.eventId];
+  if (protectedMeetingId && eventMeetingId !== protectedMeetingId) {
     throw new Error('Selected meeting does not match expected TeleDirect meeting ID for protected initial import.');
   }
-  if (args.preview.primaryCount !== expectation.primaryCount) throw new Error(`Roster primary count mismatch. Expected ${expectation.primaryCount}.`);
-  if (args.preview.guestCount !== expectation.guestCount) throw new Error(`Roster guest count mismatch. Expected ${expectation.guestCount}.`);
-  if (args.preview.cancelledPrimaryCount !== expectation.cancelledPrimaryCount) throw new Error(`Roster cancelled primary count mismatch. Expected ${expectation.cancelledPrimaryCount}.`);
-  if (args.preview.cancelledGuestCount !== expectation.cancelledGuestCount) throw new Error(`Roster cancelled guest count mismatch. Expected ${expectation.cancelledGuestCount}.`);
-  if (args.preview.totalActiveAttendees !== expectation.totalActiveAttendees) throw new Error(`Roster active attendee count mismatch. Expected ${expectation.totalActiveAttendees}.`);
+
+  // The file's own meeting ID is only checked when the file states one.
+  const rosterMeetingId = (args.preview.meetingId ?? '').toString().trim();
+  if (rosterMeetingId && eventMeetingId && rosterMeetingId !== eventMeetingId) {
+    throw new Error(`Roster meeting ID ${rosterMeetingId} does not match event TeleDirect meeting ID ${eventMeetingId}.`);
+  }
+
+  const p = args.preview;
+  if (p.unknownRows !== 0) throw new Error(`Roster contains ${p.unknownRows} unrecognized row(s). Replacement blocked.`);
+  if (p.rowsRead !== p.primaryCount + p.guestCount + p.unknownRows) {
+    throw new Error('Roster row totals are inconsistent. Replacement blocked.');
+  }
+  if (p.primaryCount <= 0) throw new Error('Roster contains no primary registrants. Replacement blocked.');
+  if (args.groupCount !== p.primaryCount) {
+    throw new Error('Roster primary groups do not match primary count. Replacement blocked.');
+  }
+  if (p.cancelledPrimaryCount + p.activePrimaryCount !== p.primaryCount) {
+    throw new Error('Roster primary totals are inconsistent. Replacement blocked.');
+  }
+  if (p.cancelledGuestCount + p.activeGuestCount !== p.guestCount) {
+    throw new Error('Roster guest totals are inconsistent. Replacement blocked.');
+  }
+  if (p.activePrimaryCount + p.activeGuestCount !== p.totalActiveAttendees) {
+    throw new Error('Roster active attendee totals are inconsistent. Replacement blocked.');
+  }
 }
 
 export async function executeRosterReplacement(args: {
@@ -374,13 +389,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    validateExpectedCounts({
+    validateRosterStructure({
       eventId,
       eventMeetingId,
+      groupCount: groups.length,
       preview: parsed.preview,
     });
   } catch (error: any) {
-    send(res, 400, { error: sanitizeErrorMessage(error, 'Roster count validation failed.') });
+    send(res, 400, { error: sanitizeErrorMessage(error, 'Roster structure validation failed.') });
     return;
   }
 

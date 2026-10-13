@@ -5,12 +5,13 @@ import {
   canAccessJobEvent,
   executeRosterReplacement,
   runPostImportEnrichment,
-  validateExpectedCounts,
+  validateRosterStructure,
   default as handler,
 } from './import-roster-replace.ts';
 import { groupTeleDirectRosterByPrimary, parseTeleDirectRosterDetailed } from '../../../src/lib/teleDirectRoster';
 
 const october13 = parseTeleDirectRosterDetailed(fs.readFileSync('/Users/jack/Downloads/meeting601425-2.xls', 'utf8'));
+const october13Current = parseTeleDirectRosterDetailed(fs.readFileSync('/Users/jack/Downloads/meeting601425-6.xls', 'utf8'));
 const october14 = parseTeleDirectRosterDetailed(fs.readFileSync('/Users/jack/Downloads/meeting601426.xls', 'utf8'));
 
 assert.equal(october13.preview.primaryCount, 13, 'October 13 fixture should parse 13 primaries');
@@ -50,25 +51,95 @@ assert.equal(
   'October 14 replacement should preserve cancelled primary status'
 );
 
-validateExpectedCounts({
+// Rosters change between syncs, so validation checks structure and internal consistency, never fixed sizes.
+const october13CurrentGroups = groupTeleDirectRosterByPrimary(october13Current.attendees);
+assert.equal(october13Current.preview.primaryCount, 17, 'Current October 13 export should parse 17 primaries');
+assert.equal(october13Current.preview.guestCount, 14, 'Current October 13 export should parse 14 guests');
+assert.equal(october13Current.preview.cancelledGuestCount, 1, 'Current October 13 export should parse 1 cancelled guest');
+assert.equal(october13Current.preview.activePrimaryCount, 17, 'Current October 13 export should parse 17 active primaries');
+assert.equal(october13Current.preview.activeGuestCount, 13, 'Current October 13 export should parse 13 active guests');
+assert.equal(october13Current.preview.totalActiveAttendees, 30, 'Current October 13 export should parse 30 active attendees');
+assert.equal(october13Current.preview.unknownRows, 0, 'Current October 13 export should have no unknown rows');
+assert.equal(october13CurrentGroups.length, 17, 'Current October 13 export should group into 17 primaries');
+
+validateRosterStructure({
   eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
   eventMeetingId: '601425',
+  groupCount: october13CurrentGroups.length,
+  preview: october13Current.preview,
+});
+validateRosterStructure({
+  eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
+  eventMeetingId: '601425',
+  groupCount: oct13Groups.length,
   preview: october13.preview,
 });
-validateExpectedCounts({
+validateRosterStructure({
   eventId: 'cff031aa-6ec1-46ef-b153-16e35237fef1',
   eventMeetingId: '601426',
+  groupCount: oct14Groups.length,
   preview: october14.preview,
 });
 
 assert.throws(
-  () => validateExpectedCounts({
+  () => validateRosterStructure({
+    eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
+    eventMeetingId: '601426',
+    groupCount: october13CurrentGroups.length,
+    preview: october13Current.preview,
+  }),
+  /protected initial import/i,
+  'Protected October 13 event should reject a selected meeting ID other than 601425'
+);
+assert.throws(
+  () => validateRosterStructure({
+    eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
+    eventMeetingId: null,
+    groupCount: october13CurrentGroups.length,
+    preview: october13Current.preview,
+  }),
+  /protected initial import/i,
+  'Protected event without a stored meeting ID should fail closed'
+);
+assert.throws(
+  () => validateRosterStructure({
     eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
     eventMeetingId: '601425',
-    preview: { ...october13.preview, guestCount: 12 },
+    groupCount: october13CurrentGroups.length,
+    preview: { ...october13Current.preview, meetingId: '999999' },
   }),
-  /guest count mismatch/i,
-  'Protected initial meeting should reject unexpected roster counts'
+  /does not match event TeleDirect meeting ID/i,
+  'Roster stamped with a different meeting ID should be rejected'
+);
+assert.throws(
+  () => validateRosterStructure({
+    eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
+    eventMeetingId: '601425',
+    groupCount: october13CurrentGroups.length,
+    preview: { ...october13Current.preview, unknownRows: 1 },
+  }),
+  /unrecognized row/i,
+  'Roster replacement should reject files containing unrecognized rows'
+);
+assert.throws(
+  () => validateRosterStructure({
+    eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
+    eventMeetingId: '601425',
+    groupCount: october13CurrentGroups.length,
+    preview: { ...october13Current.preview, totalActiveAttendees: 29 },
+  }),
+  /active attendee totals are inconsistent/i,
+  'Roster replacement should reject inconsistent active totals'
+);
+assert.throws(
+  () => validateRosterStructure({
+    eventId: '05cd651c-e005-42a1-a7de-fc1dee6fb624',
+    eventMeetingId: '601425',
+    groupCount: october13CurrentGroups.length - 1,
+    preview: october13Current.preview,
+  }),
+  /primary groups do not match/i,
+  'Roster replacement should reject a group count that differs from the primary count'
 );
 
 const rpcCalls: Array<{ method: string; args: any }> = [];
