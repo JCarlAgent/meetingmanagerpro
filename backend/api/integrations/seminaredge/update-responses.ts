@@ -729,13 +729,14 @@ export default async function handler(req: any, res: any) {
   const idKey = 'MeetingID';
   const idValue = meetingId;
 
-  const body = new URLSearchParams({
+  const query = new URLSearchParams({
     UserName: username,
     Password: password,
     [idKey]: idValue,
-  }).toString();
+  });
+  const requestUrl = `${baseUrl}/${endpoint}?${query.toString()}`;
 
-  const bodyByteLength = Buffer.byteLength(body, 'utf8');
+  const requestParamByteLength = Buffer.byteLength(query.toString(), 'utf8');
   const safeBody = new URLSearchParams({
     UserName: usernamePreview(username),
     Password: '***',
@@ -750,15 +751,13 @@ export default async function handler(req: any, res: any) {
   try {
     await new Promise<void>((resolve, reject) => {
       const req = https.request(
-        `${baseUrl}/${endpoint}`,
+        requestUrl,
         {
           method: 'GET',
           headers: {
             Accept: 'text/xml, application/xml, */*',
             'User-Agent': 'Mozilla/5.0 (compatible; MeetingsManagerPRO/1.0; diagnostics)',
             Connection: 'close',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': String(bodyByteLength),
           },
         },
         (res) => {
@@ -778,8 +777,6 @@ export default async function handler(req: any, res: any) {
       );
 
       req.on('error', reject);
-      req.write(body);
-      bodyWasSent = true;
       req.end();
     });
   } catch (e: any) {
@@ -788,7 +785,7 @@ export default async function handler(req: any, res: any) {
       message: e?.message || 'Unknown fetch error',
       requestMethod: 'GET',
       requestBodySent: bodyWasSent,
-      requestBodyByteLength: bodyByteLength,
+      requestBodyByteLength: requestParamByteLength,
       endpoint,
       safeBody,
     });
@@ -816,7 +813,7 @@ export default async function handler(req: any, res: any) {
       contentType,
       requestMethod: 'GET',
       requestBodySent: bodyWasSent,
-      requestBodyByteLength: bodyByteLength,
+      requestBodyByteLength: requestParamByteLength,
       looksXml,
       bodyHasError,
       parsedRecordCount: records.length,

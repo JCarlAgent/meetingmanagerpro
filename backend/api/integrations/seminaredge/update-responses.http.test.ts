@@ -90,12 +90,17 @@ const DEFAULT_FEED_XML = buildFeedXml();
 // Fake TeleDirect calls, so tests can prove whether the handler called out.
 let teleDirectCalls = 0;
 let teleDirectXml = DEFAULT_FEED_XML;
+let lastTeleDirectRequest: { url: string; wroteBody: boolean } = { url: '', wroteBody: false };
 
 // Replace https.request before the handler is imported. The handler calls it at request time.
 (https as any).request = (_url: string, _opts: any, cb: (res: any) => void) => {
   teleDirectCalls++;
+  lastTeleDirectRequest = { url: String(_url), wroteBody: false };
   const req: any = new EventEmitter();
-  req.write = () => true;
+  req.write = () => {
+    lastTeleDirectRequest.wroteBody = true;
+    return true;
+  };
   req.end = () => {
     const res: any = new EventEmitter();
     res.statusCode = 200;
@@ -349,6 +354,7 @@ function reset(opts: { seed?: boolean } = {}) {
   rpcPayloads.length = 0;
   teleDirectCalls = 0;
   teleDirectXml = DEFAULT_FEED_XML;
+  lastTeleDirectRequest = { url: '', wroteBody: false };
   flags.rpcFailNext = false;
   flags.enrichmentFail = false;
   state.responders = opts.seed === false ? [] : SEED_RESPONDERS();
@@ -466,6 +472,8 @@ reset();
   assert.equal(out.json.registeredPrimaryCount, 17);
   assert.equal(out.json.cancelledPrimaryCount, 0);
   assert.equal(out.json.attendeeEquivalentTotal, 30);
+  assert.equal(lastTeleDirectRequest.wroteBody, false, 'TeleDirect GET should not send a request body');
+  assert.ok(lastTeleDirectRequest.url.includes('MeetingID=601425'), 'TeleDirect request URL should include MeetingID');
 }
 
 // 6. Registered totals exclude waitlisted rows: a waitlisted guest drops out of confirmed attendees.
